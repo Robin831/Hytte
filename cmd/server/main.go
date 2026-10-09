@@ -20,6 +20,7 @@ import (
 	"github.com/Robin831/Hytte/internal/livestream"
 	"github.com/Robin831/Hytte/internal/offers"
 	"github.com/Robin831/Hytte/internal/pokemon"
+	"github.com/Robin831/Hytte/internal/races"
 	"github.com/Robin831/Hytte/internal/stars"
 	"github.com/Robin831/Hytte/internal/stride"
 	"github.com/Robin831/Hytte/internal/suggestions"
@@ -389,6 +390,11 @@ func main() {
 			}
 		}
 	}()
+
+	// Load the starting race catalog once (no-op after the first run).
+	if err := races.SeedCatalog(context.Background(), database); err != nil {
+		log.Printf("races: seed catalog failed: %v", err)
+	}
 
 	// Daily grocery-offer sync from the Tjek API at 06:30 Europe/Oslo
 	// (Hytte-offr). Warm-runs at startup only when stored offers are stale

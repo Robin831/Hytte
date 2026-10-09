@@ -1,0 +1,206 @@
+{
+  "title": "Løp",
+  "subtitle": "Hold oversikt over løp, planlegg det neste og gå aldri glipp av en trekningsfrist.",
+  "loading": "Laster løp …",
+  "disclaimer": "Status, datoer og priser kommer fra arrangører og tredjepartskilder og kan endre seg. Sjekk arrangørens side før du betaler.",
+  "tabs": {
+    "mine": "Mine løp",
+    "discover": "Utforsk",
+    "deadlines": "Frister"
+  },
+  "status": {
+    "open": "Åpen nå",
+    "later": "Senere eller uklar",
+    "closed": "Stengt"
+  },
+  "entryType": {
+    "lottery": "Trekning",
+    "fcfs": "Først til mølla",
+    "qualifier": "Kvalifiseringstid",
+    "unknown": "Ukjent påmelding"
+  },
+  "travel": {
+    "direct": "Direkte",
+    "nearby": "Nær eller med bytte",
+    "none": "Ingen direkte"
+  },
+  "facts": {
+    "participants": "Deltakere",
+    "course": "Løype",
+    "travel": "Fra Bergen",
+    "price": "Pris",
+    "organizer": "Arrangørens side"
+  },
+  "series": {
+    "majors": "World Marathon Majors",
+    "emc": "European Marathon Classics",
+    "superhalfs": "SuperHalfs"
+  },
+  "distance": {
+    "all": "Alle distanser",
+    "half": "Halvmaraton",
+    "marathon": "Maraton",
+    "other": "Annen"
+  },
+  "precision": {
+    "early": "tidlig {{date}}",
+    "mid": "midt i {{date}}",
+    "late": "sent i {{date}}",
+    "approx": "rundt {{date}}"
+  },
+  "precisionShort": {
+    "approx": "~",
+    "early": "tidlig",
+    "mid": "midt",
+    "late": "sent",
+    "month": "uklar"
+  },
+  "precisionName": {
+    "day": "Eksakt dag",
+    "approx": "Rundt denne dagen",
+    "early": "Tidlig i måneden",
+    "mid": "Midt i måneden",
+    "late": "Sent i måneden",
+    "month": "En gang den måneden"
+  },
+  "when": {
+    "today": "i dag",
+    "tomorrow": "i morgen",
+    "inDays_one": "om {{count}} dag",
+    "inDays_other": "om {{count}} dager",
+    "ago_one": "for {{count}} dag siden",
+    "ago_other": "for {{count}} dager siden"
+  },
+  "expected": "Forventet",
+  "filters": {
+    "search": "Søk etter løp eller byer",
+    "status": "Filtrer på status",
+    "more": "Flere filtre",
+    "all": "Alle",
+    "directOnly": "Direktefly fra Bergen",
+    "upcomingOnly": "Bare kommende",
+    "empty": "Ingen løp med dette utvalget."
+  },
+  "watch": {
+    "title": "Min status",
+    "track": "Følg dette løpet",
+    "untrack": "Slutt å følge",
+    "state": "Status",
+    "notes": "Notater",
+    "notesPlaceholder": "Startnummer, hvem du reiser med, hotellbestilling …",
+    "saveNotes": "Lagre notater",
+    "saved": "Lagret",
+    "notTracking": "Du følger ikke dette løpet ennå."
+  },
+  "watchState": {
+    "watching": "Følger med",
+    "planning": "Planlegger",
+    "lottery_entered": "Med i trekningen",
+    "got_place": "Fikk plass",
+    "not_selected": "Ikke trukket",
+    "registered": "Påmeldt",
+    "completed": "Fullført",
+    "skipped": "Droppet"
+  },
+  "kind": {
+    "entry_opens": "Påmeldingen åpner",
+    "entry_closes": "Påmeldingen stenger",
+    "lottery_opens": "Trekningen åpner",
+    "lottery_closes": "Trekningen stenger",
+    "lottery_results": "Trekningsresultat",
+    "payment_due": "Betalingsfrist",
+    "price_increase": "Prisen øker",
+    "waitlist_closes": "Ventelisten stenger",
+    "other": "Merknad"
+  },
+  "mine": {
+    "empty": "Du følger ingen løp ennå",
+    "emptyHint": "Finn løp under Utforsk og trykk på bokmerket for å følge dem.",
+    "noDeadline": "Ingen kommende frister"
+  },
+  "deadlines": {
+    "scope": "Hvilke frister",
+    "onlyMine": "Mine løp",
+    "all": "Alle løp",
+    "empty": "Ingen kommende frister.",
+    "emptyMine": "Ingen av løpene dine har kommende frister."
+  },
+  "detail": {
+    "back": "Alle løp",
+    "date": "Løpsdag",
+    "facts": "Fakta",
+    "howToGetIn": "Slik kommer du med",
+    "lastChecked": "Sist sjekket {{date}}",
+    "deadlines": "Frister",
+    "deadline": "Frist",
+    "noDeadlines": "Ingen kjente frister for dette løpet.",
+    "history": "Endringslogg",
+    "noHistory": "Ingen endringer registrert ennå."
+  },
+  "field": {
+    "created": "Lagt til i oversikten",
+    "name": "Navn",
+    "race_date": "Løpsdato",
+    "date_precision": "Datopresisjon",
+    "status": "Status",
+    "entry_type": "Påmeldingstype",
+    "travel": "Reise",
+    "url": "Arrangørlenke",
+    "series": "Serie",
+    "country": "Land",
+    "distance_m": "Distanse",
+    "edition_year": "Utgave"
+  },
+  "textField": {
+    "place": "Sted",
+    "participants": "Deltakere",
+    "course": "Løype",
+    "travel": "Reise fra Bergen",
+    "how": "Slik kommer du med",
+    "price": "Pris"
+  },
+  "lang": {
+    "nb": "Norsk",
+    "en": "English",
+    "th": "ไทย"
+  },
+  "source": {
+    "manual": "redigert for hånd",
+    "research": "automatisk oppdatering",
+    "seed": "første import"
+  },
+  "admin": {
+    "newRace": "Nytt løp",
+    "edit": "Rediger løp",
+    "delete": "Slett løp",
+    "confirmDelete": "Slette {{name}} fra oversikten? Det fjernes for alle.",
+    "confirmDeleteDeadline": "Slette denne fristen?",
+    "save": "Lagre",
+    "cancel": "Avbryt",
+    "name": "Navn",
+    "date": "Dato",
+    "precision": "Datopresisjon",
+    "distance": "Distanse",
+    "meters": "Distanse i meter",
+    "country": "Landkode",
+    "status": "Status",
+    "entryType": "Påmeldingstype",
+    "url": "Arrangørlenke",
+    "series": "Serie",
+    "texts": "Tekster per språk",
+    "deadline": "Frist",
+    "addDeadline": "Legg til frist",
+    "editDeadline": "Rediger frist",
+    "deleteDeadline": "Slett frist",
+    "kind": "Type",
+    "time": "Klokkeslett (valgfritt)",
+    "tz": "Tidssone",
+    "expected": "Forventet, ikke bekreftet",
+    "what": "Beskrivelse"
+  },
+  "errors": {
+    "load": "Kunne ikke laste løp.",
+    "save": "Kunne ikke lagre. Prøv igjen.",
+    "notFound": "Fant ikke løpet."
+  }
+}

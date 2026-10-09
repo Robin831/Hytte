@@ -76,6 +76,8 @@ import RecipeCookMode from './pages/RecipeCookMode'
 import MealPlanner from './pages/MealPlanner'
 import WardrobePage from './pages/WardrobePage'
 import OffersPage from './pages/OffersPage'
+import RacesPage from './pages/races/RacesPage'
+import RaceDetailPage from './pages/races/RaceDetailPage'
 import HomeworkPage from './pages/HomeworkPage'
 import HomeworkChat from './pages/HomeworkChat'
 import HomeworkSettings from './pages/HomeworkSettings'
@@ -576,6 +578,24 @@ function MainLayout() {
             element={
               <FeatureRoute feature="offers">
                 <OffersPage />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Race catalog routes */}
+          <Route
+            path="/races"
+            element={
+              <FeatureRoute feature="races">
+                <RacesPage />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/races/:id"
+            element={
+              <FeatureRoute feature="races">
+                <RaceDetailPage />
               </FeatureRoute>
             }
           />

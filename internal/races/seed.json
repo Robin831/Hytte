@@ -1,0 +1,2832 @@
+{
+ "checked_at": "2026-10-09T12:00:00Z",
+ "events": [
+  {
+   "slug": "athens-half-marathon-2027",
+   "name": "Athens Half Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-03-07",
+   "date_precision": "day",
+   "country": "GR",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "unknown",
+   "travel": "none",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Athen, Hellas",
+     "participants": "12 000 halvmaratonplasser i 2026-utgaven",
+     "course": "Ikke verifisert.",
+     "travel": "Ingen direkte fly i rutelistene jeg fant.",
+     "how": "Jeg fant ingen status for 2027.",
+     "price": ""
+    },
+    "en": {
+     "place": "Athens, Greece",
+     "participants": "12,000 half marathon places in the 2026 edition",
+     "course": "Not verified.",
+     "travel": "No direct flights in the route lists I found.",
+     "how": "I found no status for 2027.",
+     "price": ""
+    },
+    "th": {
+     "place": "เอเธนส์, กรีซ",
+     "participants": "12,000 ที่สำหรับฮาล์ฟมาราธอนในรายการปี 2026",
+     "course": "ยังไม่ได้ตรวจสอบ",
+     "travel": "ไม่พบเที่ยวบินตรงในตารางเส้นทางที่ฉันค้นเจอ",
+     "how": "ไม่พบข้อมูลสถานะสำหรับปี 2027",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "edp-lisbon-half-2027",
+   "name": "EDP Lisbon Half",
+   "edition_year": 2027,
+   "race_date": "2027-03-07",
+   "date_precision": "day",
+   "country": "PT",
+   "distance_m": 21097,
+   "status": "closed",
+   "entry_type": "lottery",
+   "travel": "none",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Lisboa, Portugal",
+     "participants": "ca. 15 700 i 2019 (Wikipedia). Nyere tall er uverifisert.",
+     "course": "Flatt. Massestarten går over Ponte 25 de Abril, så forbi Belém.",
+     "travel": "Ingen direkte fly. Bytt for eksempel i Amsterdam, Frankfurt eller København.",
+     "how": "Trekningen stengte i mai 2026. Plasser finnes via reisebyråer og veldedighetsorganisasjoner.",
+     "price": ""
+    },
+    "en": {
+     "place": "Lisbon, Portugal",
+     "participants": "approx. 15,700 in 2019 (Wikipedia). More recent figures are unverified.",
+     "course": "Flat. The mass start crosses the Ponte 25 de Abril, then passes Belém.",
+     "travel": "No direct flights. Change in, for example, Amsterdam, Frankfurt or Copenhagen.",
+     "how": "The lottery closed in May 2026. Places are available through travel agencies and charities.",
+     "price": ""
+    },
+    "th": {
+     "place": "ลิสบอน, โปรตุเกส",
+     "participants": "ประมาณ 15,700 คนในปี 2019 (Wikipedia) ตัวเลขที่ใหม่กว่านี้ยังไม่ได้ตรวจสอบ",
+     "course": "ทางราบ ปล่อยตัวรวมวิ่งข้ามสะพาน Ponte 25 de Abril แล้วผ่าน Belém",
+     "travel": "ไม่มีเที่ยวบินตรง ต่อเครื่องได้ เช่น ที่อัมสเตอร์ดัม แฟรงก์เฟิร์ต หรือโคเปนเฮเกน",
+     "how": "การจับสลากปิดไปแล้วเมื่อพฤษภาคม 2026 ยังหาที่ได้ผ่านบริษัททัวร์และองค์กรการกุศล",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "semi-de-paris-2027",
+   "name": "Semi de Paris",
+   "edition_year": 2027,
+   "race_date": "2027-03-07",
+   "date_precision": "day",
+   "country": "FR",
+   "distance_m": 21097,
+   "status": "closed",
+   "entry_type": "lottery",
+   "travel": "direct",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Paris, Frankrike",
+     "participants": "ca. 34 000 i 2019 (Wikipedia). Nyere tall er uverifisert.",
+     "course": "Stort sett flatt med noen bakker. Ikke verifisert i kildene mine.",
+     "travel": "Paris CDG: Air France og Norwegian, ca. 1 avgang daglig.",
+     "how": "Lotteriet stengte 30. september, og vinnerne fikk beskjed 1. oktober.",
+     "price": ""
+    },
+    "en": {
+     "place": "Paris, France",
+     "participants": "approx. 34,000 in 2019 (Wikipedia). More recent figures are unverified.",
+     "course": "Mostly flat with a few hills. Not verified in my sources.",
+     "travel": "Paris CDG: Air France and Norwegian, approx. 1 departure daily.",
+     "how": "The lottery closed on 30 September, and winners were notified on 1 October.",
+     "price": ""
+    },
+    "th": {
+     "place": "ปารีส, ฝรั่งเศส",
+     "participants": "ประมาณ 34,000 คนในปี 2019 (Wikipedia) ตัวเลขที่ใหม่กว่านี้ยังไม่ได้ตรวจสอบ",
+     "course": "ส่วนใหญ่เป็นทางราบ มีเนินบ้าง ยังไม่ได้ตรวจสอบจากแหล่งข้อมูลของฉัน",
+     "travel": "ปารีส CDG: Air France และ Norwegian ประมาณวันละ 1 เที่ยว",
+     "how": "การจับสลากปิดเมื่อ 30 ก.ย. และผู้ที่ได้รับเลือกได้รับแจ้งเมื่อ 1 ต.ค.",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "tokyo-marathon-2027",
+   "name": "Tokyo Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-03-07",
+   "date_precision": "day",
+   "country": "JP",
+   "distance_m": 42195,
+   "status": "closed",
+   "entry_type": "lottery",
+   "travel": "none",
+   "url": "https://www.marathon.tokyo/en/",
+   "series": [
+    "majors"
+   ],
+   "texts": {
+    "nb": {
+     "place": "Tokyo, Japan",
+     "participants": "Rekordfelt på 40 000. Omtrent 300 000 søkte om ca. 30 000 trekningsplasser, altså rundt 1 av 10.",
+     "course": "Stort sett flatt og raskt, med noen broer.",
+     "travel": "Ingen direkte fly. Helsingfors (Finnair) er et naturlig bytte.",
+     "how": "Den åpne trekningen stengte 28. august. Resultatene kom 18. september, og de som ble trukket måtte betale innen 30. september. Veldedighet og semi-elite er også stengt. Det er ingen kjent vei inn nå utenom eventuelle reisebyråer, som jeg ikke har verifisert.",
+     "price": "$230 for utenlandske løpere (19 800 yen for japanske)"
+    },
+    "en": {
+     "place": "Tokyo, Japan",
+     "participants": "Record field of 40,000. About 300,000 applied for approx. 30,000 lottery places, roughly 1 in 10.",
+     "course": "Mostly flat and fast, with a few bridges.",
+     "travel": "No direct flights. Helsinki (Finnair) is a natural connection.",
+     "how": "The open lottery closed on 28 August. Results came on 18 September, and those selected had to pay by 30 September. Charity and semi-elite are also closed. There is no known way in now apart from possible travel agencies, which I have not verified.",
+     "price": "$230 for international runners (¥19,800 for Japanese runners)"
+    },
+    "th": {
+     "place": "โตเกียว, ญี่ปุ่น",
+     "participants": "จำนวนผู้วิ่งสูงสุดเป็นประวัติการณ์ 40,000 คน มีผู้สมัครประมาณ 300,000 คนสำหรับที่จากการจับสลากราว 30,000 ที่ หรือราว 1 ใน 10",
+     "course": "ส่วนใหญ่เป็นทางราบและเร็ว มีสะพานบ้าง",
+     "travel": "ไม่มีเที่ยวบินตรง เฮลซิงกิ (Finnair) เป็นจุดต่อเครื่องที่เหมาะ",
+     "how": "การจับสลากทั่วไปปิดเมื่อ 28 ส.ค. ผลออกเมื่อ 18 ก.ย. และผู้ที่ได้รับเลือกต้องชำระเงินภายใน 30 ก.ย. ช่องทางการกุศลและกึ่งอีลีทก็ปิดแล้วเช่นกัน ตอนนี้ไม่มีช่องทางที่ทราบนอกจากบริษัททัวร์ (ถ้ามี) ซึ่งฉันยังไม่ได้ตรวจสอบ",
+     "price": "$230 สำหรับนักวิ่งต่างชาติ (19,800 เยนสำหรับชาวญี่ปุ่น)"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "bath-half-2027",
+   "name": "Bath Half",
+   "edition_year": 2027,
+   "race_date": "2027-03-14",
+   "date_precision": "day",
+   "country": "GB",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "nearby",
+   "url": "https://www.londonmarathonevents.co.uk/bath-half",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Bath, England",
+     "participants": "ca. 15 000 plasser",
+     "course": "Stort sett flatt med noen bølger. Godt PR-løp.",
+     "travel": "Ingen direkte. London Gatwick (Norwegian, 2 daglig), deretter ca. 2,5 t med tog.",
+     "how": "Åpen via Let's Do This. Plassene kan ikke overføres.",
+     "price": "ca. £56–£60 (kildene oppgir ulike nivåer)"
+    },
+    "en": {
+     "place": "Bath, England",
+     "participants": "approx. 15,000 places",
+     "course": "Mostly flat with some undulation. A good PB race.",
+     "travel": "No direct flights. London Gatwick (Norwegian, 2 daily), then approx. 2.5 h by train.",
+     "how": "Open via Let's Do This. Places cannot be transferred.",
+     "price": "approx. £56–£60 (sources give different tiers)"
+    },
+    "th": {
+     "place": "บาธ, อังกฤษ",
+     "participants": "ประมาณ 15,000 ที่",
+     "course": "ส่วนใหญ่เป็นทางราบ มีเนินลอนบ้าง เหมาะทำสถิติส่วนตัว (PR)",
+     "travel": "ไม่มีเที่ยวบินตรง บินไปลอนดอน Gatwick (Norwegian วันละ 2 เที่ยว) แล้วนั่งรถไฟต่ออีกประมาณ 2.5 ชม.",
+     "how": "เปิดรับสมัครผ่าน Let's Do This โอนสิทธิ์ให้ผู้อื่นไม่ได้",
+     "price": "ประมาณ £56–£60 (แหล่งข้อมูลระบุราคาต่างกัน)"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "nn-cpc-loop-den-haag-2027",
+   "name": "NN CPC Loop Den Haag",
+   "edition_year": 2027,
+   "race_date": "2027-03-14",
+   "date_precision": "day",
+   "country": "NL",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "nearby",
+   "url": "https://nncpcloopdenhaag.nl/en/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Den Haag, Nederland",
+     "participants": "17 000 halvmaratonplasser i 2026",
+     "course": "Flatt og raskt. Nederlandsk rekord er satt her.",
+     "travel": "Amsterdam (KLM, 4 daglig) er ca. 50 min med tog unna.",
+     "how": "Ikke åpnet. Påmeldingen åpnet 5. november 2024 og 13. november 2025, og datoen for 2027 er ikke bekreftet. Den pleier å fylles raskt.",
+     "price": ""
+    },
+    "en": {
+     "place": "The Hague, Netherlands",
+     "participants": "17,000 half marathon places in 2026",
+     "course": "Flat and fast. A Dutch record has been set here.",
+     "travel": "Amsterdam (KLM, 4 daily) is approx. 50 min away by train.",
+     "how": "Not open. Entry opened on 5 November 2024 and 13 November 2025, and the date for 2027 is not confirmed. It usually fills quickly.",
+     "price": ""
+    },
+    "th": {
+     "place": "เดอะเฮก, เนเธอร์แลนด์",
+     "participants": "17,000 ที่สำหรับฮาล์ฟมาราธอนในปี 2026",
+     "course": "ทางราบและเร็ว เคยมีการทำสถิติแห่งชาติเนเธอร์แลนด์ที่นี่",
+     "travel": "อัมสเตอร์ดัม (KLM วันละ 4 เที่ยว) อยู่ห่างไปประมาณ 50 นาทีโดยรถไฟ",
+     "how": "ยังไม่เปิด การรับสมัครเคยเปิดเมื่อ 5 พ.ย. 2024 และ 13 พ.ย. 2025 ส่วนวันที่ของปี 2027 ยังไม่ยืนยัน มักเต็มเร็ว",
+     "price": ""
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "entry_opens",
+     "due_date": "2026-11-01",
+     "date_precision": "month",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Påmeldingen åpner trolig. Den åpnet 5. november 2024 og 13. november 2025, og pleier å fylles raskt."
+      },
+      "en": {
+       "what": "Entry probably opens. It opened on 5 November 2024 and 13 November 2025, and usually fills quickly."
+      },
+      "th": {
+       "what": "การรับสมัครน่าจะเปิด เคยเปิดเมื่อ 5 พ.ย. 2024 และ 13 พ.ย. 2025 และมักเต็มเร็ว"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "run-rome-the-marathon-2027",
+   "name": "Run Rome The Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-03-14",
+   "date_precision": "day",
+   "country": "IT",
+   "distance_m": 42195,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://www.runromethemarathon.com/en/",
+   "series": [
+    "emc"
+   ],
+   "texts": {
+    "nb": {
+     "place": "Roma, Italia",
+     "participants": "36 000 deltakere i 2026, hvorav 70 % utlendinger fra 130 land (alle distanser)",
+     "course": "Stort sett flatt med noen brostein og svinger, forbi Colosseum, Circus Maximus og Peterskirken. Start kl. 08.00 eller 08.30, kildene er uenige.",
+     "travel": "Roma: Norwegian, 3 i uken i vinterprogrammet.",
+     "how": "Individuell påmelding står som åpen hos løpets egne sider og i en løpsguide, men ingen av dem oppgir frist eller pris. Arrangøren kan stenge tidlig og åpne venteliste. Utsolgt fire måneder før i 2026. Utlendinger bosatt utenfor Italia kan løpe ikke-konkurransemessig uten legeattest, og minstealder er 20 år.",
+     "price": "Ikke funnet. Prisen vises i kassen sammen med et servicegebyr."
+    },
+    "en": {
+     "place": "Rome, Italy",
+     "participants": "36,000 participants in 2026, 70% of them foreigners from 130 countries (all distances)",
+     "course": "Mostly flat with some cobblestones and turns, past the Colosseum, Circus Maximus and St. Peter's Basilica. Start at 08:00 or 08:30; sources disagree.",
+     "travel": "Rome: Norwegian, 3 weekly in the winter schedule.",
+     "how": "Individual entry is listed as open on the race's own site and in a race guide, but neither gives a deadline or price. The organizer may close early and open a waiting list. Sold out four months ahead in 2026. Foreigners living outside Italy can run non-competitively without a medical certificate, and the minimum age is 20.",
+     "price": "Not found. The price is shown at checkout along with a service fee."
+    },
+    "th": {
+     "place": "โรม, อิตาลี",
+     "participants": "ผู้เข้าร่วม 36,000 คนในปี 2026 ในจำนวนนี้ 70% เป็นชาวต่างชาติจาก 130 ประเทศ (ทุกระยะ)",
+     "course": "ส่วนใหญ่เป็นทางราบ มีถนนหินและโค้งบ้าง ผ่าน Colosseum, Circus Maximus และมหาวิหารเซนต์ปีเตอร์ ปล่อยตัว 08:00 น. หรือ 08:30 น. แหล่งข้อมูลไม่ตรงกัน",
+     "travel": "โรม: Norwegian สัปดาห์ละ 3 เที่ยวในตารางบินฤดูหนาว",
+     "how": "การสมัครแบบบุคคลระบุว่าเปิดอยู่บนเว็บไซต์ของงานและในคู่มืองานวิ่งแห่งหนึ่ง แต่ไม่มีแหล่งใดระบุกำหนดปิดหรือราคา ผู้จัดอาจปิดรับก่อนกำหนดและเปิดรายชื่อรอ ปี 2026 ขายหมดก่อนงานสี่เดือน ชาวต่างชาติที่อาศัยนอกอิตาลีวิ่งแบบไม่แข่งขันได้โดยไม่ต้องมีใบรับรองแพทย์ และอายุขั้นต่ำคือ 20 ปี",
+     "price": "ไม่พบ ราคาจะแสดงตอนชำระเงินพร้อมค่าธรรมเนียมบริการ"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "mainova-frankfurt-halbmarathon-2027",
+   "name": "Mainova Frankfurt Halbmarathon",
+   "edition_year": 2027,
+   "race_date": "2027-03-21",
+   "date_precision": "day",
+   "country": "DE",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Frankfurt, Tyskland",
+     "participants": "10 553 i mål i 2026",
+     "course": "Flatt og raskt.",
+     "travel": "Frankfurt: Lufthansa, 3 daglig.",
+     "how": "Utsolgt på tolv timer i fjor. Jeg fant ikke når påmeldingen for 2027 åpner.",
+     "price": ""
+    },
+    "en": {
+     "place": "Frankfurt, Germany",
+     "participants": "10,553 finishers in 2026",
+     "course": "Flat and fast.",
+     "travel": "Frankfurt: Lufthansa, 3 daily.",
+     "how": "Sold out in twelve hours last year. I did not find when entry for 2027 opens.",
+     "price": ""
+    },
+    "th": {
+     "place": "แฟรงก์เฟิร์ต, เยอรมนี",
+     "participants": "เข้าเส้นชัย 10,553 คนในปี 2026",
+     "course": "ทางราบและเร็ว",
+     "travel": "แฟรงก์เฟิร์ต: Lufthansa วันละ 3 เที่ยว",
+     "how": "ปีที่แล้วขายหมดในสิบสองชั่วโมง ฉันไม่พบว่าการรับสมัครปี 2027 จะเปิดเมื่อไร",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "stramilano-2027",
+   "name": "Stramilano",
+   "edition_year": 2027,
+   "race_date": "2027-03-21",
+   "date_precision": "day",
+   "country": "IT",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "nearby",
+   "url": "https://www.stramilano.it/stramilano-2027-registration-opens-on-15-june-2026/?lang=en",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Milano, Italia",
+     "participants": "over 62 500 på alle distanser i 2026. Halvmaratonandelen er ukjent.",
+     "course": "Flatt bysløyfe fra Piazza Castello.",
+     "travel": "Bergamo (Norwegian, 2 i uken i vinterprogrammet). SAS fløy sesongvis til Malpensa. Sjekk mars.",
+     "how": "Åpen siden 15. juni, og utsolgt i fjor. Konkurransehalvmaraton krever legeattest. Utenlandske turister kan løpe et eget løp uten attest.",
+     "price": "€45 (1. des–31. jan), €50 (1. feb–12. mars), €55 fra 13. mars. Pris før 1. des fant jeg ikke."
+    },
+    "en": {
+     "place": "Milan, Italy",
+     "participants": "over 62,500 across all distances in 2026. The half marathon share is unknown.",
+     "course": "Flat city loop from Piazza Castello.",
+     "travel": "Bergamo (Norwegian, 2 weekly in the winter schedule). SAS flew seasonally to Malpensa. Check for March.",
+     "how": "Open since 15 June, and sold out last year. The competitive half marathon requires a medical certificate. Foreign tourists can run a separate race without a certificate.",
+     "price": "€45 (1 Dec–31 Jan), €50 (1 Feb–12 Mar), €55 from 13 March. I did not find the price before 1 Dec."
+    },
+    "th": {
+     "place": "มิลาน, อิตาลี",
+     "participants": "มากกว่า 62,500 คนในทุกระยะในปี 2026 ไม่ทราบสัดส่วนของฮาล์ฟมาราธอน",
+     "course": "ทางราบ วนรอบเมืองจาก Piazza Castello",
+     "travel": "แบร์กาโม (Norwegian สัปดาห์ละ 2 เที่ยวในตารางบินฤดูหนาว) SAS เคยบินไป Malpensa ตามฤดูกาล ตรวจสอบสำหรับเดือนมีนาคม",
+     "how": "เปิดรับสมัครตั้งแต่ 15 มิ.ย. และปีที่แล้วขายหมด ฮาล์ฟมาราธอนประเภทแข่งขันต้องมีใบรับรองแพทย์ นักท่องเที่ยวต่างชาติวิ่งรายการแยกได้โดยไม่ต้องมีใบรับรอง",
+     "price": "€45 (1 ธ.ค.–31 ม.ค.), €50 (1 ก.พ.–12 มี.ค.), €55 ตั้งแต่ 13 มี.ค. ฉันไม่พบราคาก่อน 1 ธ.ค."
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "price_increase",
+     "due_date": "2027-01-31",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Siste dag til €45. Fra 1. februar koster det €50."
+      },
+      "en": {
+       "what": "Last day at €45. From 1 February it costs €50."
+      },
+      "th": {
+       "what": "วันสุดท้ายของราคา €45 ตั้งแต่ 1 ก.พ. ราคา €50"
+      }
+     }
+    },
+    {
+     "kind": "price_increase",
+     "due_date": "2027-03-12",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Siste dag til €50. Fra 13. mars koster det €55."
+      },
+      "en": {
+       "what": "Last day at €50. From 13 March it costs €55."
+      },
+      "th": {
+       "what": "วันสุดท้ายของราคา €50 ตั้งแต่ 13 มี.ค. ราคา €55"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "generali-prague-half-marathon-2027",
+   "name": "Generali Prague Half Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-04-03",
+   "date_precision": "day",
+   "country": "CZ",
+   "distance_m": 21097,
+   "status": "closed",
+   "entry_type": "lottery",
+   "travel": "direct",
+   "url": "https://www.runczech.com/en/generali-prague-half-marathon-2027-ballot",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Praha, Tsjekkia",
+     "participants": "ca. 17 000 (anslag, ikke verifisert)",
+     "course": "Flatt og raskt. World Athletics Elite Label.",
+     "travel": "Praha: Smartwings fra oktober 2026 ifølge visitBergen. Frekvens er ukjent.",
+     "how": "Utsolgt. Trekningen stengte 12. august med over 70 000 søkere. Plasser finnes via reisebyrå- og veldedighetskoder.",
+     "price": "€80 (veldedighet eller reisebyrå)"
+    },
+    "en": {
+     "place": "Prague, Czech Republic",
+     "participants": "approx. 17,000 (estimate, not verified)",
+     "course": "Flat and fast. World Athletics Elite Label.",
+     "travel": "Prague: Smartwings from October 2026 according to visitBergen. Frequency is unknown.",
+     "how": "Sold out. The lottery closed on 12 August with over 70,000 applicants. Places are available via travel agency and charity codes.",
+     "price": "€80 (charity or travel agency)"
+    },
+    "th": {
+     "place": "ปราก, เช็กเกีย",
+     "participants": "ประมาณ 17,000 คน (ประมาณการ ยังไม่ได้ตรวจสอบ)",
+     "course": "ทางราบและเร็ว World Athletics Elite Label",
+     "travel": "ปราก: Smartwings ตั้งแต่ตุลาคม 2026 ตามข้อมูลของ visitBergen ไม่ทราบความถี่",
+     "how": "ขายหมดแล้ว การจับสลากปิดเมื่อ 12 ส.ค. โดยมีผู้สมัครมากกว่า 70,000 คน ยังหาที่ได้ผ่านโค้ดของบริษัททัวร์และองค์กรการกุศล",
+     "price": "€80 (การกุศลหรือบริษัททัวร์)"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "generali-berliner-halbmarathon-2027",
+   "name": "Generali Berliner Halbmarathon",
+   "edition_year": 2027,
+   "race_date": "2027-04-04",
+   "date_precision": "day",
+   "country": "DE",
+   "distance_m": 21097,
+   "status": "closed",
+   "entry_type": "lottery",
+   "travel": "direct",
+   "url": "https://www.generali-berliner-halbmarathon.de/en/registration/run",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Berlin, Tyskland",
+     "participants": "26 104 i mål i 2023, rekord på ca. 36 000 i 2018 (Wikipedia)",
+     "course": "Flatt og raskt.",
+     "travel": "Berlin: Norwegian, 4 i uken i vinterprogrammet.",
+     "how": "Trekningen er avsluttet. Plasser finnes via veldedighetspartnere og offisielle reisebyråer. Dream Travel selger garanterte plasser, og antallet varierer.",
+     "price": "€89 i trekningen"
+    },
+    "en": {
+     "place": "Berlin, Germany",
+     "participants": "26,104 finishers in 2023, record of approx. 36,000 in 2018 (Wikipedia)",
+     "course": "Flat and fast.",
+     "travel": "Berlin: Norwegian, 4 weekly in the winter schedule.",
+     "how": "The lottery has closed. Places are available through charity partners and official travel agencies. Dream Travel sells guaranteed places, and the number varies.",
+     "price": "€89 in the lottery"
+    },
+    "th": {
+     "place": "เบอร์ลิน, เยอรมนี",
+     "participants": "เข้าเส้นชัย 26,104 คนในปี 2023 สถิติสูงสุดประมาณ 36,000 คนในปี 2018 (Wikipedia)",
+     "course": "ทางราบและเร็ว",
+     "travel": "เบอร์ลิน: Norwegian สัปดาห์ละ 4 เที่ยวในตารางบินฤดูหนาว",
+     "how": "การจับสลากสิ้นสุดแล้ว ยังหาที่ได้ผ่านพันธมิตรการกุศลและบริษัททัวร์ทางการ Dream Travel ขายที่แบบการันตี และจำนวนไม่แน่นอน",
+     "price": "€89 ในการจับสลาก"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "movistar-madrid-medio-maraton-2027",
+   "name": "Movistar Madrid Medio Maratón",
+   "edition_year": 2027,
+   "race_date": "2027-04-04",
+   "date_precision": "day",
+   "country": "ES",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "none",
+   "url": "https://www.mediomaratonmadrid.es/web-evento/13064-movistar-madrid-medio-maraton-2027",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Madrid, Spania",
+     "participants": "inntil 30 000 startnumre",
+     "course": "Kupert by. Ny løype med mykere profil, men ikke et PR-løp.",
+     "travel": "Ingen direkte fly. Bytt for eksempel i Amsterdam, Frankfurt eller København.",
+     "how": "Åpen til 15. februar 2027 eller til utsolgt. Nivåene kan også byttes etter hvor mange startnumre som er solgt.",
+     "price": "€59 til 1. nov, €69 til 7. jan, €80 til 15. feb, €95 til 21. mars, pluss €4 dagslisens"
+    },
+    "en": {
+     "place": "Madrid, Spain",
+     "participants": "up to 30,000 bibs",
+     "course": "Hilly city course. New route with a gentler profile, but not a PB race.",
+     "travel": "No direct flights. Change in, for example, Amsterdam, Frankfurt or Copenhagen.",
+     "how": "Open until 15 February 2027 or until sold out. The tiers may also change depending on how many bibs have been sold.",
+     "price": "€59 until 1 Nov, €69 until 7 Jan, €80 until 15 Feb, €95 until 21 Mar, plus €4 day licence"
+    },
+    "th": {
+     "place": "มาดริด, สเปน",
+     "participants": "สูงสุด 30,000 หมายเลขวิ่ง",
+     "course": "เส้นทางในเมืองที่มีเนิน เส้นทางใหม่มีระดับความสูงนุ่มนวลขึ้น แต่ไม่ใช่สนามสำหรับทำ PR",
+     "travel": "ไม่มีเที่ยวบินตรง ต่อเครื่องได้ เช่น ที่อัมสเตอร์ดัม แฟรงก์เฟิร์ต หรือโคเปนเฮเกน",
+     "how": "เปิดรับถึง 15 ก.พ. 2027 หรือจนกว่าจะขายหมด ระดับราคาอาจเปลี่ยนตามจำนวนหมายเลขวิ่งที่ขายไปแล้วด้วย",
+     "price": "€59 ถึง 1 พ.ย., €69 ถึง 7 ม.ค., €80 ถึง 15 ก.พ., €95 ถึง 21 มี.ค. บวกค่าใบอนุญาตรายวัน €4"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "price_increase",
+     "due_date": "2026-11-01",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Siste dag til €59. Deretter €69 frem til 7. januar."
+      },
+      "en": {
+       "what": "Last day at €59. Then €69 until 7 January."
+      },
+      "th": {
+       "what": "วันสุดท้ายของราคา €59 หลังจากนั้น €69 ถึง 7 ม.ค."
+      }
+     }
+    },
+    {
+     "kind": "price_increase",
+     "due_date": "2027-01-07",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Siste dag til €69. Deretter €80 frem til 15. februar."
+      },
+      "en": {
+       "what": "Last day at €69. Then €80 until 15 February."
+      },
+      "th": {
+       "what": "วันสุดท้ายของราคา €69 หลังจากนั้น €80 ถึง 15 ก.พ."
+      }
+     }
+    },
+    {
+     "kind": "entry_closes",
+     "due_date": "2027-02-15",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Påmeldingen stenger, hvis den ikke er utsolgt før."
+      },
+      "en": {
+       "what": "Entry closes, unless it sells out before then."
+      },
+      "th": {
+       "what": "ปิดรับสมัคร หากยังไม่ขายหมดก่อน"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "nn-polmaraton-warszawski-2027",
+   "name": "NN Półmaraton Warszawski",
+   "edition_year": 2027,
+   "race_date": "2027-04-04",
+   "date_precision": "day",
+   "country": "PL",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "nearby",
+   "url": "https://rejestracja.maratonwarszawski.com/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Warszawa, Polen",
+     "participants": "Polens største gateløp. Tall er uverifisert.",
+     "course": "Rask og sertifisert bytrasé.",
+     "travel": "Warszawa-Modlin (Wizz Air, 4 i uken) ligger ca. 40 km utenfor byen.",
+     "how": "Jeg fant ingen offisiell 2027-side for halvmaratonet. Påmeldingen har tidligere åpnet tidlig i desember.",
+     "price": ""
+    },
+    "en": {
+     "place": "Warsaw, Poland",
+     "participants": "Poland's largest road race. Figures are unverified.",
+     "course": "Fast, certified city course.",
+     "travel": "Warsaw-Modlin (Wizz Air, 4 weekly) is approx. 40 km outside the city.",
+     "how": "I found no official 2027 page for the half marathon. Entry has previously opened in early December.",
+     "price": ""
+    },
+    "th": {
+     "place": "วอร์ซอ, โปแลนด์",
+     "participants": "งานวิ่งถนนที่ใหญ่ที่สุดในโปแลนด์ ตัวเลขยังไม่ได้ตรวจสอบ",
+     "course": "เส้นทางในเมืองที่เร็วและได้รับการรับรอง",
+     "travel": "วอร์ซอ-Modlin (Wizz Air สัปดาห์ละ 4 เที่ยว) อยู่นอกเมืองประมาณ 40 กม.",
+     "how": "ฉันไม่พบหน้าเว็บทางการของปี 2027 สำหรับฮาล์ฟมาราธอน ที่ผ่านมาการรับสมัครเปิดช่วงต้นเดือนธันวาคม",
+     "price": ""
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "entry_opens",
+     "due_date": "2026-12-01",
+     "date_precision": "early",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Påmeldingen åpner trolig. Den har tidligere åpnet tidlig i desember."
+      },
+      "en": {
+       "what": "Entry probably opens. It has previously opened in early December."
+      },
+      "th": {
+       "what": "การรับสมัครน่าจะเปิด ที่ผ่านมาเปิดช่วงต้นเดือนธันวาคม"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "telekom-vivicitta-spring-half-2027",
+   "name": "Telekom Vivicittá Spring Half",
+   "edition_year": 2027,
+   "race_date": "2027-04-11",
+   "date_precision": "day",
+   "country": "HU",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Budapest, Ungarn",
+     "participants": "Ukjent",
+     "course": "Flatt langs Donau, start og mål på Margitøya.",
+     "travel": "Budapest: Wizz Air, 3 i uken.",
+     "how": "Oppført som åpen med early bird-pris på en løpsportal, og stenger 31. mars. Størrelse og pris fant jeg ikke.",
+     "price": ""
+    },
+    "en": {
+     "place": "Budapest, Hungary",
+     "participants": "Unknown",
+     "course": "Flat along the Danube, start and finish on Margaret Island.",
+     "travel": "Budapest: Wizz Air, 3 weekly.",
+     "how": "Listed as open with an early-bird price on a race portal, and closes on 31 March. I did not find the size or price.",
+     "price": ""
+    },
+    "th": {
+     "place": "บูดาเปสต์, ฮังการี",
+     "participants": "ไม่ทราบ",
+     "course": "ทางราบเลียบแม่น้ำดานูบ จุดปล่อยตัวและเส้นชัยอยู่บนเกาะ Margitsziget",
+     "travel": "บูดาเปสต์: Wizz Air สัปดาห์ละ 3 เที่ยว",
+     "how": "ระบุว่าเปิดรับสมัครพร้อมราคา early bird บนพอร์ทัลงานวิ่งแห่งหนึ่ง และปิดรับ 31 มี.ค. ฉันไม่พบขนาดงานและราคา",
+     "price": ""
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "entry_closes",
+     "due_date": "2027-03-31",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Påmeldingen stenger ifølge en løpsportal."
+      },
+      "en": {
+       "what": "Entry closes according to a race portal."
+      },
+      "th": {
+       "what": "ปิดรับสมัครตามข้อมูลจากพอร์ทัลงานวิ่งแห่งหนึ่ง"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "vienna-city-marathon-2027",
+   "name": "Vienna City Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-04-18",
+   "date_precision": "day",
+   "country": "AT",
+   "distance_m": 42195,
+   "status": "closed",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://www.vienna-marathon.com/?go=marathon",
+   "series": [
+    "emc"
+   ],
+   "texts": {
+    "nb": {
+     "place": "Wien, Østerrike",
+     "participants": "ca. 13 000 på maraton og ca. 46 000 på hele helgen",
+     "course": "Flatt og raskt. 44 m mellom laveste og høyeste punkt og 106 m samlet stigning. Start ved UNO-City, mål på Ringstraße.",
+     "travel": "Wien: Austrian, 3 i uken. Sesongrute, så sjekk våren.",
+     "how": "Påmeldingen stengte 20. september, og det var ingen trekning. Plassene ble fordelt etter først til mølla. Den gratis ventelisten gir ingen garanti, men frigjorte plasser kan tildeles frem til 7. mars 2027. Hvis du sikter på 3:35 eller raskere, må du levere dokumentasjon innen 12. mars.",
+     "price": "€155"
+    },
+    "en": {
+     "place": "Vienna, Austria",
+     "participants": "approx. 13,000 in the marathon and approx. 46,000 across the whole weekend",
+     "course": "Flat and fast. 44 m between the lowest and highest point and 106 m total elevation gain. Start at UNO-City, finish on the Ringstraße.",
+     "travel": "Vienna: Austrian, 3 weekly. Seasonal route, so check for spring.",
+     "how": "Entry closed on 20 September, and there was no lottery. Places were allocated first come, first served. The free waiting list gives no guarantee, but released places may be allocated until 7 March 2027. If you are aiming for 3:35 or faster, you must submit documentation by 12 March.",
+     "price": "€155"
+    },
+    "th": {
+     "place": "เวียนนา, ออสเตรีย",
+     "participants": "ประมาณ 13,000 คนในมาราธอน และประมาณ 46,000 คนตลอดสุดสัปดาห์",
+     "course": "ทางราบและเร็ว ความต่างระหว่างจุดต่ำสุดและสูงสุด 44 ม. ความสูงสะสมรวม 106 ม. ปล่อยตัวที่ UNO-City เส้นชัยที่ Ringstraße",
+     "travel": "เวียนนา: Austrian สัปดาห์ละ 3 เที่ยว เป็นเส้นทางตามฤดูกาล จึงควรตรวจสอบสำหรับฤดูใบไม้ผลิ",
+     "how": "การรับสมัครปิดเมื่อ 20 ก.ย. และไม่มีการจับสลาก ที่วิ่งจัดสรรแบบใครมาก่อนได้ก่อน รายชื่อรอฟรีไม่รับประกันว่าจะได้ที่ แต่ที่ที่ถูกปล่อยคืนอาจจัดสรรให้ได้จนถึง 7 มี.ค. 2027 หากคุณตั้งเป้าที่ 3:35 หรือเร็วกว่า ต้องส่งหลักฐานภายใน 12 มี.ค.",
+     "price": "€155"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "waitlist_closes",
+     "due_date": "2027-03-07",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Siste dag ventelisten kan gi ledige plasser."
+      },
+      "en": {
+       "what": "Last day the waiting list can release places."
+      },
+      "th": {
+       "what": "วันสุดท้ายที่รายชื่อรออาจได้ที่ว่าง"
+      }
+     }
+    },
+    {
+     "kind": "other",
+     "due_date": "2027-03-12",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Dokumentasjon må leveres hvis du sikter på 3:35 eller raskere."
+      },
+      "en": {
+       "what": "Documentation must be submitted if you are aiming for 3:35 or faster."
+      },
+      "th": {
+       "what": "ต้องส่งหลักฐานหากคุณตั้งเป้าที่ 3:35 หรือเร็วกว่า"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "vienna-city-marathon-halvmaraton-2027",
+   "name": "Vienna City Marathon, halvmaraton",
+   "edition_year": 2027,
+   "race_date": "2027-04-18",
+   "date_precision": "day",
+   "country": "AT",
+   "distance_m": 21097,
+   "status": "closed",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://www.vienna-marathon.com/?go=halfmarathon",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Wien, Østerrike",
+     "participants": "Ikke verifisert for halvmaratonet",
+     "course": "Flatt og raskt.",
+     "travel": "Wien: Austrian, 3 i uken fra 1. juni. Sesongrute, så sjekk april.",
+     "how": "Påmeldingen stengte 2. september. Gratis venteliste, og plasser kan tildeles frem til 7. mars.",
+     "price": "€130"
+    },
+    "en": {
+     "place": "Vienna, Austria",
+     "participants": "Not verified for the half marathon",
+     "course": "Flat and fast.",
+     "travel": "Vienna: Austrian, 3 weekly from 1 June. Seasonal route, so check for April.",
+     "how": "Entry closed on 2 September. Free waiting list, and places may be allocated until 7 March.",
+     "price": "€130"
+    },
+    "th": {
+     "place": "เวียนนา, ออสเตรีย",
+     "participants": "ยังไม่ได้ตรวจสอบสำหรับฮาล์ฟมาราธอน",
+     "course": "ทางราบและเร็ว",
+     "travel": "เวียนนา: Austrian สัปดาห์ละ 3 เที่ยวตั้งแต่ 1 มิ.ย. เป็นเส้นทางตามฤดูกาล จึงควรตรวจสอบสำหรับเดือนเมษายน",
+     "how": "การรับสมัครปิดเมื่อ 2 ก.ย. มีรายชื่อรอฟรี และอาจจัดสรรที่ให้ได้จนถึง 7 มี.ค.",
+     "price": "€130"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "waitlist_closes",
+     "due_date": "2027-03-07",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Siste dag ventelisten kan gi ledige plasser."
+      },
+      "en": {
+       "what": "Last day the waiting list can release places."
+      },
+      "th": {
+       "what": "วันสุดท้ายที่รายชื่อรออาจได้ที่ว่าง"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "boston-marathon-2027",
+   "name": "Boston Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-04-19",
+   "date_precision": "day",
+   "country": "US",
+   "distance_m": 42195,
+   "status": "closed",
+   "entry_type": "qualifier",
+   "travel": "none",
+   "url": "https://www.baa.org/races/boston-marathon/enter",
+   "series": [
+    "majors"
+   ],
+   "texts": {
+    "nb": {
+     "place": "Hopkinton til Boston, USA",
+     "participants": "I 2026 søkte 33 249 kvalifiserte og 24 362 ble tatt opp. Totalfeltet er ca. 30 000 (anslag).",
+     "course": "Enveis med netto fall, men med Newton Hills mellom ca. 26 og 34 km, blant dem Heartbreak Hill. Kupert å løpe fort på.",
+     "travel": "Ingen direkte fly. Reykjavik (Icelandair, 4 i uken) gir forbindelser til Boston.",
+     "how": "Kvalifiseringspåmeldingen stengte 18. september. Alle må ha kvalifiseringstid, for eksempel 2:55 for menn 18–34 og 3:25 for kvinner 18–34. Nytt for 2027 er at ca. 1 000 ekstra kvalifiserte trekkes ut blant dem som bommet på cutoff. Svar kom i begynnelsen av oktober. Veldedighetsplasser er den andre veien inn, og jeg har ikke verifisert om noen er ledige.",
+     "price": "Ikke funnet"
+    },
+    "en": {
+     "place": "Hopkinton to Boston, USA",
+     "participants": "In 2026, 33,249 qualified runners applied and 24,362 were accepted. The total field is approx. 30,000 (estimate).",
+     "course": "Point-to-point with a net drop, but with the Newton Hills between approx. 26 and 34 km, including Heartbreak Hill. Hilly to run fast on.",
+     "travel": "No direct flights. Reykjavik (Icelandair, 4 weekly) offers connections to Boston.",
+     "how": "Qualifier registration closed on 18 September. Everyone needs a qualifying time, for example 2:55 for men 18–34 and 3:25 for women 18–34. New for 2027: approx. 1,000 additional qualifiers who missed the cutoff are drawn by lottery. Responses came in early October. Charity places are the other way in, and I have not verified whether any are available.",
+     "price": "Not found"
+    },
+    "th": {
+     "place": "ฮอปคินตันถึงบอสตัน, สหรัฐอเมริกา",
+     "participants": "ในปี 2026 มีผู้มีคุณสมบัติสมัคร 33,249 คนและได้รับเข้าร่วม 24,362 คน จำนวนผู้วิ่งทั้งหมดประมาณ 30,000 คน (ประมาณการ)",
+     "course": "เส้นทางทางเดียวที่ลาดลงโดยรวม แต่มี Newton Hills ระหว่างกิโลเมตรที่ประมาณ 26 ถึง 34 รวมถึง Heartbreak Hill วิ่งให้เร็วได้ยากเพราะมีเนิน",
+     "travel": "ไม่มีเที่ยวบินตรง เรคยาวิก (Icelandair สัปดาห์ละ 4 เที่ยว) มีเที่ยวบินต่อไปบอสตัน",
+     "how": "การสมัครสำหรับผู้มีคุณสมบัติปิดเมื่อ 18 ก.ย. ทุกคนต้องมีเวลาผ่านเกณฑ์ เช่น 2:55 สำหรับชายอายุ 18–34 และ 3:25 สำหรับหญิงอายุ 18–34 สิ่งใหม่ของปี 2027 คือจะจับสลากผู้มีคุณสมบัติเพิ่มประมาณ 1,000 คนจากผู้ที่พลาดเวลาตัด (cutoff) ผลแจ้งเมื่อต้นเดือนตุลาคม ที่การกุศลเป็นอีกช่องทางหนึ่ง และฉันยังไม่ได้ตรวจสอบว่ามีที่ว่างหรือไม่",
+     "price": "ไม่พบ"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "adidas-premiarhalvan-2027",
+   "name": "adidas Premiärhalvan",
+   "edition_year": 2027,
+   "race_date": "2027-04-24",
+   "date_precision": "day",
+   "country": "SE",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "unknown",
+   "travel": "direct",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Stockholm, Sverige",
+     "participants": "Ukjent",
+     "course": "Kupert nok, 183 høydemeter.",
+     "travel": "Stockholm Arlanda: SAS, Norwegian og Finnair, 3 daglig.",
+     "how": "Arrangøren oppgir fire prisnivåer for 2027. Jeg fant ikke bekreftet påmeldingsstatus eller størrelse.",
+     "price": "495, 595, 695 og 749 kr (nivåene stiger med datoen)"
+    },
+    "en": {
+     "place": "Stockholm, Sweden",
+     "participants": "Unknown",
+     "course": "Fairly hilly, 183 m of elevation gain.",
+     "travel": "Stockholm Arlanda: SAS, Norwegian and Finnair, 3 daily.",
+     "how": "The organizer lists four price tiers for 2027. I did not find confirmed entry status or size.",
+     "price": "SEK 495, 595, 695 and 749 (tiers rise with the date)"
+    },
+    "th": {
+     "place": "สตอกโฮล์ม, สวีเดน",
+     "participants": "ไม่ทราบ",
+     "course": "มีเนินพอสมควร ความสูงสะสม 183 ม.",
+     "travel": "สตอกโฮล์ม Arlanda: SAS, Norwegian และ Finnair วันละ 3 เที่ยว",
+     "how": "ผู้จัดระบุราคาสี่ระดับสำหรับปี 2027 ฉันไม่พบสถานะการรับสมัครหรือขนาดงานที่ยืนยันแล้ว",
+     "price": "495, 595, 695 และ 749 SEK (ราคาเพิ่มขึ้นตามวันที่)"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "bergen-city-marathon-halvmaraton-2027",
+   "name": "Bergen City Marathon, halvmaraton",
+   "edition_year": 2027,
+   "race_date": "2027-04-24",
+   "date_precision": "day",
+   "country": "NO",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://www.bergencitymarathon.no/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Bergen, Norge",
+     "participants": "ca. 24 000 på alle distanser i 2026. Halvmaratonandelen er ukjent.",
+     "course": "Kupert og vakker, via Fjellveien. Ikke et PR-løp.",
+     "travel": "Du bor trolig her. Ingen reise nødvendig.",
+     "how": "Åpen. Påmeldingen er bindende og refunderes ikke.",
+     "price": "800 kr til 31. jan, 900 kr fra 1. feb"
+    },
+    "en": {
+     "place": "Bergen, Norway",
+     "participants": "approx. 24,000 across all distances in 2026. The half marathon share is unknown.",
+     "course": "Hilly and scenic, via Fjellveien. Not a PB race.",
+     "travel": "You probably live here. No travel needed.",
+     "how": "Open. Entry is binding and non-refundable.",
+     "price": "NOK 800 until 31 Jan, NOK 900 from 1 Feb"
+    },
+    "th": {
+     "place": "แบร์เกน, นอร์เวย์",
+     "participants": "ประมาณ 24,000 คนในทุกระยะในปี 2026 ไม่ทราบสัดส่วนของฮาล์ฟมาราธอน",
+     "course": "มีเนินและสวยงาม ผ่าน Fjellveien ไม่ใช่สนามสำหรับทำ PR",
+     "travel": "คุณน่าจะอาศัยอยู่ที่นี่ ไม่ต้องเดินทาง",
+     "how": "เปิดรับสมัคร การสมัครมีผลผูกพันและไม่คืนเงิน",
+     "price": "800 NOK ถึง 31 ม.ค., 900 NOK ตั้งแต่ 1 ก.พ."
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "price_increase",
+     "due_date": "2027-01-31",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Siste dag til 800 kr. Fra 1. februar koster det 900 kr."
+      },
+      "en": {
+       "what": "Last day at NOK 800. From 1 February it costs NOK 900."
+      },
+      "th": {
+       "what": "วันสุดท้ายของราคา 800 NOK ตั้งแต่ 1 ก.พ. ราคา 900 NOK"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "bucharest-international-half-marathon-2027",
+   "name": "Bucharest International Half Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-04-25",
+   "date_precision": "day",
+   "country": "RO",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "none",
+   "url": "https://bucharest.run/en/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "București, Romania",
+     "participants": "over 20 000 på alle distanser",
+     "course": "Flatt.",
+     "travel": "Ingen direkte fly. Bytt for eksempel i Frankfurt eller Warszawa.",
+     "how": "Oppført som åpen. Én kilde oppgir 8.–9. mai, så bekreft datoen hos arrangøren.",
+     "price": "€45–€55"
+    },
+    "en": {
+     "place": "Bucharest, Romania",
+     "participants": "over 20,000 across all distances",
+     "course": "Flat.",
+     "travel": "No direct flights. Change in, for example, Frankfurt or Warsaw.",
+     "how": "Listed as open. One source gives 8–9 May, so confirm the date with the organizer.",
+     "price": "€45–€55"
+    },
+    "th": {
+     "place": "บูคาเรสต์, โรมาเนีย",
+     "participants": "มากกว่า 20,000 คนในทุกระยะ",
+     "course": "ทางราบ",
+     "travel": "ไม่มีเที่ยวบินตรง ต่อเครื่องได้ เช่น ที่แฟรงก์เฟิร์ตหรือวอร์ซอ",
+     "how": "ระบุว่าเปิดรับสมัคร แหล่งข้อมูลหนึ่งระบุวันที่ 8–9 พ.ค. จึงควรยืนยันวันที่กับผู้จัด",
+     "price": "€45–€55"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "haspa-marathon-hamburg-halvmaraton-2027",
+   "name": "Haspa Marathon Hamburg, halvmaraton",
+   "edition_year": 2027,
+   "race_date": "2027-04-25",
+   "date_precision": "day",
+   "country": "DE",
+   "distance_m": 21097,
+   "status": "closed",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Hamburg, Tyskland",
+     "participants": "Ukjent for halvmaratonet",
+     "course": "Flatt og raskt.",
+     "travel": "Hamburg: Widerøe, 5 i uken.",
+     "how": "Halvmaratonet er utsolgt.",
+     "price": ""
+    },
+    "en": {
+     "place": "Hamburg, Germany",
+     "participants": "Unknown for the half marathon",
+     "course": "Flat and fast.",
+     "travel": "Hamburg: Widerøe, 5 weekly.",
+     "how": "The half marathon is sold out.",
+     "price": ""
+    },
+    "th": {
+     "place": "ฮัมบูร์ก, เยอรมนี",
+     "participants": "ไม่ทราบสำหรับฮาล์ฟมาราธอน",
+     "course": "ทางราบและเร็ว",
+     "travel": "ฮัมบูร์ก: Widerøe สัปดาห์ละ 5 เที่ยว",
+     "how": "ฮาล์ฟมาราธอนขายหมดแล้ว",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "maratona-da-europa-halvmaraton-2027",
+   "name": "Maratona da Europa, halvmaraton",
+   "edition_year": 2027,
+   "race_date": "2027-04-25",
+   "date_precision": "day",
+   "country": "PT",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "unknown",
+   "travel": "none",
+   "url": "https://europemarathon.eu/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Aveiro, Portugal",
+     "participants": "Ukjent",
+     "course": "Ikke verifisert.",
+     "travel": "Ingen direkte fly til Aveiro eller Porto.",
+     "how": "Jeg fant bare reglementet, med start kl. 08.00. Påmeldingsstatus og størrelse er ukjent.",
+     "price": ""
+    },
+    "en": {
+     "place": "Aveiro, Portugal",
+     "participants": "Unknown",
+     "course": "Not verified.",
+     "travel": "No direct flights to Aveiro or Porto.",
+     "how": "I only found the rules, with a start at 08:00. Entry status and size are unknown.",
+     "price": ""
+    },
+    "th": {
+     "place": "อาไวรู, โปรตุเกส",
+     "participants": "ไม่ทราบ",
+     "course": "ยังไม่ได้ตรวจสอบ",
+     "travel": "ไม่มีเที่ยวบินตรงไปอาไวรูหรือปอร์โต",
+     "how": "ฉันพบเพียงระเบียบการ ซึ่งระบุเวลาปล่อยตัว 08:00 น. ไม่ทราบสถานะการรับสมัครและขนาดงาน",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "tcs-london-marathon-2027",
+   "name": "TCS London Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-04-25",
+   "date_precision": "day",
+   "country": "GB",
+   "distance_m": 42195,
+   "status": "closed",
+   "entry_type": "lottery",
+   "travel": "direct",
+   "url": "https://www.londonmarathonevents.co.uk/ballot",
+   "series": [
+    "majors",
+    "emc"
+   ],
+   "texts": {
+    "nb": {
+     "place": "London, England",
+     "participants": "Verdens største Major. Anslag på rundt 55 000 i mål i 2025, ikke verifisert nå.",
+     "course": "Flatt og raskt langs Themsen, fra Greenwich til The Mall.",
+     "travel": "London Gatwick: Norwegian, 2 daglig.",
+     "how": "Den ordinære trekningen var 24. april til 1. mai 2026, og resultatene kom i begynnelsen av juli. Nå gjenstår noen få veldedighetsplasser, veldedighetstrekning, Good For Age og internasjonal påmelding. Arrangøren vurderer et ekstraordinært to-dagers format hvis det blir godkjent. Trekningen for 2028 åpner trolig i april 2027.",
+     "price": "£275 for internasjonale løpere (£79,99 for britiske)"
+    },
+    "en": {
+     "place": "London, England",
+     "participants": "The world's largest Major. Estimated at around 55,000 finishers in 2025, not currently verified.",
+     "course": "Flat and fast along the Thames, from Greenwich to The Mall.",
+     "travel": "London Gatwick: Norwegian, 2 daily.",
+     "how": "The general ballot ran from 24 April to 1 May 2026, and results came in early July. What remains now are a few charity places, the charity ballot, Good For Age and international entry. The organizer is considering an extraordinary two-day format if approved. The ballot for 2028 will probably open in April 2027.",
+     "price": "£275 for international runners (£79.99 for UK runners)"
+    },
+    "th": {
+     "place": "ลอนดอน, อังกฤษ",
+     "participants": "รายการ Major ที่ใหญ่ที่สุดในโลก ประมาณการว่ามีผู้เข้าเส้นชัยราว 55,000 คนในปี 2025 ยังไม่ได้ตรวจสอบในตอนนี้",
+     "course": "ทางราบและเร็วเลียบแม่น้ำเทมส์ จาก Greenwich ถึง The Mall",
+     "travel": "ลอนดอน Gatwick: Norwegian วันละ 2 เที่ยว",
+     "how": "การจับสลากปกติจัดระหว่าง 24 เม.ย. ถึง 1 พ.ค. 2026 และผลออกเมื่อต้นเดือนกรกฎาคม ตอนนี้เหลือที่การกุศลไม่กี่ที่ การจับสลากการกุศล Good For Age และการสมัครสำหรับนักวิ่งต่างชาติ ผู้จัดกำลังพิจารณารูปแบบพิเศษสองวันหากได้รับอนุมัติ การจับสลากสำหรับปี 2028 น่าจะเปิดในเดือนเมษายน 2027",
+     "price": "£275 สำหรับนักวิ่งต่างชาติ (£79.99 สำหรับชาวสหราชอาณาจักร)"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "lottery_opens",
+     "due_date": "2027-04-24",
+     "date_precision": "approx",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Trekningen til London 2028 åpner trolig. Årets åpnet 24. april."
+      },
+      "en": {
+       "what": "The ballot for London 2028 probably opens. This year's opened on 24 April."
+      },
+      "th": {
+       "what": "การจับสลากสำหรับลอนดอน 2028 น่าจะเปิด ของปีนี้เปิดเมื่อ 24 เม.ย."
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "zurich-rock-n-roll-madrid-marathon-2027",
+   "name": "Zurich Rock 'n' Roll Madrid Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-04-25",
+   "date_precision": "day",
+   "country": "ES",
+   "distance_m": 42195,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "none",
+   "url": "https://www.rockthesport.com/es/evento/zurich-rock-n-roll-running-series-madrid-2027",
+   "series": [
+    "emc"
+   ],
+   "texts": {
+    "nb": {
+     "place": "Madrid, Spania",
+     "participants": "47 000 startnumre på alle distanser i 2026, hvorav 17 000 på maraton",
+     "course": "Kupert enkeltrunde med ca. 400 høydemeter og tøffe stigninger ved km 7–9, 16–18, 25–27 og 30–32. De siste 8 km er netto oppoverbakke. Regn med 10–15 sekunder tregere per km enn på flatt.",
+     "travel": "Ingen direkte fly. Bytt for eksempel i København, Amsterdam eller Frankfurt.",
+     "how": "Salget åpnet i mai 2026 i tre faser, og nå står bare den siste, generelle fasen igjen. Jeg fikk ikke bekreftet om det fortsatt er plasser. Løpet var utsolgt flere måneder før i 2026, og over 8 000 løpere sto uten startnummer. Sjekk RocktheSport for status.",
+     "price": "Ca. €150 for maraton pluss €4 dagslisens. Basert på 2026-prisene, ikke verifisert."
+    },
+    "en": {
+     "place": "Madrid, Spain",
+     "participants": "47,000 bibs across all distances in 2026, of which 17,000 for the marathon",
+     "course": "Hilly single loop with approx. 400 m of elevation gain and tough climbs at km 7–9, 16–18, 25–27 and 30–32. The last 8 km are net uphill. Expect 10–15 seconds slower per km than on a flat course.",
+     "travel": "No direct flights. Change in, for example, Copenhagen, Amsterdam or Frankfurt.",
+     "how": "Sales opened in May 2026 in three phases, and now only the last, general phase remains. I could not confirm whether places are still available. The race sold out several months ahead in 2026, and over 8,000 runners were left without a bib. Check RocktheSport for status.",
+     "price": "Approx. €150 for the marathon plus €4 day licence. Based on 2026 prices, not verified."
+    },
+    "th": {
+     "place": "มาดริด, สเปน",
+     "participants": "47,000 หมายเลขวิ่งในทุกระยะในปี 2026 ในจำนวนนี้ 17,000 เป็นมาราธอน",
+     "course": "เส้นทางรอบเดียวที่มีเนิน ความสูงสะสมประมาณ 400 ม. มีทางขึ้นชันที่กม. 7–9, 16–18, 25–27 และ 30–32 ช่วง 8 กม. สุดท้ายเป็นทางขึ้นโดยรวม คาดว่าจะช้ากว่าทางราบ 10–15 วินาทีต่อกม.",
+     "travel": "ไม่มีเที่ยวบินตรง ต่อเครื่องได้ เช่น ที่โคเปนเฮเกน อัมสเตอร์ดัม หรือแฟรงก์เฟิร์ต",
+     "how": "การขายเปิดในเดือนพฤษภาคม 2026 แบ่งเป็นสามช่วง และตอนนี้เหลือเพียงช่วงสุดท้ายสำหรับบุคคลทั่วไป ฉันยืนยันไม่ได้ว่ายังมีที่เหลืออยู่หรือไม่ ปี 2026 ขายหมดก่อนงานหลายเดือน และมีนักวิ่งกว่า 8,000 คนไม่ได้หมายเลขวิ่ง ตรวจสอบสถานะได้ที่ RocktheSport",
+     "price": "ประมาณ €150 สำหรับมาราธอน บวกค่าใบอนุญาตรายวัน €4 อิงจากราคาปี 2026 ยังไม่ได้ตรวจสอบ"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "op-helsinki-city-half-2027",
+   "name": "OP Helsinki City Half",
+   "edition_year": 2027,
+   "race_date": "2027-05-08",
+   "date_precision": "day",
+   "country": "FI",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://helsinkicityrun.fi/helsinkicityhalf-puolimaraton/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Helsingfors, Finland",
+     "participants": "over 22 000 på alle distanser i 2026 (rekord)",
+     "course": "Bølgende langs sjøen, mål på Olympiastadion.",
+     "travel": "Helsingfors: Finnair, 1 daglig. Ruten er sesongmerket hos Wikipedia.",
+     "how": "Åpen.",
+     "price": "€59 til 31. okt, deretter €65"
+    },
+    "en": {
+     "place": "Helsinki, Finland",
+     "participants": "over 22,000 across all distances in 2026 (record)",
+     "course": "Rolling along the sea, finish at the Olympic Stadium.",
+     "travel": "Helsinki: Finnair, 1 daily. Wikipedia marks the route as seasonal.",
+     "how": "Open.",
+     "price": "€59 until 31 Oct, then €65"
+    },
+    "th": {
+     "place": "เฮลซิงกิ, ฟินแลนด์",
+     "participants": "มากกว่า 22,000 คนในทุกระยะในปี 2026 (สถิติสูงสุด)",
+     "course": "เป็นลอนเลียบทะเล เส้นชัยที่สนามกีฬาโอลิมปิก",
+     "travel": "เฮลซิงกิ: Finnair วันละ 1 เที่ยว Wikipedia ระบุว่าเป็นเส้นทางตามฤดูกาล",
+     "how": "เปิดรับสมัคร",
+     "price": "€59 ถึง 31 ต.ค. หลังจากนั้น €65"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "price_increase",
+     "due_date": "2026-10-31",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Siste dag til €59. Fra 1. november koster det €65."
+      },
+      "en": {
+       "what": "Last day at €59. From 1 November it costs €65."
+      },
+      "th": {
+       "what": "วันสุดท้ายของราคา €59 ตั้งแต่ 1 พ.ย. ราคา €65"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "copenhagen-marathon-2027",
+   "name": "Copenhagen Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-05-09",
+   "date_precision": "day",
+   "country": "DK",
+   "distance_m": 42195,
+   "status": "closed",
+   "entry_type": "lottery",
+   "travel": "direct",
+   "url": "https://copenhagenmarathon.dk/en/",
+   "series": [
+    "emc"
+   ],
+   "texts": {
+    "nb": {
+     "place": "København, Danmark",
+     "participants": "35 000 deltakere ifølge serien. I 2026 var løpet utsolgt på 23 timer.",
+     "course": "Flatt. Forbi Tivoli, Nyhavn og Marmorkirken, over havnebroer. Start kl. 09.30.",
+     "travel": "København: SAS og Norwegian, 6 daglig.",
+     "how": "Over 80 000 søkte om plass til 2027. Trekningen er avsluttet, og jeg fant ingen informasjon om venteliste. Veldedighet og reisearrangører er andre veier inn. Trekningen for 2028 åpner i mai 2027.",
+     "price": "Ikke funnet"
+    },
+    "en": {
+     "place": "Copenhagen, Denmark",
+     "participants": "35,000 participants according to the series. In 2026 the race sold out in 23 hours.",
+     "course": "Flat. Past Tivoli, Nyhavn and the Marble Church, over harbour bridges. Start at 09:30.",
+     "travel": "Copenhagen: SAS and Norwegian, 6 daily.",
+     "how": "Over 80,000 applied for a place in 2027. The lottery has closed, and I found no information about a waiting list. Charity and tour operators are other ways in. The lottery for 2028 opens in May 2027.",
+     "price": "Not found"
+    },
+    "th": {
+     "place": "โคเปนเฮเกน, เดนมาร์ก",
+     "participants": "ผู้เข้าร่วม 35,000 คนตามข้อมูลของซีรีส์ ในปี 2026 งานขายหมดใน 23 ชั่วโมง",
+     "course": "ทางราบ ผ่าน Tivoli, Nyhavn และ Marmorkirken ข้ามสะพานท่าเรือ ปล่อยตัว 09:30 น.",
+     "travel": "โคเปนเฮเกน: SAS และ Norwegian วันละ 6 เที่ยว",
+     "how": "มีผู้สมัครกว่า 80,000 คนสำหรับปี 2027 การจับสลากสิ้นสุดแล้ว และฉันไม่พบข้อมูลเรื่องรายชื่อรอ การกุศลและบริษัทจัดทัวร์เป็นช่องทางอื่น การจับสลากสำหรับปี 2028 จะเปิดในเดือนพฤษภาคม 2027",
+     "price": "ไม่พบ"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "lottery_opens",
+     "due_date": "2027-05-01",
+     "date_precision": "month",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Trekningen til København 2028 åpner ifølge serien."
+      },
+      "en": {
+       "what": "The lottery for Copenhagen 2028 opens according to the series."
+      },
+      "th": {
+       "what": "การจับสลากสำหรับโคเปนเฮเกน 2028 เปิดตามข้อมูลของซีรีส์"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "great-bristol-half-2027",
+   "name": "Great Bristol Half",
+   "edition_year": 2027,
+   "race_date": "2027-05-09",
+   "date_precision": "day",
+   "country": "GB",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "nearby",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Bristol, England",
+     "participants": "ca. 23 000 på hele arrangementet",
+     "course": "Flatt og raskt.",
+     "travel": "Ingen direkte. London Gatwick (Norwegian), deretter ca. 2 t med tog.",
+     "how": "Offentlig påmelding er åpen.",
+     "price": "£47–£57"
+    },
+    "en": {
+     "place": "Bristol, England",
+     "participants": "approx. 23,000 across the whole event",
+     "course": "Flat and fast.",
+     "travel": "No direct flights. London Gatwick (Norwegian), then approx. 2 h by train.",
+     "how": "Public entry is open.",
+     "price": "£47–£57"
+    },
+    "th": {
+     "place": "บริสตอล, อังกฤษ",
+     "participants": "ประมาณ 23,000 คนทั้งงาน",
+     "course": "ทางราบและเร็ว",
+     "travel": "ไม่มีเที่ยวบินตรง บินไปลอนดอน Gatwick (Norwegian) แล้วนั่งรถไฟต่ออีกประมาณ 2 ชม.",
+     "how": "เปิดรับสมัครทั่วไปแล้ว",
+     "price": "£47–£57"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "rimi-riga-marathon-halvmaraton-2027",
+   "name": "Rimi Riga Marathon, halvmaraton",
+   "edition_year": 2027,
+   "race_date": "2027-05-16",
+   "date_precision": "day",
+   "country": "LV",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://rimirigamarathon.com/en/registration/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Riga, Latvia",
+     "participants": "40 122 på alle distanser i 2025 (rekord)",
+     "course": "Flatt, med broer og gamlebyen. World Athletics-label.",
+     "travel": "Riga: Norwegian (2 i uken i vinterprogrammet), airBaltic sesongvis.",
+     "how": "Åpen til 15. mai kl. 20.00 eller til fullt.",
+     "price": "€39 til 31. des, €46 fra 1. jan, €56 fra 1. mars, €64 fra 1. mai"
+    },
+    "en": {
+     "place": "Riga, Latvia",
+     "participants": "40,122 across all distances in 2025 (record)",
+     "course": "Flat, with bridges and the old town. World Athletics label.",
+     "travel": "Riga: Norwegian (2 weekly in the winter schedule), airBaltic seasonally.",
+     "how": "Open until 15 May at 20:00 or until full.",
+     "price": "€39 until 31 Dec, €46 from 1 Jan, €56 from 1 Mar, €64 from 1 May"
+    },
+    "th": {
+     "place": "ริกา, ลัตเวีย",
+     "participants": "40,122 คนในทุกระยะในปี 2025 (สถิติสูงสุด)",
+     "course": "ทางราบ ผ่านสะพานและเมืองเก่า World Athletics label",
+     "travel": "ริกา: Norwegian (สัปดาห์ละ 2 เที่ยวในตารางบินฤดูหนาว) และ airBaltic ตามฤดูกาล",
+     "how": "เปิดรับถึง 15 พ.ค. 20:00 น. หรือจนกว่าจะเต็ม",
+     "price": "€39 ถึง 31 ธ.ค., €46 ตั้งแต่ 1 ม.ค., €56 ตั้งแต่ 1 มี.ค., €64 ตั้งแต่ 1 พ.ค."
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "price_increase",
+     "due_date": "2026-12-31",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Siste dag til €39. Fra 1. januar koster det €46."
+      },
+      "en": {
+       "what": "Last day at €39. From 1 January it costs €46."
+      },
+      "th": {
+       "what": "วันสุดท้ายของราคา €39 ตั้งแต่ 1 ม.ค. ราคา €46"
+      }
+     }
+    },
+    {
+     "kind": "price_increase",
+     "due_date": "2027-02-28",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Siste dag til €46. Fra 1. mars koster det €56."
+      },
+      "en": {
+       "what": "Last day at €46. From 1 March it costs €56."
+      },
+      "th": {
+       "what": "วันสุดท้ายของราคา €46 ตั้งแต่ 1 มี.ค. ราคา €56"
+      }
+     }
+    },
+    {
+     "kind": "price_increase",
+     "due_date": "2027-04-30",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Siste dag til €56. Fra 1. mai koster det €64."
+      },
+      "en": {
+       "what": "Last day at €56. From 1 May it costs €64."
+      },
+      "th": {
+       "what": "วันสุดท้ายของราคา €56 ตั้งแต่ 1 พ.ค. ราคา €64"
+      }
+     }
+    },
+    {
+     "kind": "entry_closes",
+     "due_date": "2027-05-15",
+     "due_time": "20:00",
+     "tz": "Europe/Riga",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Påmeldingen stenger kl. 20.00 lokal tid, eller når løpet er fullt."
+      },
+      "en": {
+       "what": "Entry closes at 20:00 local time, or when the race is full."
+      },
+      "th": {
+       "what": "ปิดรับสมัคร 20:00 น. เวลาท้องถิ่น หรือเมื่อเต็ม"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "goteborgsvarvet-2027",
+   "name": "Göteborgsvarvet",
+   "edition_year": 2027,
+   "race_date": "2027-05-22",
+   "date_precision": "day",
+   "country": "SE",
+   "distance_m": 21097,
+   "status": "closed",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://www.goteborgsvarvet.se/en/start-list-results/register-for-a-race-2",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Göteborg, Sverige",
+     "participants": "39 221 i 2019 (Wikipedia), ca. 60 000 påmeldte i 2013 og 2016",
+     "course": "Rundløype med to bruer (Älvsborgsbron og Hisingsbron). Stort sett flatt, mål i Slottsskogsvallen.",
+     "travel": "Göteborg: Widerøe, 6 i uken.",
+     "how": "Utsolgt på tre dager i mai 2026. Den offisielle ventelisten med videresalg er åpen til 31. mars 2027.",
+     "price": ""
+    },
+    "en": {
+     "place": "Gothenburg, Sweden",
+     "participants": "39,221 in 2019 (Wikipedia), approx. 60,000 registered in 2013 and 2016",
+     "course": "Loop course with two bridges (Älvsborgsbron and Hisingsbron). Mostly flat, finish at Slottsskogsvallen.",
+     "travel": "Gothenburg: Widerøe, 6 weekly.",
+     "how": "Sold out in three days in May 2026. The official waiting list with resale is open until 31 March 2027.",
+     "price": ""
+    },
+    "th": {
+     "place": "โกเธนเบิร์ก, สวีเดน",
+     "participants": "39,221 คนในปี 2019 (Wikipedia) ผู้สมัครประมาณ 60,000 คนในปี 2013 และ 2016",
+     "course": "เส้นทางวงรอบที่มีสะพานสองแห่ง (Älvsborgsbron และ Hisingsbron) ส่วนใหญ่เป็นทางราบ เส้นชัยที่ Slottsskogsvallen",
+     "travel": "โกเธนเบิร์ก: Widerøe สัปดาห์ละ 6 เที่ยว",
+     "how": "ขายหมดในสามวันเมื่อพฤษภาคม 2026 รายชื่อรอทางการพร้อมระบบขายต่อเปิดถึง 31 มี.ค. 2027",
+     "price": ""
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "waitlist_closes",
+     "due_date": "2027-03-31",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Den offisielle ventelisten med videresalg stenger."
+      },
+      "en": {
+       "what": "The official waiting list with resale closes."
+      },
+      "th": {
+       "what": "รายชื่อรอทางการพร้อมระบบขายต่อปิด"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "if-vilnius-half-marathon-2027",
+   "name": "If Vilnius Half Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-05-22",
+   "date_precision": "day",
+   "country": "LT",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Vilnius, Litauen",
+     "participants": "Ukjent",
+     "course": "Flatt gamleby-løype. Kveldsstart.",
+     "travel": "Vilnius: Wizz Air står på visitBergen, men ikke i oktoberlisten min. Sjekk våren.",
+     "how": "Oppført som åpen til 21. mai på en løpsportal. Størrelse og pris fant jeg ikke.",
+     "price": ""
+    },
+    "en": {
+     "place": "Vilnius, Lithuania",
+     "participants": "Unknown",
+     "course": "Flat old-town course. Evening start.",
+     "travel": "Vilnius: Wizz Air is listed on visitBergen, but not in my October list. Check for spring.",
+     "how": "Listed as open until 21 May on a race portal. I did not find the size or price.",
+     "price": ""
+    },
+    "th": {
+     "place": "วิลนีอุส, ลิทัวเนีย",
+     "participants": "ไม่ทราบ",
+     "course": "ทางราบในเมืองเก่า ปล่อยตัวช่วงเย็น",
+     "travel": "วิลนีอุส: visitBergen ระบุ Wizz Air แต่ไม่มีในรายการเดือนตุลาคมของฉัน ตรวจสอบสำหรับฤดูใบไม้ผลิ",
+     "how": "ระบุว่าเปิดรับถึง 21 พ.ค. บนพอร์ทัลงานวิ่งแห่งหนึ่ง ฉันไม่พบขนาดงานและราคา",
+     "price": ""
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "entry_closes",
+     "due_date": "2027-05-21",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Påmeldingen stenger ifølge en løpsportal."
+      },
+      "en": {
+       "what": "Entry closes according to a race portal."
+      },
+      "th": {
+       "what": "ปิดรับสมัครตามข้อมูลจากพอร์ทัลงานวิ่งแห่งหนึ่ง"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "edinburgh-half-marathon-2027",
+   "name": "Edinburgh Half Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-05-30",
+   "date_precision": "day",
+   "country": "GB",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://www.edinburghmarathon.com/halfmarathon/event-information",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Edinburgh, Skottland",
+     "participants": "ca. 12 000 plasser",
+     "course": "Netto fall, flat kystløype til Musselburgh. Svært rask.",
+     "travel": "Edinburgh: Norwegian, 3 i uken, og Jet2 sesongvis.",
+     "how": "Åpen. Løpet har vært utsolgt hvert år siden 2012.",
+     "price": "fra £47,75"
+    },
+    "en": {
+     "place": "Edinburgh, Scotland",
+     "participants": "approx. 12,000 places",
+     "course": "Net downhill, flat coastal course to Musselburgh. Very fast.",
+     "travel": "Edinburgh: Norwegian, 3 weekly, and Jet2 seasonally.",
+     "how": "Open. The race has sold out every year since 2012.",
+     "price": "from £47.75"
+    },
+    "th": {
+     "place": "เอดินบะระ, สกอตแลนด์",
+     "participants": "ประมาณ 12,000 ที่",
+     "course": "ลาดลงโดยรวม เส้นทางราบเลียบชายฝั่งไปยัง Musselburgh เร็วมาก",
+     "travel": "เอดินบะระ: Norwegian สัปดาห์ละ 3 เที่ยว และ Jet2 ตามฤดูกาล",
+     "how": "เปิดรับสมัคร งานนี้ขายหมดทุกปีตั้งแต่ปี 2012",
+     "price": "ตั้งแต่ £47.75"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "tcs-sydney-marathon-2027",
+   "name": "TCS Sydney Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-08-29",
+   "date_precision": "day",
+   "country": "AU",
+   "distance_m": 42195,
+   "status": "open",
+   "entry_type": "lottery",
+   "travel": "none",
+   "url": "https://www.sydneymarathon.com/",
+   "series": [
+    "majors"
+   ],
+   "texts": {
+    "nb": {
+     "place": "Sydney, Australia",
+     "participants": "Mellom 40 000 og 44 000 plasser, kildene er uenige. 123 000 søkte i 2026 mot 79 000 året før.",
+     "course": "Kupert byløype fra North Sydney over Harbour Bridge til Operahuset.",
+     "travel": "Ingen direkte fly. Langt bytte via for eksempel Doha, Dubai eller Singapore.",
+     "how": "Den offentlige trekningen er åpen frem til 19. oktober kl. 10.00 australsk tid, altså natt til mandag kl. 01.00 norsk tid. Det er gratis å søke, og du betaler bare hvis du blir trukket. Resultater kommer 3. november. Reisepartnere og veldedighet gir garanterte plasser fra ca. 1 300 til 7 500 USD.",
+     "price": "AUD 330 for utenlandske løpere (AUD 280 for australske og newzealandske)"
+    },
+    "en": {
+     "place": "Sydney, Australia",
+     "participants": "Between 40,000 and 44,000 places; sources disagree. 123,000 applied in 2026 versus 79,000 the year before.",
+     "course": "Hilly city course from North Sydney over the Harbour Bridge to the Opera House.",
+     "travel": "No direct flights. Long connection via, for example, Doha, Dubai or Singapore.",
+     "how": "The public lottery is open until 19 October at 10:00 Australian time, i.e. 01:00 Norwegian time on Monday morning. Applying is free, and you only pay if you are selected. Results come on 3 November. Travel partners and charity offer guaranteed places from approx. USD 1,300 to 7,500.",
+     "price": "AUD 330 for international runners (AUD 280 for Australian and New Zealand runners)"
+    },
+    "th": {
+     "place": "ซิดนีย์, ออสเตรเลีย",
+     "participants": "ระหว่าง 40,000 ถึง 44,000 ที่ แหล่งข้อมูลไม่ตรงกัน มีผู้สมัคร 123,000 คนในปี 2026 เทียบกับ 79,000 คนในปีก่อนหน้า",
+     "course": "เส้นทางในเมืองที่มีเนิน จาก North Sydney ข้าม Harbour Bridge ไปยังโอเปร่าเฮาส์",
+     "travel": "ไม่มีเที่ยวบินตรง ต้องต่อเครื่องไกล เช่น ผ่านโดฮา ดูไบ หรือสิงคโปร์",
+     "how": "การจับสลากสาธารณะเปิดถึง 19 ต.ค. 10:00 น. เวลาออสเตรเลีย หรือคืนวันอาทิตย์ต่อวันจันทร์ 01:00 น. เวลานอร์เวย์ สมัครฟรี และจ่ายเงินเฉพาะเมื่อได้รับเลือก ผลจะออก 3 พ.ย. พันธมิตรด้านการเดินทางและการกุศลมีที่แบบการันตีราคาประมาณ 1,300 ถึง 7,500 USD",
+     "price": "AUD 330 สำหรับนักวิ่งต่างชาติ (AUD 280 สำหรับชาวออสเตรเลียและนิวซีแลนด์)"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "lottery_closes",
+     "due_date": "2026-10-19",
+     "due_time": "10:00",
+     "tz": "Australia/Sydney",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Den offentlige trekningen stenger. Gratis å søke, du betaler bare hvis du blir trukket."
+      },
+      "en": {
+       "what": "The public lottery closes. Free to apply; you only pay if you are selected."
+      },
+      "th": {
+       "what": "การจับสลากสาธารณะปิด สมัครฟรี จ่ายเงินเฉพาะเมื่อได้รับเลือก"
+      }
+     }
+    },
+    {
+     "kind": "lottery_results",
+     "due_date": "2026-11-03",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Resultatene fra trekningen kommer."
+      },
+      "en": {
+       "what": "Lottery results are released."
+      },
+      "th": {
+       "what": "ผลการจับสลากออก"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "trondheim-maraton-halvmaraton-2027",
+   "name": "Trondheim Maraton, halvmaraton",
+   "edition_year": 2027,
+   "race_date": "2027-09-04",
+   "date_precision": "day",
+   "country": "NO",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "unknown",
+   "travel": "direct",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Trondheim, Norge",
+     "participants": "Ukjent",
+     "course": "Ikke verifisert.",
+     "travel": "Trondheim: SAS, Norwegian og Widerøe, 11 daglig.",
+     "how": "Datoen kommer fra en løpskalender. Jeg fant ingen påmeldingsstatus eller størrelse.",
+     "price": ""
+    },
+    "en": {
+     "place": "Trondheim, Norway",
+     "participants": "Unknown",
+     "course": "Not verified.",
+     "travel": "Trondheim: SAS, Norwegian and Widerøe, 11 daily.",
+     "how": "The date comes from a race calendar. I found no entry status or size.",
+     "price": ""
+    },
+    "th": {
+     "place": "ทรอนด์เฮม, นอร์เวย์",
+     "participants": "ไม่ทราบ",
+     "course": "ยังไม่ได้ตรวจสอบ",
+     "travel": "ทรอนด์เฮม: SAS, Norwegian และ Widerøe วันละ 11 เที่ยว",
+     "how": "วันที่มาจากปฏิทินงานวิ่งแห่งหนึ่ง ฉันไม่พบสถานะการรับสมัครหรือขนาดงาน",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "wizz-air-budapest-half-marathon-2027",
+   "name": "Wizz Air Budapest Half Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-09-05",
+   "date_precision": "early",
+   "country": "HU",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Budapest, Ungarn",
+     "participants": "13 800 i mål i 2025 (rekord)",
+     "course": "Flatt og raskt langs Donau.",
+     "travel": "Budapest: Wizz Air, 3 i uken.",
+     "how": "Forrige gang åpnet påmeldingen rett etter forrige løp, så 2027 kan allerede være åpen. Datoen er ikke bekreftet, og jeg fant ingen 2027-status.",
+     "price": ""
+    },
+    "en": {
+     "place": "Budapest, Hungary",
+     "participants": "13,800 finishers in 2025 (record)",
+     "course": "Flat and fast along the Danube.",
+     "travel": "Budapest: Wizz Air, 3 weekly.",
+     "how": "Last time, entry opened right after the previous race, so 2027 may already be open. The date is not confirmed, and I found no 2027 status.",
+     "price": ""
+    },
+    "th": {
+     "place": "บูดาเปสต์, ฮังการี",
+     "participants": "เข้าเส้นชัย 13,800 คนในปี 2025 (สถิติสูงสุด)",
+     "course": "ทางราบและเร็วเลียบแม่น้ำดานูบ",
+     "travel": "บูดาเปสต์: Wizz Air สัปดาห์ละ 3 เที่ยว",
+     "how": "ครั้งที่แล้วการรับสมัครเปิดทันทีหลังงานครั้งก่อน ดังนั้นปี 2027 อาจเปิดแล้ว วันที่ยังไม่ยืนยัน และฉันไม่พบสถานะของปี 2027",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "great-north-run-2027",
+   "name": "Great North Run",
+   "edition_year": 2027,
+   "race_date": "2027-09-12",
+   "date_precision": "day",
+   "country": "GB",
+   "distance_m": 21097,
+   "status": "closed",
+   "entry_type": "lottery",
+   "travel": "nearby",
+   "url": "https://www.greatrun.org/events/great-north-run",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Newcastle til South Shields, England",
+     "participants": "ca. 60 000 (Wikipedia: 60 000 i 2023)",
+     "course": "Enveis fra Newcastle til South Shields, over Tyne Bridge. Stort sett fall mot kysten.",
+     "travel": "Ingen direkte til Newcastle. Edinburgh (Norwegian, 3 i uken) er ca. 1,5 t unna med tog.",
+     "how": "Trekningen stengte 20. september. De som ikke fikk plass får en ny trekning i januar. Charity-plasser og medlemskap er andre veier inn.",
+     "price": "ca. £70 pluss £3,50 i gebyr. Charity-eksempel: £40 og £400 i innsamling."
+    },
+    "en": {
+     "place": "Newcastle to South Shields, England",
+     "participants": "approx. 60,000 (Wikipedia: 60,000 in 2023)",
+     "course": "Point-to-point from Newcastle to South Shields, over the Tyne Bridge. Mostly downhill towards the coast.",
+     "travel": "No direct flights to Newcastle. Edinburgh (Norwegian, 3 weekly) is approx. 1.5 h away by train.",
+     "how": "The ballot closed on 20 September. Those who did not get a place get a new ballot in January. Charity places and membership are other ways in.",
+     "price": "approx. £70 plus £3.50 in fees. Charity example: £40 and £400 in fundraising."
+    },
+    "th": {
+     "place": "นิวคาสเซิลถึงเซาท์ชีลด์ส, อังกฤษ",
+     "participants": "ประมาณ 60,000 คน (Wikipedia: 60,000 คนในปี 2023)",
+     "course": "เส้นทางทางเดียวจากนิวคาสเซิลไปเซาท์ชีลด์ส ข้าม Tyne Bridge ส่วนใหญ่ลาดลงไปทางชายฝั่ง",
+     "travel": "ไม่มีเที่ยวบินตรงไปนิวคาสเซิล เอดินบะระ (Norwegian สัปดาห์ละ 3 เที่ยว) อยู่ห่างไปประมาณ 1.5 ชม. โดยรถไฟ",
+     "how": "การจับสลากปิดเมื่อ 20 ก.ย. ผู้ที่ไม่ได้ที่จะได้จับสลากอีกครั้งในเดือนมกราคม ที่การกุศลและการเป็นสมาชิกเป็นช่องทางอื่น",
+     "price": "ประมาณ £70 บวกค่าธรรมเนียม £3.50 ตัวอย่างการกุศล: £40 และระดมทุน £400"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "lottery_opens",
+     "due_date": "2027-01-01",
+     "date_precision": "month",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Ny trekning for dem som ikke fikk plass i den første."
+      },
+      "en": {
+       "what": "New ballot for those who did not get a place in the first one."
+      },
+      "th": {
+       "what": "การจับสลากรอบใหม่สำหรับผู้ที่ไม่ได้ที่ในรอบแรก"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "meia-maratona-do-porto-2027",
+   "name": "Meia Maratona do Porto",
+   "edition_year": 2027,
+   "race_date": "2027-09-15",
+   "date_precision": "mid",
+   "country": "PT",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "unknown",
+   "travel": "none",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Porto, Portugal",
+     "participants": "tak på 12 500",
+     "course": "Ikke verifisert.",
+     "travel": "Ingen direkte fly.",
+     "how": "I 2025 var taket nådd tre måneder før løpet, og over halvparten av deltakerne var utenlandske. Jeg fant ingen 2027-info.",
+     "price": ""
+    },
+    "en": {
+     "place": "Porto, Portugal",
+     "participants": "cap of 12,500",
+     "course": "Not verified.",
+     "travel": "No direct flights.",
+     "how": "In 2025 the cap was reached three months before the race, and over half of the participants were from abroad. I found no 2027 info.",
+     "price": ""
+    },
+    "th": {
+     "place": "ปอร์โต, โปรตุเกส",
+     "participants": "จำกัด 12,500 คน",
+     "course": "ยังไม่ได้ตรวจสอบ",
+     "travel": "ไม่มีเที่ยวบินตรง",
+     "how": "ในปี 2025 ผู้สมัครเต็มจำนวนสามเดือนก่อนงาน และผู้เข้าร่วมกว่าครึ่งเป็นชาวต่างชาติ ฉันไม่พบข้อมูลปี 2027",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "oslo-maraton-halvmaraton-2027",
+   "name": "Oslo Maraton, halvmaraton",
+   "edition_year": 2027,
+   "race_date": "2027-09-15",
+   "date_precision": "mid",
+   "country": "NO",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://oslomaraton.no/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Oslo, Norge",
+     "participants": "over 20 000 på alle distanser",
+     "course": "Start og mål ved Rådhusplassen. Profilen er ikke verifisert.",
+     "travel": "Oslo: SAS, Norwegian og Widerøe, ca. 22 daglig.",
+     "how": "Halvmaraton ble utsolgt på tre måneder sist, og salget åpnet et år før løpet. Jeg fant ikke 2027-status.",
+     "price": "990 kr oppgitt"
+    },
+    "en": {
+     "place": "Oslo, Norway",
+     "participants": "over 20,000 across all distances",
+     "course": "Start and finish at Rådhusplassen. The profile is not verified.",
+     "travel": "Oslo: SAS, Norwegian and Widerøe, approx. 22 daily.",
+     "how": "The half marathon sold out in three months last time, and sales opened a year before the race. I did not find 2027 status.",
+     "price": "NOK 990 stated"
+    },
+    "th": {
+     "place": "ออสโล, นอร์เวย์",
+     "participants": "มากกว่า 20,000 คนในทุกระยะ",
+     "course": "จุดปล่อยตัวและเส้นชัยที่ Rådhusplassen ระดับความสูงยังไม่ได้ตรวจสอบ",
+     "travel": "ออสโล: SAS, Norwegian และ Widerøe ประมาณวันละ 22 เที่ยว",
+     "how": "ครั้งที่แล้วฮาล์ฟมาราธอนขายหมดในสามเดือน และการขายเปิดหนึ่งปีก่อนงาน ฉันไม่พบสถานะของปี 2027",
+     "price": "ระบุไว้ 990 NOK"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "swedbank-tallinn-marathon-halvmaraton-2027",
+   "name": "Swedbank Tallinn Marathon, halvmaraton",
+   "edition_year": 2027,
+   "race_date": "2027-09-15",
+   "date_precision": "mid",
+   "country": "EE",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "none",
+   "url": "https://www.jooks.ee/en/tallinn-marathon/tallinna-maraton-info",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Tallinn, Estland",
+     "participants": "Ukjent",
+     "course": "Ikke verifisert.",
+     "travel": "Ingen direkte. Helsingfors (Finnair), deretter ca. 2 t med ferge.",
+     "how": "Påmeldingen pleier å åpne i mars ifølge en løpsdatabase, så den er trolig ikke åpen ennå.",
+     "price": ""
+    },
+    "en": {
+     "place": "Tallinn, Estonia",
+     "participants": "Unknown",
+     "course": "Not verified.",
+     "travel": "No direct flights. Helsinki (Finnair), then approx. 2 h by ferry.",
+     "how": "Entry usually opens in March according to a race database, so it is probably not open yet.",
+     "price": ""
+    },
+    "th": {
+     "place": "ทาลลินน์, เอสโตเนีย",
+     "participants": "ไม่ทราบ",
+     "course": "ยังไม่ได้ตรวจสอบ",
+     "travel": "ไม่มีเที่ยวบินตรง บินไปเฮลซิงกิ (Finnair) แล้วนั่งเรือเฟอร์รี่ต่ออีกประมาณ 2 ชม.",
+     "how": "ตามฐานข้อมูลงานวิ่งแห่งหนึ่ง การรับสมัครมักเปิดในเดือนมีนาคม จึงน่าจะยังไม่เปิด",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "copenhagen-half-marathon-2027",
+   "name": "Copenhagen Half Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-09-19",
+   "date_precision": "day",
+   "country": "DK",
+   "distance_m": 21097,
+   "status": "closed",
+   "entry_type": "lottery",
+   "travel": "direct",
+   "url": "https://cphhalf.dk/en/lottery/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "København, Danmark",
+     "participants": "45 000 plasser",
+     "course": "Flatt og raskt.",
+     "travel": "København: SAS og Norwegian, 6 daglig.",
+     "how": "Lotteriet stengte 30. september med 188 522 påmeldte. Det blir ingen videresalgsplattform. Charity-plasser kan være eneste vei inn, for eksempel hos The Children's Society, som oppgir begrensede plasser.",
+     "price": "Charity-eksempel: £20 og £450 i innsamling"
+    },
+    "en": {
+     "place": "Copenhagen, Denmark",
+     "participants": "45,000 places",
+     "course": "Flat and fast.",
+     "travel": "Copenhagen: SAS and Norwegian, 6 daily.",
+     "how": "The lottery closed on 30 September with 188,522 entrants. There will be no resale platform. Charity places may be the only way in, for example through The Children's Society, which lists limited places.",
+     "price": "Charity example: £20 and £450 in fundraising"
+    },
+    "th": {
+     "place": "โคเปนเฮเกน, เดนมาร์ก",
+     "participants": "45,000 ที่",
+     "course": "ทางราบและเร็ว",
+     "travel": "โคเปนเฮเกน: SAS และ Norwegian วันละ 6 เที่ยว",
+     "how": "การจับสลากปิดเมื่อ 30 ก.ย. โดยมีผู้สมัคร 188,522 คน จะไม่มีแพลตฟอร์มขายต่อ ที่การกุศลอาจเป็นช่องทางเดียว เช่น ที่ The Children's Society ซึ่งระบุว่ามีที่จำกัด",
+     "price": "ตัวอย่างการกุศล: £20 และระดมทุน £450"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "bmw-berlin-marathon-2027",
+   "name": "BMW Berlin Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-09-26",
+   "date_precision": "day",
+   "country": "DE",
+   "distance_m": 42195,
+   "status": "open",
+   "entry_type": "lottery",
+   "travel": "direct",
+   "url": "https://www.bmw-berlin-marathon.com/en/registration",
+   "series": [
+    "majors"
+   ],
+   "texts": {
+    "nb": {
+     "place": "Berlin, Tyskland",
+     "participants": "Ca. 55 000 løpere. Omtrent 20 % kommer inn i trekningen.",
+     "course": "Flatt og raskt. Verdensrekorden på maraton har blitt satt her mange ganger.",
+     "travel": "Berlin: Norwegian, 4 i uken i vinterprogrammet.",
+     "how": "Trekningen er åpen og gratis å delta i. Kildene er uenige om fristen: fra første dag 28. september eller 1. oktober, stengt tidlig i november eller 12. november, og resultater mot slutten av november eller 3. desember. Sjekk fristen hos arrangøren. Good for Age gir garantert plass (for eksempel under 2:45 for menn 18–44). Veldedighet og reisebyråer er andre veier.",
+     "price": "€205–€215, avhengig av kilde. Betales bare hvis du får plass."
+    },
+    "en": {
+     "place": "Berlin, Germany",
+     "participants": "Approx. 55,000 runners. About 20% get in through the lottery.",
+     "course": "Flat and fast. The marathon world record has been set here many times.",
+     "travel": "Berlin: Norwegian, 4 weekly in the winter schedule.",
+     "how": "The lottery is open and free to enter. Sources disagree on the deadline: opening day 28 September or 1 October, closing in early November or on 12 November, and results towards the end of November or on 3 December. Check the deadline with the organizer. Good for Age gives a guaranteed place (for example under 2:45 for men 18–44). Charity and travel agencies are other ways in.",
+     "price": "€205–€215, depending on the source. Paid only if you get a place."
+    },
+    "th": {
+     "place": "เบอร์ลิน, เยอรมนี",
+     "participants": "ประมาณ 55,000 คน ราว 20% ได้รับเลือกจากการจับสลาก",
+     "course": "ทางราบและเร็ว สถิติโลกมาราธอนถูกทำที่นี่หลายครั้ง",
+     "travel": "เบอร์ลิน: Norwegian สัปดาห์ละ 4 เที่ยวในตารางบินฤดูหนาว",
+     "how": "การจับสลากเปิดอยู่และเข้าร่วมฟรี แหล่งข้อมูลไม่ตรงกันเรื่องกำหนดเวลา: วันแรก 28 ก.ย. หรือ 1 ต.ค. ปิดช่วงต้นเดือนพฤศจิกายนหรือ 12 พ.ย. และผลออกช่วงปลายเดือนพฤศจิกายนหรือ 3 ธ.ค. ตรวจสอบกำหนดเวลากับผู้จัด Good for Age ให้ที่แบบการันตี (เช่น ต่ำกว่า 2:45 สำหรับชายอายุ 18–44) การกุศลและบริษัททัวร์เป็นช่องทางอื่น",
+     "price": "€205–€215 ขึ้นอยู่กับแหล่งข้อมูล จ่ายเฉพาะเมื่อได้ที่"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "lottery_closes",
+     "due_date": "2026-11-06",
+     "date_precision": "approx",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Trekningen stenger. Kildene er uenige: 6. eller 12. november. Søk før den tidligste datoen."
+      },
+      "en": {
+       "what": "The lottery closes. Sources disagree: 6 or 12 November. Apply before the earlier date."
+      },
+      "th": {
+       "what": "การจับสลากปิด แหล่งข้อมูลไม่ตรงกัน: 6 หรือ 12 พ.ย. สมัครก่อนวันที่เร็วที่สุด"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "warsaw-marathon-2027",
+   "name": "Warsaw Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-09-26",
+   "date_precision": "day",
+   "country": "PL",
+   "distance_m": 42195,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "nearby",
+   "url": "https://maratonwarszawski.com/en/info-marathon/",
+   "series": [
+    "emc"
+   ],
+   "texts": {
+    "nb": {
+     "place": "Warszawa, Polen",
+     "participants": "Tak på 14 000. Nesten 11 000 i mål i 2026.",
+     "course": "Flatt, sertifisert. Ca. 83 m samlet stigning. Rundløype fra Kulturpalasset, over Vistula, start kl. 09.00.",
+     "travel": "Warszawa-Modlin (Wizz Air, 4 i uken) ligger ca. 40 km utenfor byen.",
+     "how": "Påmeldingen for 2027 er ikke publisert. Salget for 2026 åpnet 3. desember 2025, så forvent desember. Seriens side oppgir 26. september, mens løpets egne sider fortsatt viser 27. september 2026 for årets løp.",
+     "price": "2026-trinn: €60 til 31. des, €75 til 31. mars, €90 til 31. aug, €105 til 14. sep, €120 deretter"
+    },
+    "en": {
+     "place": "Warsaw, Poland",
+     "participants": "Cap of 14,000. Nearly 11,000 finishers in 2026.",
+     "course": "Flat, certified. Approx. 83 m total elevation gain. Loop course from the Palace of Culture, across the Vistula, start at 09:00.",
+     "travel": "Warsaw-Modlin (Wizz Air, 4 weekly) is approx. 40 km outside the city.",
+     "how": "Entry for 2027 has not been published. Sales for 2026 opened on 3 December 2025, so expect December. The series page gives 26 September, while the race's own site still shows 27 September 2026 for this year's race.",
+     "price": "2026 tiers: €60 until 31 Dec, €75 until 31 Mar, €90 until 31 Aug, €105 until 14 Sep, €120 after that"
+    },
+    "th": {
+     "place": "วอร์ซอ, โปแลนด์",
+     "participants": "จำกัด 14,000 คน เข้าเส้นชัยเกือบ 11,000 คนในปี 2026",
+     "course": "ทางราบ ได้รับการรับรอง ความสูงสะสมรวมประมาณ 83 ม. เส้นทางวงรอบจากพระราชวังวัฒนธรรม ข้ามแม่น้ำวิสตูลา ปล่อยตัว 09:00 น.",
+     "travel": "วอร์ซอ-Modlin (Wizz Air สัปดาห์ละ 4 เที่ยว) อยู่นอกเมืองประมาณ 40 กม.",
+     "how": "การรับสมัครปี 2027 ยังไม่ประกาศ การขายสำหรับปี 2026 เปิดเมื่อ 3 ธ.ค. 2025 จึงคาดว่าจะเปิดในเดือนธันวาคม หน้าเว็บของซีรีส์ระบุ 26 ก.ย. ขณะที่เว็บไซต์ของงานยังแสดง 27 ก.ย. 2026 สำหรับงานปีนี้",
+     "price": "ระดับราคาปี 2026: €60 ถึง 31 ธ.ค., €75 ถึง 31 มี.ค., €90 ถึง 31 ส.ค., €105 ถึง 14 ก.ย., €120 หลังจากนั้น"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "entry_opens",
+     "due_date": "2026-12-03",
+     "date_precision": "approx",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Påmeldingen åpner trolig. Salget for 2026 åpnet 3. desember 2025."
+      },
+      "en": {
+       "what": "Entry probably opens. Sales for 2026 opened on 3 December 2025."
+      },
+      "th": {
+       "what": "การรับสมัครน่าจะเปิด การขายสำหรับปี 2026 เปิดเมื่อ 3 ธ.ค. 2025"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "cardiff-half-marathon-2027",
+   "name": "Cardiff Half Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-10-03",
+   "date_precision": "early",
+   "country": "GB",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "lottery",
+   "travel": "nearby",
+   "url": "https://www.cardiffhalfmarathon.co.uk/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Cardiff, Wales",
+     "participants": "ca. 27 500 løpere i 2026",
+     "course": "Flatt og raskt.",
+     "travel": "Ingen direkte. London Gatwick (Norwegian) eller Manchester (Norwegian, 2 i uken).",
+     "how": "Trekningen er åpen og gratis å delta i, og du betaler bare hvis du får plass. Datoen er ikke bekreftet, og jeg fant ikke fristen for trekningen. Bunter som hopper over trekningen finnes også, for eksempel Welsh Half & Half til £103.",
+     "price": "UK £59, internasjonal £70 (grupper på tre kan søke sammen)"
+    },
+    "en": {
+     "place": "Cardiff, Wales",
+     "participants": "approx. 27,500 runners in 2026",
+     "course": "Flat and fast.",
+     "travel": "No direct flights. London Gatwick (Norwegian) or Manchester (Norwegian, 2 weekly).",
+     "how": "The ballot is open and free to enter, and you only pay if you get a place. The date is not confirmed, and I did not find the ballot deadline. Bundles that skip the ballot are also available, for example Welsh Half & Half at £103.",
+     "price": "UK £59, international £70 (groups of three can apply together)"
+    },
+    "th": {
+     "place": "คาร์ดิฟฟ์, เวลส์",
+     "participants": "ประมาณ 27,500 คนในปี 2026",
+     "course": "ทางราบและเร็ว",
+     "travel": "ไม่มีเที่ยวบินตรง บินไปลอนดอน Gatwick (Norwegian) หรือแมนเชสเตอร์ (Norwegian สัปดาห์ละ 2 เที่ยว)",
+     "how": "การจับสลากเปิดอยู่และเข้าร่วมฟรี และจ่ายเงินเฉพาะเมื่อได้ที่ วันที่ยังไม่ยืนยัน และฉันไม่พบกำหนดปิดการจับสลาก มีแพ็กเกจที่ไม่ต้องผ่านการจับสลากด้วย เช่น Welsh Half & Half ราคา £103",
+     "price": "สหราชอาณาจักร £59 ต่างชาติ £70 (สมัครเป็นกลุ่มสามคนได้)"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "generali-koln-marathon-halvmaraton-2027",
+   "name": "Generali Köln Marathon, halvmaraton",
+   "edition_year": 2027,
+   "race_date": "2027-10-03",
+   "date_precision": "day",
+   "country": "DE",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "unknown",
+   "travel": "nearby",
+   "url": "",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Köln, Tyskland",
+     "participants": "ca. 20 000 ifølge byen",
+     "course": "Flatt. Start i Deutz, mål ved Kölner Dom.",
+     "travel": "Düsseldorf (Eurowings, sesong) står hos Wikipedia, men ikke i oktoberlisten. Alternativt Frankfurt (Lufthansa).",
+     "how": "Datoen kommer fra en løpskalender. Jeg fant ingen 2027-status.",
+     "price": ""
+    },
+    "en": {
+     "place": "Cologne, Germany",
+     "participants": "approx. 20,000 according to the city",
+     "course": "Flat. Start in Deutz, finish at Cologne Cathedral.",
+     "travel": "Düsseldorf (Eurowings, seasonal) is listed on Wikipedia, but not in the October list. Alternatively Frankfurt (Lufthansa).",
+     "how": "The date comes from a race calendar. I found no 2027 status.",
+     "price": ""
+    },
+    "th": {
+     "place": "โคโลญ, เยอรมนี",
+     "participants": "ประมาณ 20,000 คนตามข้อมูลของเมือง",
+     "course": "ทางราบ ปล่อยตัวที่ Deutz เส้นชัยที่มหาวิหารโคโลญ",
+     "travel": "Wikipedia ระบุดึสเซลดอร์ฟ (Eurowings ตามฤดูกาล) แต่ไม่มีในรายการเดือนตุลาคม อีกทางเลือกคือแฟรงก์เฟิร์ต (Lufthansa)",
+     "how": "วันที่มาจากปฏิทินงานวิ่งแห่งหนึ่ง ฉันไม่พบสถานะของปี 2027",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "edp-lisbon-marathon-2027",
+   "name": "EDP Lisbon Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-10-09",
+   "date_precision": "month",
+   "country": "PT",
+   "distance_m": 42195,
+   "status": "later",
+   "entry_type": "lottery",
+   "travel": "none",
+   "url": "https://maratonaclubedeportugal.com/en/corrida-outubro/edp-lisbon-marathon/",
+   "series": [
+    "emc"
+   ],
+   "texts": {
+    "nb": {
+     "place": "Lisboa, Portugal",
+     "participants": "14 750 påmeldte og 9 164 i mål i 2026",
+     "course": "Lav profil fra Carcavelos langs Atlanterhavet og Tejo til Praça do Comércio, forbi Belém. Rekorder: 2:05 for menn og 2:24 for kvinner.",
+     "travel": "Ingen direkte fly. Bytt for eksempel i København, Amsterdam eller Frankfurt.",
+     "how": "Datoen for 2027 er ikke bekreftet. Én kilde oppgir 9. oktober, mens 2026-løpet var 10. eller 11. oktober etter kilde. Jeg fant ingen 2027-påmelding. Løpet har trekning og veldedighetsplasser, og målet er 20 000 deltakere innen to år.",
+     "price": "Ikke funnet"
+    },
+    "en": {
+     "place": "Lisbon, Portugal",
+     "participants": "14,750 registered and 9,164 finishers in 2026",
+     "course": "Low profile from Carcavelos along the Atlantic and the Tagus to Praça do Comércio, past Belém. Records: 2:05 for men and 2:24 for women.",
+     "travel": "No direct flights. Change in, for example, Copenhagen, Amsterdam or Frankfurt.",
+     "how": "The date for 2027 is not confirmed. One source gives 9 October, while the 2026 race was on 10 or 11 October depending on the source. I found no 2027 entry. The race has a lottery and charity places, and the goal is 20,000 participants within two years.",
+     "price": "Not found"
+    },
+    "th": {
+     "place": "ลิสบอน, โปรตุเกส",
+     "participants": "ผู้สมัคร 14,750 คนและเข้าเส้นชัย 9,164 คนในปี 2026",
+     "course": "ระดับความสูงต่ำ จาก Carcavelos เลียบมหาสมุทรแอตแลนติกและแม่น้ำ Tejo ไปยัง Praça do Comércio ผ่าน Belém สถิติสนาม: 2:05 สำหรับชาย และ 2:24 สำหรับหญิง",
+     "travel": "ไม่มีเที่ยวบินตรง ต่อเครื่องได้ เช่น ที่โคเปนเฮเกน อัมสเตอร์ดัม หรือแฟรงก์เฟิร์ต",
+     "how": "วันที่ของปี 2027 ยังไม่ยืนยัน แหล่งข้อมูลหนึ่งระบุ 9 ต.ค. ส่วนงานปี 2026 จัดวันที่ 10 หรือ 11 ต.ค. แล้วแต่แหล่งข้อมูล ฉันไม่พบการรับสมัครปี 2027 งานนี้มีการจับสลากและที่การกุศล และตั้งเป้าผู้เข้าร่วม 20,000 คนภายในสองปี",
+     "price": "ไม่พบ"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "asml-marathon-eindhoven-halvmaraton-2027",
+   "name": "ASML Marathon Eindhoven, halvmaraton",
+   "edition_year": 2027,
+   "race_date": "2027-10-10",
+   "date_precision": "day",
+   "country": "NL",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "nearby",
+   "url": "https://asmlmarathoneindhoven.nl/en/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Eindhoven, Nederland",
+     "participants": "15 000 halvmaratonplasser i 2026",
+     "course": "Flatt og bredt, mål på Vestdijk.",
+     "travel": "Amsterdam (KLM, 4 daglig), deretter ca. 1,5 t med tog.",
+     "how": "Salget åpnet 5. mars for 2026-utgaven, og i 2025 var halvmaraton utsolgt 17. mai. Forvent åpning våren 2027. Datoen kommer fra en løpskalender.",
+     "price": ""
+    },
+    "en": {
+     "place": "Eindhoven, Netherlands",
+     "participants": "15,000 half marathon places in 2026",
+     "course": "Flat and wide, finish on Vestdijk.",
+     "travel": "Amsterdam (KLM, 4 daily), then approx. 1.5 h by train.",
+     "how": "Sales opened on 5 March for the 2026 edition, and in 2025 the half marathon sold out on 17 May. Expect opening in spring 2027. The date comes from a race calendar.",
+     "price": ""
+    },
+    "th": {
+     "place": "ไอนด์โฮเวน, เนเธอร์แลนด์",
+     "participants": "15,000 ที่สำหรับฮาล์ฟมาราธอนในปี 2026",
+     "course": "ทางราบและกว้าง เส้นชัยที่ Vestdijk",
+     "travel": "บินไปอัมสเตอร์ดัม (KLM วันละ 4 เที่ยว) แล้วนั่งรถไฟต่ออีกประมาณ 1.5 ชม.",
+     "how": "การขายสำหรับรายการปี 2026 เปิดเมื่อ 5 มี.ค. และในปี 2025 ฮาล์ฟมาราธอนขายหมดเมื่อ 17 พ.ค. คาดว่าจะเปิดในฤดูใบไม้ผลิ 2027 วันที่มาจากปฏิทินงานวิ่งแห่งหนึ่ง",
+     "price": ""
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "entry_opens",
+     "due_date": "2027-03-05",
+     "date_precision": "approx",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Salget åpnet 5. mars for 2026-utgaven, og halvmaraton var utsolgt 17. mai i 2025."
+      },
+      "en": {
+       "what": "Sales opened on 5 March for the 2026 edition, and the half marathon sold out on 17 May in 2025."
+      },
+      "th": {
+       "what": "การขายสำหรับรายการปี 2026 เปิดเมื่อ 5 มี.ค. และฮาล์ฟมาราธอนขายหมดเมื่อ 17 พ.ค. ในปี 2025"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "bank-of-america-chicago-marathon-2027",
+   "name": "Bank of America Chicago Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-10-10",
+   "date_precision": "day",
+   "country": "US",
+   "distance_m": 42195,
+   "status": "open",
+   "entry_type": "lottery",
+   "travel": "none",
+   "url": "https://www.chicagomarathon.com/apply/",
+   "series": [
+    "majors"
+   ],
+   "texts": {
+    "nb": {
+     "place": "Chicago, USA",
+     "participants": "Ikke oppgitt av arrangøren. Ca. 50 000 i mål i tidligere år (anslag).",
+     "course": "Flatt og raskt rundt 29 bydeler.",
+     "travel": "Ingen direkte fly. Reykjavik (Icelandair, 4 i uken) er ett bytte, Amsterdam og Frankfurt andre.",
+     "how": "Søknadsvinduet går til torsdag 29. oktober kl. 14.00 sentral tid, altså kl. 20.00 norsk tid. Det er gratis å søke, og tidlig søknad gir ingen fordel. Resultatene kommer 8. desember, og betaling må skje innen 15. desember. Garanterte veier: tidskrav, veldedighet (minst $2 500, åpent til 10. september 2027 eller til fullt) og godkjente reisearrangører (til 10. august 2027).",
+     "price": "$260 for utenlandske løpere, $335 via veldedighet"
+    },
+    "en": {
+     "place": "Chicago, USA",
+     "participants": "Not stated by the organizer. Approx. 50,000 finishers in previous years (estimate).",
+     "course": "Flat and fast through 29 neighbourhoods.",
+     "travel": "No direct flights. Reykjavik (Icelandair, 4 weekly) is one connection, Amsterdam and Frankfurt others.",
+     "how": "The application window runs until Thursday 29 October at 14:00 Central Time, i.e. 20:00 Norwegian time. Applying is free, and applying early gives no advantage. Results come on 8 December, and payment is due by 15 December. Guaranteed routes: time standards, charity (minimum $2,500, open until 10 September 2027 or until full) and approved tour operators (until 10 August 2027).",
+     "price": "$260 for international runners, $335 via charity"
+    },
+    "th": {
+     "place": "ชิคาโก, สหรัฐอเมริกา",
+     "participants": "ผู้จัดไม่ได้ระบุ ประมาณ 50,000 คนเข้าเส้นชัยในปีก่อน ๆ (ประมาณการ)",
+     "course": "ทางราบและเร็ว ผ่าน 29 ย่าน",
+     "travel": "ไม่มีเที่ยวบินตรง เรคยาวิก (Icelandair สัปดาห์ละ 4 เที่ยว) เป็นจุดต่อเครื่องหนึ่ง อัมสเตอร์ดัมและแฟรงก์เฟิร์ตเป็นทางเลือกอื่น",
+     "how": "ช่วงรับสมัครเปิดถึงวันพฤหัสบดีที่ 29 ต.ค. 14:00 น. เวลา Central หรือ 20:00 น. เวลานอร์เวย์ สมัครฟรี และการสมัครก่อนไม่ได้เปรียบ ผลจะออก 8 ธ.ค. และต้องชำระเงินภายใน 15 ธ.ค. ช่องทางที่การันตี: เวลาผ่านเกณฑ์ การกุศล (อย่างน้อย $2,500 เปิดถึง 10 ก.ย. 2027 หรือจนกว่าจะเต็ม) และบริษัทจัดทัวร์ที่ได้รับอนุมัติ (ถึง 10 ส.ค. 2027)",
+     "price": "$260 สำหรับนักวิ่งต่างชาติ $335 ผ่านการกุศล"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "lottery_closes",
+     "due_date": "2026-10-29",
+     "due_time": "14:00",
+     "tz": "America/Chicago",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Søknadsvinduet stenger. Gratis å søke, og tidlig søknad gir ingen fordel."
+      },
+      "en": {
+       "what": "The application window closes. Free to apply, and applying early gives no advantage."
+      },
+      "th": {
+       "what": "ช่วงรับสมัครปิด สมัครฟรี และการสมัครก่อนไม่ได้เปรียบ"
+      }
+     }
+    },
+    {
+     "kind": "lottery_results",
+     "due_date": "2026-12-08",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Resultatene fra trekningen kommer."
+      },
+      "en": {
+       "what": "Lottery results are released."
+      },
+      "th": {
+       "what": "ผลการจับสลากออก"
+      }
+     }
+    },
+    {
+     "kind": "payment_due",
+     "due_date": "2026-12-15",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {
+       "what": "Betalingsfrist for dem som ble trukket."
+      },
+      "en": {
+       "what": "Payment deadline for those selected."
+      },
+      "th": {
+       "what": "กำหนดชำระเงินสำหรับผู้ที่ได้รับเลือก"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "marathon-munchen-halvmaraton-2027",
+   "name": "Marathon München, halvmaraton",
+   "edition_year": 2027,
+   "race_date": "2027-10-10",
+   "date_precision": "month",
+   "country": "DE",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://marathonmuenchen.org/en/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "München, Tyskland",
+     "participants": "Største halvmaratonfelt i byens historie i 2026. Tall er ukjent.",
+     "course": "Flatt. Start i Olympiaparken.",
+     "travel": "München: Lufthansa og Widerøe, 1 daglig.",
+     "how": "Halvmaraton i 2026 ble utsolgt. Jeg fant ikke dato eller påmelding for 2027.",
+     "price": ""
+    },
+    "en": {
+     "place": "Munich, Germany",
+     "participants": "Largest half marathon field in the city's history in 2026. Figures are unknown.",
+     "course": "Flat. Start in the Olympiapark.",
+     "travel": "Munich: Lufthansa and Widerøe, 1 daily.",
+     "how": "The half marathon sold out in 2026. I did not find a date or entry for 2027.",
+     "price": ""
+    },
+    "th": {
+     "place": "มิวนิก, เยอรมนี",
+     "participants": "จำนวนผู้วิ่งฮาล์ฟมาราธอนมากที่สุดในประวัติศาสตร์ของเมืองในปี 2026 ไม่ทราบตัวเลข",
+     "course": "ทางราบ ปล่อยตัวที่ Olympiapark",
+     "travel": "มิวนิก: Lufthansa และ Widerøe วันละ 1 เที่ยว",
+     "how": "ฮาล์ฟมาราธอนปี 2026 ขายหมด ฉันไม่พบวันที่หรือการรับสมัครสำหรับปี 2027",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "pko-cracovia-royal-half-marathon-2027",
+   "name": "PKO Cracovia Royal Half Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-10-10",
+   "date_precision": "month",
+   "country": "PL",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://cracoviamaraton.pl/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Kraków, Polen",
+     "participants": "over 10 000 i 2024",
+     "course": "Flatt til svakt kupert. Ikke verifisert.",
+     "travel": "Kraków: Norwegian og Wizz Air, 1 daglig.",
+     "how": "Påmeldingen for 2026-utgaven stengte 6. oktober. 2027 åpner trolig våren 2027.",
+     "price": ""
+    },
+    "en": {
+     "place": "Kraków, Poland",
+     "participants": "over 10,000 in 2024",
+     "course": "Flat to gently rolling. Not verified.",
+     "travel": "Kraków: Norwegian and Wizz Air, 1 daily.",
+     "how": "Entry for the 2026 edition closed on 6 October. 2027 will probably open in spring 2027.",
+     "price": ""
+    },
+    "th": {
+     "place": "คราคูฟ, โปแลนด์",
+     "participants": "มากกว่า 10,000 คนในปี 2024",
+     "course": "ทางราบถึงมีเนินเล็กน้อย ยังไม่ได้ตรวจสอบ",
+     "travel": "คราคูฟ: Norwegian และ Wizz Air วันละ 1 เที่ยว",
+     "how": "การรับสมัครสำหรับรายการปี 2026 ปิดเมื่อ 6 ต.ค. ปี 2027 น่าจะเปิดในฤดูใบไม้ผลิ 2027",
+     "price": ""
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "royal-parks-half-marathon-2027",
+   "name": "Royal Parks Half Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-10-10",
+   "date_precision": "day",
+   "country": "GB",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "lottery",
+   "travel": "direct",
+   "url": "https://www.royalparks.org.uk/events/royal-parks-half-marathon",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "London, England",
+     "participants": "ca. 16 000 løpere",
+     "course": "Flatt, fire parker på stengte veier.",
+     "travel": "London Gatwick: Norwegian, 2 daglig.",
+     "how": "Trekningen for 2027 er ikke åpnet. I år gikk den 26. januar til 6. februar. Charity-plasser kan du melde interesse for.",
+     "price": ""
+    },
+    "en": {
+     "place": "London, England",
+     "participants": "approx. 16,000 runners",
+     "course": "Flat, four parks on closed roads.",
+     "travel": "London Gatwick: Norwegian, 2 daily.",
+     "how": "The ballot for 2027 has not opened. This year it ran from 26 January to 6 February. You can register interest in charity places.",
+     "price": ""
+    },
+    "th": {
+     "place": "ลอนดอน, อังกฤษ",
+     "participants": "ประมาณ 16,000 คน",
+     "course": "ทางราบ ผ่านสวนสาธารณะสี่แห่งบนถนนที่ปิดการจราจร",
+     "travel": "ลอนดอน Gatwick: Norwegian วันละ 2 เที่ยว",
+     "how": "การจับสลากปี 2027 ยังไม่เปิด ปีนี้จัดระหว่าง 26 ม.ค. ถึง 6 ก.พ. ลงทะเบียนแสดงความสนใจที่การกุศลได้",
+     "price": ""
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "lottery_opens",
+     "due_date": "2027-01-26",
+     "date_precision": "approx",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Trekningen gikk 26. januar til 6. februar i år."
+      },
+      "en": {
+       "what": "The ballot ran from 26 January to 6 February this year."
+      },
+      "th": {
+       "what": "ปีนี้การจับสลากจัดระหว่าง 26 ม.ค. ถึง 6 ก.พ."
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "tcs-amsterdam-marathon-halvmaraton-2027",
+   "name": "TCS Amsterdam Marathon, halvmaraton",
+   "edition_year": 2027,
+   "race_date": "2027-10-18",
+   "date_precision": "month",
+   "country": "NL",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://www.tcsamsterdammarathon.nl/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Amsterdam, Nederland",
+     "participants": "15 000 halvmaratonplasser i 2026",
+     "course": "Flatt og raskt.",
+     "travel": "Amsterdam: KLM, 4 daglig.",
+     "how": "Utsolgt på under en uke i 2026, og salget åpnet 20. desember kl. 12. Forvent åpning rundt desember. Datoen for 2027 er ikke bekreftet.",
+     "price": "€43,50 i 2026"
+    },
+    "en": {
+     "place": "Amsterdam, Netherlands",
+     "participants": "15,000 half marathon places in 2026",
+     "course": "Flat and fast.",
+     "travel": "Amsterdam: KLM, 4 daily.",
+     "how": "Sold out in under a week in 2026, and sales opened on 20 December at 12:00. Expect opening around December. The date for 2027 is not confirmed.",
+     "price": "€43.50 in 2026"
+    },
+    "th": {
+     "place": "อัมสเตอร์ดัม, เนเธอร์แลนด์",
+     "participants": "15,000 ที่สำหรับฮาล์ฟมาราธอนในปี 2026",
+     "course": "ทางราบและเร็ว",
+     "travel": "อัมสเตอร์ดัม: KLM วันละ 4 เที่ยว",
+     "how": "ปี 2026 ขายหมดในไม่ถึงหนึ่งสัปดาห์ และการขายเปิดเมื่อ 20 ธ.ค. 12:00 น. คาดว่าจะเปิดราวเดือนธันวาคม วันที่ของปี 2027 ยังไม่ยืนยัน",
+     "price": "€43.50 ในปี 2026"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "entry_opens",
+     "due_date": "2026-12-20",
+     "date_precision": "approx",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Salget åpnet 20. desember kl. 12 i fjor og var utsolgt på under en uke."
+      },
+      "en": {
+       "what": "Sales opened on 20 December at 12:00 last year and sold out in under a week."
+      },
+      "th": {
+       "what": "ปีที่แล้วการขายเปิดเมื่อ 20 ธ.ค. 12:00 น. และขายหมดในไม่ถึงหนึ่งสัปดาห์"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "medio-maraton-valencia-2027",
+   "name": "Medio Maratón Valencia",
+   "edition_year": 2027,
+   "race_date": "2027-10-24",
+   "date_precision": "day",
+   "country": "ES",
+   "distance_m": 21097,
+   "status": "later",
+   "entry_type": "fcfs",
+   "travel": "nearby",
+   "url": "https://www.valenciaciudaddelrunning.com/",
+   "series": [],
+   "texts": {
+    "nb": {
+     "place": "Valencia, Spania",
+     "participants": "20 000 startnumre i 2026",
+     "course": "Flatt og raskt. World Athletics Gold Label.",
+     "travel": "Alicante (Norwegian og SAS, 1 daglig) er ca. 2 t unna med tog eller buss.",
+     "how": "Alle startnumre i 2026 gikk på fire måneder, og salget startet i desember. Tidligere løpere får en forhåndsperiode, vanligvis i slutten av oktober. Jeg kan ikke bekrefte at 2027 er åpent.",
+     "price": ""
+    },
+    "en": {
+     "place": "Valencia, Spain",
+     "participants": "20,000 bibs in 2026",
+     "course": "Flat and fast. World Athletics Gold Label.",
+     "travel": "Alicante (Norwegian and SAS, 1 daily) is approx. 2 h away by train or bus.",
+     "how": "All bibs in 2026 went in four months, and sales started in December. Previous runners get a pre-sale period, usually in late October. I cannot confirm that 2027 is open.",
+     "price": ""
+    },
+    "th": {
+     "place": "บาเลนเซีย, สเปน",
+     "participants": "20,000 หมายเลขวิ่งในปี 2026",
+     "course": "ทางราบและเร็ว World Athletics Gold Label",
+     "travel": "อาลิกันเต (Norwegian และ SAS วันละ 1 เที่ยว) อยู่ห่างไปประมาณ 2 ชม. โดยรถไฟหรือรถบัส",
+     "how": "หมายเลขวิ่งทั้งหมดในปี 2026 หมดภายในสี่เดือน และการขายเริ่มในเดือนธันวาคม นักวิ่งที่เคยร่วมงานได้ช่วงสมัครล่วงหน้า ปกติช่วงปลายเดือนตุลาคม ฉันยืนยันไม่ได้ว่าปี 2027 เปิดแล้ว",
+     "price": ""
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "entry_opens",
+     "due_date": "2026-12-01",
+     "date_precision": "month",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Salget for alle startet i desember sist. Tidligere løpere får en forhåndsperiode, vanligvis i slutten av oktober."
+      },
+      "en": {
+       "what": "General sales started in December last time. Previous runners get a pre-sale period, usually in late October."
+      },
+      "th": {
+       "what": "ครั้งที่แล้วการขายสำหรับทุกคนเริ่มในเดือนธันวาคม นักวิ่งที่เคยร่วมงานได้ช่วงสมัครล่วงหน้า ปกติช่วงปลายเดือนตุลาคม"
+      }
+     }
+    }
+   ]
+  },
+  {
+   "slug": "mainova-frankfurt-marathon-2027",
+   "name": "Mainova Frankfurt Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-10-30",
+   "date_precision": "month",
+   "country": "DE",
+   "distance_m": 42195,
+   "status": "later",
+   "entry_type": "unknown",
+   "travel": "direct",
+   "url": "https://www.frankfurt-marathon.com/en/",
+   "series": [
+    "emc"
+   ],
+   "texts": {
+    "nb": {
+     "place": "Frankfurt, Tyskland",
+     "participants": "30 000 deltakere fra 113 land i 2026 (alle distanser)",
+     "course": "Flatt og raskt langs Main, forbi Alte Oper og gjennom Höchst. Mål inne i Festhalle. Rekord 2:03:42.",
+     "travel": "Frankfurt: Lufthansa, 3 daglig.",
+     "how": "Verken dato eller påmelding for 2027 er kunngjort. Løpet gikk 25. oktober i 2026. Byen forbereder en utlysning om hvem som skal arrangere løpet fra 2027, så vilkårene kan endre seg.",
+     "price": "Ikke funnet"
+    },
+    "en": {
+     "place": "Frankfurt, Germany",
+     "participants": "30,000 participants from 113 countries in 2026 (all distances)",
+     "course": "Flat and fast along the Main, past the Alte Oper and through Höchst. Finish inside the Festhalle. Record 2:03:42.",
+     "travel": "Frankfurt: Lufthansa, 3 daily.",
+     "how": "Neither the date nor entry for 2027 has been announced. The race was held on 25 October in 2026. The city is preparing a tender for who will organize the race from 2027, so the terms may change.",
+     "price": "Not found"
+    },
+    "th": {
+     "place": "แฟรงก์เฟิร์ต, เยอรมนี",
+     "participants": "ผู้เข้าร่วม 30,000 คนจาก 113 ประเทศในปี 2026 (ทุกระยะ)",
+     "course": "ทางราบและเร็วเลียบแม่น้ำไมน์ ผ่าน Alte Oper และผ่าน Höchst เส้นชัยอยู่ภายใน Festhalle สถิติสนาม 2:03:42",
+     "travel": "แฟรงก์เฟิร์ต: Lufthansa วันละ 3 เที่ยว",
+     "how": "ทั้งวันที่และการรับสมัครปี 2027 ยังไม่ประกาศ งานปี 2026 จัดวันที่ 25 ต.ค. เมืองกำลังเตรียมเปิดประกวดหาผู้จัดงานตั้งแต่ปี 2027 เงื่อนไขจึงอาจเปลี่ยนแปลง",
+     "price": "ไม่พบ"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "tcs-new-york-city-marathon-2027",
+   "name": "TCS New York City Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-11-07",
+   "date_precision": "day",
+   "country": "US",
+   "distance_m": 42195,
+   "status": "later",
+   "entry_type": "lottery",
+   "travel": "none",
+   "url": "https://www.nyrr.org/tcsnycmarathon/runners/how-to-qualify",
+   "series": [
+    "majors"
+   ],
+   "texts": {
+    "nb": {
+     "place": "New York, USA",
+     "participants": "Over 50 000 i mål i de siste årene (anslag). Rekordstor interesse, ca. 240 000 søkte til 2026.",
+     "course": "Fem bydeler og fem broer, blant dem Verrazzano og Queensboro. Kupert og tregt.",
+     "travel": "Ingen direkte fly. Reykjavik (Icelandair, 4 i uken), Oslo eller København er ett bytte.",
+     "how": "Den åpne trekningen åpner trolig i begynnelsen av februar 2027, og det er gratis å søke. En kilde anslår at odds for utlendinger er ca. 1 av 20. Reisearrangører selger garanterte plasser fra sent i 2026, og de kan bli utsolgt før trekningen åpner. Veldedighetsplasser krever ca. $3 000–$6 000. 9+1 gir nå plass til 2028, ikke 2027.",
+     "price": "Ca. $358 pluss $11 i gebyr for utenlandske løpere"
+    },
+    "en": {
+     "place": "New York, USA",
+     "participants": "Over 50,000 finishers in recent years (estimate). Record interest, approx. 240,000 applied for 2026.",
+     "course": "Five boroughs and five bridges, including the Verrazzano and Queensboro. Hilly and slow.",
+     "travel": "No direct flights. Reykjavik (Icelandair, 4 weekly), Oslo or Copenhagen is one connection.",
+     "how": "The open lottery will probably open in early February 2027, and applying is free. One source estimates the odds for foreigners at approx. 1 in 20. Tour operators sell guaranteed places from late 2026, and they may sell out before the lottery opens. Charity places require approx. $3,000–$6,000. 9+1 now gives a place for 2028, not 2027.",
+     "price": "Approx. $358 plus $11 in fees for international runners"
+    },
+    "th": {
+     "place": "นิวยอร์ก, สหรัฐอเมริกา",
+     "participants": "เข้าเส้นชัยมากกว่า 50,000 คนในช่วงไม่กี่ปีที่ผ่านมา (ประมาณการ) มีผู้สนใจมากเป็นประวัติการณ์ ประมาณ 240,000 คนสมัครสำหรับปี 2026",
+     "course": "ห้าเขตและห้าสะพาน รวมถึง Verrazzano และ Queensboro มีเนินและช้า",
+     "travel": "ไม่มีเที่ยวบินตรง ต่อเครื่องครั้งเดียวที่เรคยาวิก (Icelandair สัปดาห์ละ 4 เที่ยว) ออสโล หรือโคเปนเฮเกน",
+     "how": "การจับสลากทั่วไปน่าจะเปิดช่วงต้นเดือนกุมภาพันธ์ 2027 และสมัครฟรี แหล่งข้อมูลหนึ่งประมาณว่าโอกาสของชาวต่างชาติอยู่ที่ราว 1 ใน 20 บริษัทจัดทัวร์ขายที่แบบการันตีตั้งแต่ปลายปี 2026 และอาจขายหมดก่อนการจับสลากเปิด ที่การกุศลต้องระดมทุนประมาณ $3,000–$6,000 โปรแกรม 9+1 ตอนนี้ให้สิทธิ์สำหรับปี 2028 ไม่ใช่ 2027",
+     "price": "ประมาณ $358 บวกค่าธรรมเนียม $11 สำหรับนักวิ่งต่างชาติ"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "other",
+     "due_date": "2026-12-01",
+     "date_precision": "month",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Reisearrangører åpner for garanterte plasser sent i 2026, og de kan bli utsolgt før trekningen åpner."
+      },
+      "en": {
+       "what": "Tour operators open guaranteed places in late 2026, and they may sell out before the lottery opens."
+      },
+      "th": {
+       "what": "บริษัทจัดทัวร์เปิดขายที่แบบการันตีช่วงปลายปี 2026 และอาจขายหมดก่อนการจับสลากเปิด"
+      }
+     }
+    },
+    {
+     "kind": "lottery_opens",
+     "due_date": "2027-02-01",
+     "date_precision": "early",
+     "expected": true,
+     "texts": {
+      "nb": {
+       "what": "Den åpne trekningen åpner trolig. Gratis å søke."
+      },
+      "en": {
+       "what": "The open lottery probably opens. Free to apply."
+      },
+      "th": {
+       "what": "การจับสลากทั่วไปน่าจะเปิด สมัครฟรี"
+      }
+     }
+    }
+   ]
+  }
+ ]
+}

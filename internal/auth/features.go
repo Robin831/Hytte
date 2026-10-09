@@ -42,6 +42,7 @@ var FeatureDefaults = map[string]bool{
 	"offers":         false,
 	"recipes":        false,
 	"livestream":     false,
+	"races":          false,
 }
 
 // FeatureKeys is a sorted list of all known feature keys, used for stable

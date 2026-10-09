@@ -2195,6 +2195,80 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_offer_notifications_offer ON offer_notifications(offer_id);
 
+	-- Race catalog (races.*): races out in the world, shared by all users and
+	-- kept current by research/manual edits. Public data, so plaintext and
+	-- SQL-filterable. texts holds the translatable fields as JSON keyed by
+	-- language ({"nb":{...},"en":{...},"th":{...}}); series is a comma list.
+	CREATE TABLE IF NOT EXISTS race_events (
+		id             INTEGER PRIMARY KEY,
+		slug           TEXT NOT NULL UNIQUE,
+		name           TEXT NOT NULL,
+		edition_year   INTEGER NOT NULL DEFAULT 0,
+		race_date      TEXT NOT NULL DEFAULT '',
+		date_precision TEXT NOT NULL DEFAULT 'day',
+		country        TEXT NOT NULL DEFAULT '',
+		distance_m     INTEGER NOT NULL DEFAULT 0,
+		status         TEXT NOT NULL DEFAULT 'later',
+		entry_type     TEXT NOT NULL DEFAULT 'unknown',
+		travel         TEXT NOT NULL DEFAULT '',
+		url            TEXT NOT NULL DEFAULT '',
+		series         TEXT NOT NULL DEFAULT '',
+		texts          TEXT NOT NULL DEFAULT '{}',
+		checked_at     TEXT NOT NULL DEFAULT '',
+		created_at     TEXT NOT NULL DEFAULT '',
+		updated_at     TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_race_events_date ON race_events(race_date);
+
+	-- Dated milestones per race: entry/lottery windows, results, payment, price
+	-- steps. due_time + tz are set when the organizer gives a clock time, so the
+	-- UI and reminders can convert to the viewer's time zone.
+	CREATE TABLE IF NOT EXISTS race_deadlines (
+		id             INTEGER PRIMARY KEY,
+		event_id       INTEGER NOT NULL REFERENCES race_events(id) ON DELETE CASCADE,
+		kind           TEXT NOT NULL,
+		due_date       TEXT NOT NULL,
+		date_precision TEXT NOT NULL DEFAULT 'day',
+		due_time       TEXT NOT NULL DEFAULT '',
+		tz             TEXT NOT NULL DEFAULT '',
+		expected       INTEGER NOT NULL DEFAULT 0,
+		texts          TEXT NOT NULL DEFAULT '{}',
+		created_at     TEXT NOT NULL DEFAULT '',
+		updated_at     TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_race_deadlines_event ON race_deadlines(event_id);
+	CREATE INDEX IF NOT EXISTS idx_race_deadlines_due ON race_deadlines(due_date);
+
+	-- Change log for the catalog: one row per changed field, from manual edits
+	-- or research runs. Drives the change history and change notifications.
+	CREATE TABLE IF NOT EXISTS race_changes (
+		id         INTEGER PRIMARY KEY,
+		event_id   INTEGER NOT NULL REFERENCES race_events(id) ON DELETE CASCADE,
+		field      TEXT NOT NULL,
+		old_value  TEXT NOT NULL DEFAULT '',
+		new_value  TEXT NOT NULL DEFAULT '',
+		source     TEXT NOT NULL DEFAULT 'manual',
+		user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		created_at TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_race_changes_event ON race_changes(event_id, created_at);
+
+	-- A user's relationship to a catalog race (watching, in the lottery,
+	-- registered...). notes are the user's own words, encrypted at rest.
+	CREATE TABLE IF NOT EXISTS race_watch (
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		event_id       INTEGER NOT NULL REFERENCES race_events(id) ON DELETE CASCADE,
+		state          TEXT NOT NULL DEFAULT 'watching',
+		notes          TEXT NOT NULL DEFAULT '',
+		stride_race_id INTEGER REFERENCES stride_races(id) ON DELETE SET NULL,
+		created_at     TEXT NOT NULL DEFAULT '',
+		updated_at     TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (user_id, event_id)
+	);
+
 	-- Cache of LLM relevance scores. profile_version is bumped whenever the
 	-- user's feedback set changes, invalidating stale scores.
 	CREATE TABLE IF NOT EXISTS news_scores (

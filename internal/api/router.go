@@ -34,6 +34,7 @@ import (
 	"github.com/Robin831/Hytte/internal/offers"
 	"github.com/Robin831/Hytte/internal/pokemon"
 	"github.com/Robin831/Hytte/internal/push"
+	"github.com/Robin831/Hytte/internal/races"
 	"github.com/Robin831/Hytte/internal/recipes"
 	"github.com/Robin831/Hytte/internal/salary"
 	"github.com/Robin831/Hytte/internal/settings"
@@ -961,6 +962,25 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/offers/watchlist", offers.HandleAddWatch(db))
 				r.Delete("/offers/watchlist/{id}", offers.HandleDeleteWatch(db))
 				r.With(auth.RequireAdmin()).Post("/offers/refresh", offers.HandleRefresh(db))
+			})
+
+			// Race catalog — gated by "races" feature. The catalog is shared,
+			// so editing it is admin-only; watches are per user.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "races"))
+				r.Get("/races", races.HandleList(db))
+				r.Get("/races/{id}", races.HandleGet(db))
+				r.Put("/races/{id}/watch", races.HandleSetWatch(db))
+				r.Delete("/races/{id}/watch", races.HandleDeleteWatch(db))
+				r.Group(func(r chi.Router) {
+					r.Use(auth.RequireAdmin())
+					r.Post("/races", races.HandleCreate(db))
+					r.Put("/races/{id}", races.HandleUpdate(db))
+					r.Delete("/races/{id}", races.HandleDelete(db))
+					r.Post("/races/{id}/deadlines", races.HandleCreateDeadline(db))
+					r.Put("/races/deadlines/{id}", races.HandleUpdateDeadline(db))
+					r.Delete("/races/deadlines/{id}", races.HandleDeleteDeadline(db))
+				})
 			})
 
 			// Recipes — gated by "recipes" feature (routes in recipes.RegisterRoutes).

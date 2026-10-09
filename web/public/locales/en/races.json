@@ -1,0 +1,206 @@
+{
+  "title": "Races",
+  "subtitle": "Keep track of races, plan the next one and never miss a lottery deadline.",
+  "loading": "Loading races…",
+  "disclaimer": "Statuses, dates and prices come from organizers and third-party sources and can change. Check the organizer's site before you pay.",
+  "tabs": {
+    "mine": "My races",
+    "discover": "Discover",
+    "deadlines": "Deadlines"
+  },
+  "status": {
+    "open": "Open now",
+    "later": "Later or unclear",
+    "closed": "Closed"
+  },
+  "entryType": {
+    "lottery": "Lottery",
+    "fcfs": "First come, first served",
+    "qualifier": "Qualifying time",
+    "unknown": "Entry type unknown"
+  },
+  "travel": {
+    "direct": "Direct",
+    "nearby": "Nearby or connecting",
+    "none": "No direct flight"
+  },
+  "facts": {
+    "participants": "Field",
+    "course": "Course",
+    "travel": "From Bergen",
+    "price": "Price",
+    "organizer": "Organizer's site"
+  },
+  "series": {
+    "majors": "World Marathon Majors",
+    "emc": "European Marathon Classics",
+    "superhalfs": "SuperHalfs"
+  },
+  "distance": {
+    "all": "All distances",
+    "half": "Half marathon",
+    "marathon": "Marathon",
+    "other": "Other"
+  },
+  "precision": {
+    "early": "early {{date}}",
+    "mid": "mid {{date}}",
+    "late": "late {{date}}",
+    "approx": "around {{date}}"
+  },
+  "precisionShort": {
+    "approx": "~",
+    "early": "early",
+    "mid": "mid",
+    "late": "late",
+    "month": "TBC"
+  },
+  "precisionName": {
+    "day": "Exact day",
+    "approx": "Around this day",
+    "early": "Early in the month",
+    "mid": "Mid-month",
+    "late": "Late in the month",
+    "month": "Sometime that month"
+  },
+  "when": {
+    "today": "today",
+    "tomorrow": "tomorrow",
+    "inDays_one": "in {{count}} day",
+    "inDays_other": "in {{count}} days",
+    "ago_one": "{{count}} day ago",
+    "ago_other": "{{count}} days ago"
+  },
+  "expected": "Expected",
+  "filters": {
+    "search": "Search races or cities",
+    "status": "Filter by status",
+    "more": "More filters",
+    "all": "All",
+    "directOnly": "Direct flight from Bergen",
+    "upcomingOnly": "Upcoming only",
+    "empty": "No races match these filters."
+  },
+  "watch": {
+    "title": "My status",
+    "track": "Track this race",
+    "untrack": "Stop tracking",
+    "state": "Status",
+    "notes": "Notes",
+    "notesPlaceholder": "Bib number, who you're travelling with, hotel booking…",
+    "saveNotes": "Save notes",
+    "saved": "Saved",
+    "notTracking": "You're not tracking this race yet."
+  },
+  "watchState": {
+    "watching": "Watching",
+    "planning": "Planning",
+    "lottery_entered": "In the lottery",
+    "got_place": "Got a place",
+    "not_selected": "Not selected",
+    "registered": "Registered",
+    "completed": "Completed",
+    "skipped": "Skipped"
+  },
+  "kind": {
+    "entry_opens": "Entry opens",
+    "entry_closes": "Entry closes",
+    "lottery_opens": "Lottery opens",
+    "lottery_closes": "Lottery closes",
+    "lottery_results": "Lottery results",
+    "payment_due": "Payment due",
+    "price_increase": "Price goes up",
+    "waitlist_closes": "Waitlist closes",
+    "other": "Note"
+  },
+  "mine": {
+    "empty": "You're not tracking any races yet",
+    "emptyHint": "Find races under Discover and tap the bookmark to follow them.",
+    "noDeadline": "No upcoming deadlines"
+  },
+  "deadlines": {
+    "scope": "Which deadlines",
+    "onlyMine": "My races",
+    "all": "All races",
+    "empty": "No upcoming deadlines.",
+    "emptyMine": "None of your races have upcoming deadlines."
+  },
+  "detail": {
+    "back": "All races",
+    "date": "Race day",
+    "facts": "Facts",
+    "howToGetIn": "How to get in",
+    "lastChecked": "Last checked {{date}}",
+    "deadlines": "Deadlines",
+    "deadline": "Deadline",
+    "noDeadlines": "No deadlines known for this race.",
+    "history": "Change history",
+    "noHistory": "No changes recorded yet."
+  },
+  "field": {
+    "created": "Added to the catalog",
+    "name": "Name",
+    "race_date": "Race date",
+    "date_precision": "Date precision",
+    "status": "Status",
+    "entry_type": "Entry type",
+    "travel": "Travel",
+    "url": "Organizer link",
+    "series": "Series",
+    "country": "Country",
+    "distance_m": "Distance",
+    "edition_year": "Edition"
+  },
+  "textField": {
+    "place": "Place",
+    "participants": "Field size",
+    "course": "Course",
+    "travel": "Travel from Bergen",
+    "how": "How to get in",
+    "price": "Price"
+  },
+  "lang": {
+    "nb": "Norsk",
+    "en": "English",
+    "th": "ไทย"
+  },
+  "source": {
+    "manual": "edited by hand",
+    "research": "automatic update",
+    "seed": "initial import"
+  },
+  "admin": {
+    "newRace": "New race",
+    "edit": "Edit race",
+    "delete": "Delete race",
+    "confirmDelete": "Delete {{name}} from the catalog? This removes it for everyone.",
+    "confirmDeleteDeadline": "Delete this deadline?",
+    "save": "Save",
+    "cancel": "Cancel",
+    "name": "Name",
+    "date": "Date",
+    "precision": "Date precision",
+    "distance": "Distance",
+    "meters": "Distance in meters",
+    "country": "Country code",
+    "status": "Status",
+    "entryType": "Entry type",
+    "url": "Organizer link",
+    "series": "Series",
+    "texts": "Texts by language",
+    "deadline": "Deadline",
+    "addDeadline": "Add deadline",
+    "editDeadline": "Edit deadline",
+    "deleteDeadline": "Delete deadline",
+    "kind": "Type",
+    "time": "Time (optional)",
+    "tz": "Time zone",
+    "expected": "Expected, not confirmed",
+    "what": "Description"
+  },
+  "errors": {
+    "load": "Couldn't load races.",
+    "save": "Couldn't save. Try again.",
+    "notFound": "Race not found."
+  }
+}
