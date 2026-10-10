@@ -5,9 +5,10 @@ import { ArrowLeft, Check, Clock, Copy, Pencil, Plane, Plus, Trash2, Trophy } fr
 import {
   type Checklist, type I18n, type Lang, type Trip,
   addChecklist, addItem, countdown, dateIn, deleteChecklist, deleteItem, deleteTrip, departureInstant, fetchTrip,
-  formatClock, formatDate, formatLocal, intlLocale, setItemDone, toLang, tripState, txt, zonedInstant,
+  formatClock, formatDate, formatLocal, intlLocale, isTentative, setItemDone, toLang, tripState, txt, zonedInstant,
 } from './tripsApi'
 import { SectionEditor, type SectionKey } from './TripEditor'
+import { DateCandidates, ReopenDates } from './DateCandidates'
 
 function useMinuteClock() {
   const [now, setNow] = useState(() => new Date())
@@ -56,6 +57,14 @@ function NowBox({ trip, now, lang }: { trip: Trip; now: Date; lang: Lang }) {
   const { t } = useTranslation('trips')
   const state = tripState(trip, now)
   const d = trip.doc
+  if (isTentative(trip) && state !== 'after') {
+    return (
+      <div className="rounded-lg border border-amber-700 bg-amber-900/20 p-4">
+        <p className="text-xs font-semibold uppercase tracking-wide text-amber-300">{t('dates.tentative')}</p>
+        <p className="mt-1 font-semibold">{t('dates.notSet', { nights: d.flex!.nights })}</p>
+      </div>
+    )
+  }
   if (state === 'before') {
     const c = countdown(departureInstant(trip).getTime() - now.getTime())
     return (
@@ -203,7 +212,10 @@ export default function TripPage() {
       <Link to="/trips" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-200"><ArrowLeft size={16} /> {t('back')}</Link>
 
       <header className="mt-3">
-        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{formatDate(trip.start_date, lang)} – {formatDate(trip.end_date, lang)} · {t(`kind.${trip.kind}`)}</p>
+        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+          {isTentative(trip) && <span className="mr-1 text-amber-300">{t('dates.tentative')} ·</span>}
+          {formatDate(trip.start_date, lang)} – {formatDate(trip.end_date, lang)} · {t(`kind.${trip.kind}`)}
+        </p>
         <div className="flex items-start justify-between gap-3">
           <h1 className="mt-1 text-3xl font-bold leading-tight">{txt(d.title, lang)}</h1>
           {trip.can_edit && (
@@ -241,6 +253,9 @@ export default function TripPage() {
           <SectionEditor section={editing} trip={trip} lang={lang} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />
         </div>
       )}
+
+      <ReopenDates trip={trip} onChanged={reload} />
+      {isTentative(trip) && <DateCandidates trip={trip} onChosen={reload} />}
 
       <nav className="sticky top-14 md:top-0 z-20 -mx-4 mt-6 flex gap-1 overflow-x-auto border-b border-gray-800 bg-gray-900/95 px-4 py-2 backdrop-blur-sm md:-mx-8 md:px-8" aria-label={t('sections')}>
         {sections.map(s => (

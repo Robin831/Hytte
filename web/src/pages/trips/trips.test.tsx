@@ -5,6 +5,8 @@ import { MemoryRouter, Route, Routes } from 'react-router'
 import { dateIn, editI18n, tripState, txt, zonedInstant, type Trip, type TripSummary } from './tripsApi'
 import TripsPage from './TripsPage'
 import TripPage from './TripPage'
+import { FamilyPicker } from './Family'
+import type { Candidate, Person, Traveller } from './tripsApi'
 
 function mockT(key: string, opts?: Record<string, unknown>): string {
   if (!opts) return key
@@ -70,9 +72,9 @@ describe('TripsPage', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(new Date('2026-10-10T08:00:00Z'))
     const trips: TripSummary[] = [
-      { id: 1, kind: 'race', title: { en: 'Cardiff Race Weekend' }, start_date: '2026-10-02', end_date: '2026-10-05', dest_tz: 'Europe/London', route: [], travellers: ['Robin'], open: 0, total: 10 },
-      { id: 7, kind: 'family', title: { en: 'Surin' }, start_date: '2026-10-06', end_date: '2026-10-16', dest_tz: 'Asia/Bangkok', route: ['BGO', 'BKK'], travellers: null, open: 30, total: 34 },
-      { id: 9, kind: 'race', title: { en: 'Valencia' }, start_date: '2027-12-04', end_date: '2027-12-06', dest_tz: 'Europe/Madrid', route: [], travellers: [], open: 0, total: 0 },
+      { id: 1, kind: 'race', title: { en: 'Cardiff Race Weekend' }, start_date: '2026-10-02', end_date: '2026-10-05', dest_tz: 'Europe/London', route: [], travellers: ['Robin'], tentative: false, open: 0, total: 10 },
+      { id: 7, kind: 'family', title: { en: 'Surin' }, start_date: '2026-10-06', end_date: '2026-10-16', dest_tz: 'Asia/Bangkok', route: ['BGO', 'BKK'], travellers: null, tentative: false, open: 30, total: 34 },
+      { id: 9, kind: 'race', title: { en: 'Valencia' }, start_date: '2027-12-04', end_date: '2027-12-06', dest_tz: 'Europe/Madrid', route: [], travellers: [], tentative: false, open: 0, total: 0 },
     ]
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ trips }) }) as Response))
     render(<MemoryRouter><TripsPage /></MemoryRouter>)
@@ -124,5 +126,76 @@ describe('TripPage', () => {
     const put = calls.find(c => c.method === 'PUT' && c.url === '/api/trips/7') as { body: { doc: Trip['doc'] } }
     expect(put.body.doc.notes[0].body).toEqual({ en: 'Very hot.' })
     expect(put.body.doc.flights[0].flight_no).toBe('KL844')
+  })
+})
+
+const PARIS: Trip = {
+  ...SURIN, id: 9, kind: 'holiday', start_date: '2026-11-01', end_date: '2026-11-30', dest_tz: 'Europe/Paris', checklists: [],
+  doc: { ...SURIN.doc, title: { en: 'Paris weekend' }, phases: [], flights: [], contacts: [], notes: [],
+    flex: { from: '2026-11-01', to: '2026-11-30', nights: 2, depart_days: [5], chosen: false } },
+}
+const CANDIDATES: Candidate[] = [
+  { start: '2026-11-06', end: '2026-11-08', clashes: [] },
+  { start: '2026-11-13', end: '2026-11-15', clashes: [{ kind: 'calendar', title: 'Cabin weekend', start: '2026-11-14', end: '2026-11-14', who: 'Robin' }] },
+  { start: '2026-11-20', end: '2026-11-22', clashes: [{ kind: 'race', title: 'Lisbon Half', start: '2026-11-22', end: '2026-11-22', id: 7 }] },
+]
+
+describe('tentative trips', () => {
+  it('lists candidate dates with clashes and chooses one', async () => {
+    const calls: { url: string; method: string; body?: unknown }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method ?? 'GET', body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as Response
+      if (url === '/api/trips/9/candidates') return ok({ candidates: CANDIDATES })
+      if (url === '/api/family') return ok({ people: [] })
+      return ok({ trip: PARIS, status: 'ok' })
+    }))
+    render(<MemoryRouter initialEntries={['/trips/9']}><Routes><Route path="/trips/:id" element={<TripPage />} /></Routes></MemoryRouter>)
+    const section = await screen.findByRole('region', { name: 'dates.choose' })
+    expect(await within(section).findByText('Cabin weekend')).toBeInTheDocument()
+    expect(within(section).getByRole('link', { name: 'Lisbon Half' })).toHaveAttribute('href', '/races/7')
+    expect(within(section).getAllByText('dates.free')).toHaveLength(1)
+    expect(screen.getByText('dates.notSet:nights=2')).toBeInTheDocument()
+
+    fireEvent.click(within(section).getByRole('checkbox'))
+    expect(within(section).queryByText('Cabin weekend')).toBeNull()
+
+    await act(async () => { fireEvent.click(within(section).getByRole('button', { name: 'dates.pick' })) })
+    const put = calls.find(c => c.method === 'PUT' && c.url === '/api/trips/9') as { body: { start_date: string; end_date: string; doc: Trip['doc'] } }
+    expect(put.body.start_date).toBe('2026-11-06')
+    expect(put.body.end_date).toBe('2026-11-08')
+    expect(put.body.doc.flex).toMatchObject({ from: '2026-11-01', chosen: true })
+  })
+
+  it('groups tentative trips under planning', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    vi.setSystemTime(new Date('2026-10-10T08:00:00Z'))
+    const trips: TripSummary[] = [
+      { id: 9, kind: 'holiday', title: { en: 'Paris weekend' }, start_date: '2026-11-01', end_date: '2026-11-30', dest_tz: 'Europe/Paris', route: [], travellers: [], tentative: true, open: 0, total: 0 },
+    ]
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ trips, people: [] }) }) as Response))
+    render(<MemoryRouter><TripsPage /></MemoryRouter>)
+    const planning = await screen.findByRole('region', { name: 'group.planning' })
+    expect(within(planning).getByText('Paris weekend')).toBeInTheDocument()
+    expect(within(planning).getByText('dates.tentative')).toBeInTheDocument()
+  })
+})
+
+describe('FamilyPicker', () => {
+  it('picks travellers from the roster with the child flag from the birth year', () => {
+    const people: Person[] = [
+      { id: 1, user_id: 1, name: 'Robin', birth_year: 1983 },
+      { id: 4, user_id: 4, name: 'William', birth_year: 2017 },
+      { id: 6, user_id: null, name: 'Olivia', birth_year: 2024 },
+    ]
+    let value: Traveller[] = []
+    const onChange = vi.fn((v: Traveller[]) => { value = v })
+    const { rerender } = render(<FamilyPicker people={people} value={value} onChange={onChange} date="2026-11-06" />)
+    expect(screen.getByText('ageYears:age=9')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('checkbox', { name: /William/ }))
+    expect(value).toEqual([{ name: 'William', person_id: 4, user_id: 4, child: true }])
+    rerender(<FamilyPicker people={people} value={value} onChange={onChange} date="2026-11-06" />)
+    fireEvent.change(screen.getByRole('textbox', { name: 'field.others' }), { target: { value: 'Granny, ' } })
+    expect(value).toEqual([{ name: 'William', person_id: 4, user_id: 4, child: true }, { name: 'Granny', child: false }])
   })
 })

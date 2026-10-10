@@ -57,7 +57,8 @@
   "group": {
     "ongoing": "Pågår",
     "upcoming": "Kommende",
-    "past": "Tidligere"
+    "past": "Tidligere",
+    "planning": "Planlegges"
   },
   "section": {
     "core": "Reise",
@@ -130,6 +131,43 @@
     "highlight": "Fremhev",
     "time": "Tid",
     "text": "Tekst",
-    "key": "Viktig øyeblikk"
+    "key": "Viktig øyeblikk",
+    "others": "Andre",
+    "othersHint": "Andre som ikke står på listen, skilt med komma"
+  },
+  "ageYears": "{{age}} år",
+  "dates": {
+    "mode": "Datoer",
+    "fixed": "Faste datoer",
+    "flexible": "Fleksibelt",
+    "from": "Tidligst",
+    "to": "Senest",
+    "nights": "Netter",
+    "departDays": "Reise på",
+    "departHint": "Ingen dag valgt = alle dager.",
+    "tentative": "Foreløpig",
+    "notSet": "Datoene er ikke valgt ennå — {{nights}} netter en gang i perioden.",
+    "choose": "Velg datoer",
+    "chooseAbout": "Alle mulige avreiser i perioden, sjekket mot kalendere, løp og andre reiser.",
+    "onlyFree": "Bare ledige datoer ({{n}})",
+    "free": "Ingenting annet planlagt",
+    "none": "Ingen datoer passer i perioden.",
+    "pick": "Velg",
+    "pickedFrom": "Valgt fra {{from}} – {{to}}.",
+    "reopen": "Sammenlign datoer igjen",
+    "clash": {
+      "calendar": "Kalender",
+      "race": "Løp",
+      "trip": "Reise"
+    }
+  },
+  "family": {
+    "title": "Familien",
+    "about": "Alle som kan reise. Fødselsår avgjør barne- og spedbarnspris.",
+    "account": "Hytte-konto",
+    "birthYear": "Født",
+    "name": "Navn",
+    "add": "Legg til",
+    "confirmRemove": "Fjerne {{name}} fra familielisten?"
   }
 }

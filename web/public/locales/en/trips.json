@@ -57,7 +57,8 @@
   "group": {
     "ongoing": "Ongoing",
     "upcoming": "Upcoming",
-    "past": "Past"
+    "past": "Past",
+    "planning": "Planning"
   },
   "section": {
     "core": "Trip",
@@ -130,6 +131,43 @@
     "highlight": "Highlight",
     "time": "Time",
     "text": "Text",
-    "key": "Key moment"
+    "key": "Key moment",
+    "others": "Others",
+    "othersHint": "Anyone not on the list, comma separated"
+  },
+  "ageYears": "{{age}} yrs",
+  "dates": {
+    "mode": "Dates",
+    "fixed": "Fixed dates",
+    "flexible": "Flexible",
+    "from": "Earliest",
+    "to": "Latest",
+    "nights": "Nights",
+    "departDays": "Leave on",
+    "departHint": "No day picked = any day.",
+    "tentative": "Tentative",
+    "notSet": "Dates not chosen yet — {{nights}} nights somewhere in the window.",
+    "choose": "Choose dates",
+    "chooseAbout": "Every possible departure in the window, checked against calendars, races and other trips.",
+    "onlyFree": "Only free dates ({{n}})",
+    "free": "Nothing else planned",
+    "none": "No dates fit this window.",
+    "pick": "Choose",
+    "pickedFrom": "Picked from {{from}} – {{to}}.",
+    "reopen": "Compare dates again",
+    "clash": {
+      "calendar": "Calendar",
+      "race": "Race",
+      "trip": "Trip"
+    }
+  },
+  "family": {
+    "title": "Family",
+    "about": "Everyone who can travel. Birth years decide child and infant fares.",
+    "account": "Hytte account",
+    "birthYear": "Born",
+    "name": "Name",
+    "add": "Add",
+    "confirmRemove": "Remove {{name}} from the family list?"
   }
 }

@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
 import { type I18n, type Lang, type Trip, type TripDoc, type TripInput, TRIP_KINDS, editI18n, tripToInput, txt, updateTrip } from './tripsApi'
 import type tripsEn from '../../../public/locales/en/trips.json'
+import { DateFields, FamilyPicker } from './Family'
+import { useFamily } from './useFamily'
 
 type FieldKey = keyof typeof tripsEn.field
 type OptionKey = keyof typeof tripsEn.option
@@ -111,6 +113,7 @@ export function SectionEditor({ section, trip, lang, onCancel, onSaved }: {
 }) {
   const { t } = useTranslation('trips')
   const [form, setForm] = useState<TripInput>(() => tripToInput(trip))
+  const family = useFamily()
   const [error, setError] = useState('')
   const doc = form.doc
   const setDoc = (d: Partial<TripDoc>) => setForm(f => ({ ...f, doc: { ...f.doc, ...d } }))
@@ -134,19 +137,17 @@ export function SectionEditor({ section, trip, lang, onCancel, onSaved }: {
         <label><span className="mb-0.5 block text-xs text-gray-400">{t('field.kind')}</span>
           <select className={input} value={form.kind} onChange={e => setForm({ ...form, kind: e.target.value as TripInput['kind'] })}>
             {TRIP_KINDS.map(k => <option key={k} value={k}>{t(`kind.${k}`)}</option>)}</select></label>
-        <FieldInput field={{ key: 'start', type: 'date' }} value={form.start_date} row={{}} lang={lang} tz="" onChange={v => setForm({ ...form, start_date: String(v) })} onTZ={() => {}} />
-        <FieldInput field={{ key: 'end', type: 'date' }} value={form.end_date} row={{}} lang={lang} tz="" onChange={v => setForm({ ...form, end_date: String(v) })} onTZ={() => {}} />
+        <div className="sm:col-span-2">
+          <DateFields start={form.start_date} end={form.end_date} flex={doc.flex}
+            onChange={v => setForm(f => ({ ...f, start_date: v.start, end_date: v.end, doc: { ...f.doc, flex: v.flex } }))} />
+        </div>
         <FieldInput field={{ key: 'homeTZ', type: 'text' }} value={form.home_tz} row={{}} lang={lang} tz="" onChange={v => setForm({ ...form, home_tz: String(v) })} onTZ={() => {}} />
         <FieldInput field={{ key: 'destTZ', type: 'text' }} value={form.dest_tz} row={{}} lang={lang} tz="" onChange={v => setForm({ ...form, dest_tz: String(v) })} onTZ={() => {}} />
         <label className="sm:col-span-2"><span className="mb-0.5 block text-xs text-gray-400">{t('field.route')}</span>
           <input className={input} value={doc.route.join(', ')} placeholder="BGO, AMS, CWL" onChange={e => setDoc({ route: e.target.value.split(',').map(s => s.trim()).filter(Boolean) })} /></label>
-        <label className="sm:col-span-2"><span className="mb-0.5 block text-xs text-gray-400">{t('field.travellers')}</span>
-          <input className={input} value={doc.travellers.map(tr => tr.name + (tr.child ? '*' : '')).join(', ')} placeholder={t('field.travellersHint')}
-            onChange={e => setDoc({ travellers: e.target.value.split(',').map(s => s.trim()).filter(Boolean).map(s => {
-              const name = s.replace(/\*$/, '')
-              const prev = doc.travellers.find(tr => tr.name === name)
-              return { name, child: s.endsWith('*'), user_id: prev?.user_id ?? null }
-            }) })} /></label>
+        <div className="sm:col-span-2">
+          <FamilyPicker people={family.people} value={doc.travellers} onChange={travellers => setDoc({ travellers })} date={form.start_date} />
+        </div>
         <FieldInput field={{ key: 'summary', type: 'i18nLong' }} value={doc.summary} row={{}} lang={lang} tz="" onChange={v => setDoc({ summary: v as I18n })} onTZ={() => {}} />
         <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={form.share_family} onChange={e => setForm({ ...form, share_family: e.target.checked })} /> {t('field.shareFamily')}</label>
       </div>

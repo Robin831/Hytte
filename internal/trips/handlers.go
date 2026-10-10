@@ -269,3 +269,86 @@ func HandleDeleteItem(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }
+
+// HandleCandidates lists a tentative trip's possible dates with clashes.
+func HandleCandidates(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid trip ID")
+			return
+		}
+		cands, err := Candidates(r.Context(), db, id, user.ID)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"candidates": cands})
+	}
+}
+
+// HandleListPeople returns the family roster.
+func HandleListPeople(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		people, err := ListPeople(r.Context(), db)
+		if err != nil {
+			log.Printf("trips: roster: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to load the family")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"people": people})
+	}
+}
+
+// HandleAddPerson adds someone without a Hytte account (admin).
+func HandleAddPerson(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var in PersonInput
+		if !decode(w, r, &in) {
+			return
+		}
+		id, err := AddPerson(r.Context(), db, in)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"id": id})
+	}
+}
+
+// HandleUpdatePerson edits a roster entry (admin).
+func HandleUpdatePerson(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid person ID")
+			return
+		}
+		var in PersonInput
+		if !decode(w, r, &in) {
+			return
+		}
+		if err := UpdatePerson(r.Context(), db, id, in); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+// HandleDeletePerson removes someone without an account (admin).
+func HandleDeletePerson(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid person ID")
+			return
+		}
+		if err := DeletePerson(r.Context(), db, id); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}

@@ -2351,6 +2351,18 @@ func createSchema(db *sql.DB) error {
 	-- Trips (internal/trips): doc is the encrypted trip content (flights,
 	-- stays, day plans, contacts, notes, all texts in nb/en/th). Members are
 	-- the Hytte users among the travellers; they can edit like the owner.
+	-- Family roster (trips phase A): everyone who travels. Hytte users get a
+	-- row automatically (user_id set, name '' = their first name); others are
+	-- added by an admin. name is encrypted.
+	CREATE TABLE IF NOT EXISTS family_people (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+		name       TEXT NOT NULL DEFAULT '',
+		birth_year INTEGER,
+		created_at TEXT NOT NULL DEFAULT '',
+		updated_at TEXT NOT NULL DEFAULT ''
+	);
+
 	CREATE TABLE IF NOT EXISTS trips (
 		id            INTEGER PRIMARY KEY,
 		owner_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

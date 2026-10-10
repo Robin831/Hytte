@@ -980,6 +980,17 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Put("/trips/items/{id}", trips.HandleUpdateItem(db))
 				r.Post("/trips/items/{id}/done", trips.HandleToggleItem(db))
 				r.Delete("/trips/items/{id}", trips.HandleDeleteItem(db))
+				r.Get("/trips/{id}/candidates", trips.HandleCandidates(db))
+			})
+
+			// Family roster (trips' travellers, the hall of fame's runners):
+			// readable by every signed-in user, edited by admins.
+			r.Get("/family", trips.HandleListPeople(db))
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireAdmin())
+				r.Post("/family", trips.HandleAddPerson(db))
+				r.Put("/family/{id}", trips.HandleUpdatePerson(db))
+				r.Delete("/family/{id}", trips.HandleDeletePerson(db))
 			})
 
 			// Race catalog — gated by "races" feature. The catalog is shared,

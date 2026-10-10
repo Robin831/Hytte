@@ -48,6 +48,7 @@ type Doc struct {
 	Route      []string    `json:"route"`
 	Travellers []Traveller `json:"travellers"`
 	Race       *Race       `json:"race,omitempty"`
+	Flex       *Flex       `json:"flex,omitempty"` // tentative dates
 	Phases     []Phase     `json:"phases"`
 	Flights    []Flight    `json:"flights"`
 	Stays      []Stay      `json:"stays"`
@@ -60,9 +61,10 @@ type Doc struct {
 }
 
 type Traveller struct {
-	Name   string `json:"name"`
-	UserID *int64 `json:"user_id,omitempty"`
-	Child  bool   `json:"child"`
+	Name     string `json:"name"`
+	PersonID *int64 `json:"person_id,omitempty"` // family roster entry, when picked from it
+	UserID   *int64 `json:"user_id,omitempty"`
+	Child    bool   `json:"child"`
 }
 
 type Race struct {
@@ -313,8 +315,17 @@ func (in *TripInput) Normalize() error {
 		}
 	}
 	for _, t := range d.Travellers {
-		if strings.TrimSpace(t.Name) == "" {
+		if strings.TrimSpace(t.Name) == "" && t.PersonID == nil {
 			return invalid("travellers need a name")
+		}
+	}
+	if d.Flex != nil {
+		if err := d.Flex.normalize(); err != nil {
+			return err
+		}
+		// Until a candidate is chosen the trip spans its whole window.
+		if !d.Flex.Chosen {
+			in.StartDate, in.EndDate = d.Flex.From, d.Flex.To
 		}
 	}
 	return nil
@@ -393,7 +404,8 @@ type Summary struct {
 	DestTZ     string   `json:"dest_tz"`
 	Route      []string `json:"route"`
 	Travellers []string `json:"travellers"`
-	Open       int      `json:"open"` // unticked checklist items
+	Tentative  bool     `json:"tentative"` // dates not chosen yet (start/end are the window)
+	Open       int      `json:"open"`      // unticked checklist items
 	Total      int      `json:"total"`
 }
 
@@ -423,6 +435,7 @@ func ListTrips(ctx context.Context, db *sql.DB, userID int64) ([]Summary, error)
 			return nil, err
 		}
 		s.Title, s.Route = d.Title, d.Route
+		s.Tentative = d.Flex != nil && !d.Flex.Chosen
 		for _, t := range d.Travellers {
 			s.Travellers = append(s.Travellers, t.Name)
 		}
@@ -469,6 +482,9 @@ func CreateTrip(ctx context.Context, db *sql.DB, userID int64, in TripInput) (in
 	if err := in.Normalize(); err != nil {
 		return 0, err
 	}
+	if err := resolveTravellers(ctx, db, &in.Doc, in.StartDate); err != nil {
+		return 0, err
+	}
 	enc, err := encryptJSON(in.Doc)
 	if err != nil {
 		return 0, err
@@ -502,6 +518,9 @@ func UpdateTrip(ctx context.Context, db *sql.DB, tripID, userID int64, in TripIn
 		return ErrForbidden
 	}
 	if err := in.Normalize(); err != nil {
+		return err
+	}
+	if err := resolveTravellers(ctx, db, &in.Doc, in.StartDate); err != nil {
 		return err
 	}
 	enc, err := encryptJSON(in.Doc)

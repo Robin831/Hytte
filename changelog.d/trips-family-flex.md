@@ -1,0 +1,2 @@
+category: Added
+- **Family roster and flexible trip dates** - Trips pick their travellers from a family roster (Hytte users plus people without an account, with birth years for child fares). A trip can start with tentative dates — a window, a number of nights and the days to leave on — and lists every candidate with clashes from the travellers' calendars, their races and other trips; choosing one fixes the dates and keeps the window. The hall of fame suggests roster names for the runner.

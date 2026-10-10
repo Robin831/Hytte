@@ -3,8 +3,11 @@ import { Link, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { Plane, Plus } from 'lucide-react'
 import {
-  type TripKind, type TripSummary, TRIP_KINDS, createTrip, dateIn, emptyDoc, fetchTrips, formatDate, toLang, txt,
+  type Flex, type Person, type Traveller, type TripKind, type TripSummary, TRIP_KINDS, createTrip, dateIn, emptyDoc, fetchTrips,
+  formatDate, toLang, txt,
 } from './tripsApi'
+import { DateFields, FamilyPanel, FamilyPicker } from './Family'
+import { useFamily } from './useFamily'
 
 const ZONES = ['Europe/Oslo', 'Europe/London', 'Europe/Amsterdam', 'Europe/Berlin', 'Europe/Paris', 'Europe/Madrid', 'Europe/Lisbon',
   'Europe/Rome', 'Europe/Prague', 'Europe/Copenhagen', 'Europe/Stockholm', 'Europe/Helsinki', 'Asia/Bangkok', 'America/New_York',
@@ -23,6 +26,7 @@ function TripCard({ trip, now }: { trip: TripSummary; now: Date }) {
         {ongoing && <span className="rounded-full bg-blue-600 px-2 py-0.5 text-xs font-semibold">{t('now')}</span>}
       </div>
       <p className="mt-1 text-sm text-gray-400">
+        {trip.tentative && <span className="mr-1 rounded bg-amber-900/50 px-1.5 py-0.5 text-xs text-amber-200">{t('dates.tentative')}</span>}
         {formatDate(trip.start_date, lang)} – {formatDate(trip.end_date, lang)} · {t(`kind.${trip.kind}`)}
       </p>
       {trip.route?.length > 0 && <p className="mt-1 font-mono text-xs text-gray-400">{trip.route.join(' → ')}</p>}
@@ -34,7 +38,7 @@ function TripCard({ trip, now }: { trip: TripSummary; now: Date }) {
   )
 }
 
-function NewTrip({ onCancel }: { onCancel: () => void }) {
+function NewTrip({ onCancel, people }: { onCancel: () => void; people: Person[] }) {
   const { t, i18n } = useTranslation('trips')
   const lang = toLang(i18n.language)
   const navigate = useNavigate()
@@ -42,8 +46,9 @@ function NewTrip({ onCancel }: { onCancel: () => void }) {
   const [kind, setKind] = useState<TripKind>('holiday')
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
+  const [flex, setFlex] = useState<Flex | null>(null)
   const [destTZ, setDestTZ] = useState('Europe/Oslo')
-  const [travellers, setTravellers] = useState('')
+  const [travellers, setTravellers] = useState<Traveller[]>([])
   const [error, setError] = useState('')
   const input = 'w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm'
   const label = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400'
@@ -54,7 +59,8 @@ function NewTrip({ onCancel }: { onCancel: () => void }) {
     try {
       const doc = emptyDoc()
       doc.title = { [lang]: title.trim() }
-      doc.travellers = travellers.split(',').map(s => s.trim()).filter(Boolean).map(name => ({ name, child: false }))
+      doc.travellers = travellers
+      doc.flex = flex
       const res = await createTrip({ kind, start_date: start, end_date: end || start, home_tz: 'Europe/Oslo', dest_tz: destTZ,
         share_family: false, race_event_id: null, result_id: null, doc })
       navigate(`/trips/${res.id}`)
@@ -82,17 +88,11 @@ function NewTrip({ onCancel }: { onCancel: () => void }) {
             {ZONES.map(z => <option key={z} value={z}>{z.replace('_', ' ')}</option>)}
           </select>
         </div>
-        <div>
-          <label className={label} htmlFor="nt-start">{t('field.start')}</label>
-          <input id="nt-start" type="date" className={input} value={start} required onChange={e => setStart(e.target.value)} />
-        </div>
-        <div>
-          <label className={label} htmlFor="nt-end">{t('field.end')}</label>
-          <input id="nt-end" type="date" className={input} value={end} min={start} onChange={e => setEnd(e.target.value)} />
+        <div className="sm:col-span-2">
+          <DateFields start={start} end={end} flex={flex} onChange={v => { setStart(v.start); setEnd(v.end); setFlex(v.flex) }} />
         </div>
         <div className="sm:col-span-2">
-          <label className={label} htmlFor="nt-travellers">{t('field.travellers')}</label>
-          <input id="nt-travellers" className={input} value={travellers} placeholder={t('field.travellersHint')} onChange={e => setTravellers(e.target.value)} />
+          <FamilyPicker people={people} value={travellers} onChange={setTravellers} date={start} />
         </div>
       </div>
       {error && <p role="alert" className="text-sm text-red-300">{error}</p>}
@@ -110,6 +110,7 @@ export default function TripsPage() {
   const [error, setError] = useState('')
   const [creating, setCreating] = useState(false)
   const [now] = useState(() => new Date())
+  const family = useFamily()
 
   useEffect(() => {
     const controller = new AbortController()
@@ -120,11 +121,13 @@ export default function TripsPage() {
   }, [t])
 
   const groups = useMemo(() => {
-    const list = trips ?? []
+    const all = trips ?? []
+    const planning = all.filter(tr => tr.tentative && tr.end_date >= dateIn(tr.dest_tz, now))
+    const list = all.filter(tr => !planning.includes(tr))
     const ongoing = list.filter(tr => { const d = dateIn(tr.dest_tz, now); return tr.start_date <= d && d <= tr.end_date })
     const upcoming = list.filter(tr => tr.start_date > dateIn(tr.dest_tz, now)).sort((a, b) => a.start_date.localeCompare(b.start_date))
     const past = list.filter(tr => tr.end_date < dateIn(tr.dest_tz, now))
-    return { ongoing, upcoming, past }
+    return { planning, ongoing, upcoming, past }
   }, [trips, now])
 
   return (
@@ -138,10 +141,11 @@ export default function TripsPage() {
           <Plus size={16} /> {t('newTrip')}
         </button>
       </header>
-      {creating && <NewTrip onCancel={() => setCreating(false)} />}
+      <FamilyPanel people={family.people} onChange={family.reload} />
+      {creating && <NewTrip onCancel={() => setCreating(false)} people={family.people} />}
       {error && <p role="alert" className="mb-4 rounded-lg border border-red-700 bg-red-900/50 p-3 text-sm text-red-200">{error}</p>}
       {trips && trips.length === 0 && !creating && <p className="rounded-lg border border-gray-800 p-6 text-center text-gray-400">{t('empty')}</p>}
-      {(['ongoing', 'upcoming', 'past'] as const).map(g => groups[g].length > 0 && (
+      {(['ongoing', 'planning', 'upcoming', 'past'] as const).map(g => groups[g].length > 0 && (
         <section key={g} className="mb-8" aria-labelledby={`trips-${g}`}>
           <h2 id={`trips-${g}`} className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-400">{t(`group.${g}`)}</h2>
           <div className="grid gap-3 sm:grid-cols-2">{groups[g].map(tr => <TripCard key={tr.id} trip={tr} now={now} />)}</div>

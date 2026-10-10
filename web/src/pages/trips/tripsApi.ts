@@ -6,7 +6,24 @@ export type I18n = Partial<Record<Lang, string>>
 export type TripKind = 'race' | 'family' | 'holiday' | 'work' | 'other'
 export const TRIP_KINDS: TripKind[] = ['race', 'family', 'holiday', 'work', 'other']
 
-export interface Traveller { name: string; user_id?: number | null; child: boolean }
+export interface Traveller { name: string; person_id?: number | null; user_id?: number | null; child: boolean }
+
+/** A tentative date window; chosen = a candidate was picked and start/end hold it. */
+export interface Flex { from: string; to: string; nights: number; depart_days: number[]; chosen: boolean }
+
+export interface Clash {
+  kind: 'calendar' | 'race' | 'trip'
+  title?: string
+  title_i18n?: I18n
+  start: string
+  end: string
+  who?: string
+  id?: number
+}
+export interface Candidate { start: string; end: string; clashes: Clash[] }
+
+/** Someone on the family roster (with or without a Hytte account). */
+export interface Person { id: number; user_id: number | null; name: string; birth_year: number | null }
 export interface Phase { key: string; title: I18n; start: string; end: string }
 export interface Flight {
   phase: string; airline: string; flight_no: string; from: string; from_name: string; to: string; to_name: string
@@ -26,7 +43,7 @@ export interface Followup { title: I18n; detail: I18n; done: boolean }
 export interface TripRace { name: string; date: string; bib: string; result: string }
 
 export interface TripDoc {
-  title: I18n; summary: I18n; route: string[]; travellers: Traveller[]; race?: TripRace | null; phases: Phase[]
+  title: I18n; summary: I18n; route: string[]; travellers: Traveller[]; race?: TripRace | null; flex?: Flex | null; phases: Phase[]
   flights: Flight[]; stays: Stay[]; transport: Transport[]; days: Day[]; contacts: Contact[]; documents: DocumentItem[]
   notes: Note[]; followups: Followup[]
 }
@@ -42,7 +59,7 @@ export interface Trip {
 
 export interface TripSummary {
   id: number; kind: TripKind; title: I18n; start_date: string; end_date: string; dest_tz: string; route: string[]
-  travellers: string[] | null; open: number; total: number
+  travellers: string[] | null; tentative: boolean; open: number; total: number
 }
 
 export type TripInput = Pick<Trip, 'kind' | 'start_date' | 'end_date' | 'home_tz' | 'dest_tz' | 'share_family' | 'race_event_id' | 'result_id' | 'doc'>
@@ -69,6 +86,29 @@ export const addItem = (groupId: number, title: I18n, detail: I18n = {}, urgent 
 export const setItemDone = (id: number, done: boolean) =>
   request<{ status: string }>(`/api/trips/items/${id}/done`, { method: 'POST', body: JSON.stringify({ done }) })
 export const deleteItem = (id: number) => request<{ status: string }>(`/api/trips/items/${id}`, { method: 'DELETE' })
+export const fetchCandidates = (id: number, signal?: AbortSignal) => request<{ candidates: Candidate[] }>(`/api/trips/${id}/candidates`, { signal })
+
+export const fetchFamily = (signal?: AbortSignal) => request<{ people: Person[] }>('/api/family', { signal })
+export const addPerson = (name: string, birthYear: number | null) =>
+  request<{ id: number }>('/api/family', { method: 'POST', body: JSON.stringify({ name, birth_year: birthYear }) })
+export const updatePerson = (id: number, name: string, birthYear: number | null) =>
+  request<{ status: string }>(`/api/family/${id}`, { method: 'PUT', body: JSON.stringify({ name, birth_year: birthYear }) })
+export const deletePerson = (id: number) => request<{ status: string }>(`/api/family/${id}`, { method: 'DELETE' })
+
+/** Age on a date from the birth year alone (fare classes go by age on the travel date). */
+export function ageOn(birthYear: number | null, date: string): number | null {
+  if (!birthYear || !date) return null
+  return Number(date.slice(0, 4)) - birthYear
+}
+
+/** Whether a tentative trip's dates are still open. */
+export const isTentative = (t: { doc: TripDoc }) => !!t.doc.flex && !t.doc.flex.chosen
+
+/** Localized short weekday names, index 0 = Sunday. */
+export function weekdayNames(lang: Lang): string[] {
+  const fmt = new Intl.DateTimeFormat(intlLocale(lang), { weekday: 'short', timeZone: 'UTC' })
+  return Array.from({ length: 7 }, (_, i) => fmt.format(new Date(Date.UTC(2026, 10, 1 + i, 12))))
+}
 
 export function toLang(language: string | undefined): Lang {
   const base = (language || 'en').toLowerCase().split('-')[0]

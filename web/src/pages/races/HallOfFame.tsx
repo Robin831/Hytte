@@ -8,6 +8,8 @@ import {
   lookupTime, parseDuration, resultToInput, updateResult,
 } from './racesApi'
 import { useRaceFormat } from './useRaceFormat'
+import { useAuth } from '../../auth'
+import { type Person, fetchFamily } from '../trips/tripsApi'
 
 const DISTANCES: { key: PersonalBest['distance']; meters: number; tol: number }[] = [
   { key: '3k', meters: 3000, tol: 60 }, { key: '5k', meters: 5000, tol: 100 }, { key: '10k', meters: 10000, tol: 200 },
@@ -60,6 +62,13 @@ function ResultForm({ initial, onSaved, onCancel }: { initial?: RaceResult; onSa
   const { t } = useRaceFormat()
   const [form, setForm] = useState<ResultInput>(() => (initial ? resultToInput(initial) : emptyInput()))
   const [time, setTime] = useState(initial?.finish_seconds ? formatDuration(initial.finish_seconds) : '')
+  const { user } = useAuth()
+  const [family, setFamily] = useState<Person[]>([])
+  useEffect(() => {
+    const controller = new AbortController()
+    fetchFamily(controller.signal).then(d => setFamily(d.people ?? [])).catch(() => {})
+    return () => controller.abort()
+  }, [])
   const [error, setError] = useState('')
   const set = <K extends keyof ResultInput>(k: K, v: ResultInput[K]) => setForm(f => ({ ...f, [k]: v }))
   const timeInvalid = time.trim() !== '' && parseDuration(time) === null
@@ -121,7 +130,9 @@ function ResultForm({ initial, onSaved, onCancel }: { initial?: RaceResult; onSa
         </div>
         <div>
           <label className={label} htmlFor="res-person">{t('hall.runner')}</label>
-          <input id="res-person" className={input} value={form.person_name} placeholder={t('hall.me')} onChange={e => set('person_name', e.target.value)} />
+          <input id="res-person" className={input} value={form.person_name} placeholder={t('hall.me')} list="family-names"
+            onChange={e => set('person_name', e.target.value)} />
+          <datalist id="family-names">{family.filter(p => p.user_id !== user?.id).map(p => <option key={p.id} value={p.name} />)}</datalist>
         </div>
         <div>
           <label className={label} htmlFor="res-city">{t('hall.city')}</label>
