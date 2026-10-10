@@ -45,6 +45,7 @@ import (
 	"github.com/Robin831/Hytte/internal/tasks"
 	"github.com/Robin831/Hytte/internal/training"
 	"github.com/Robin831/Hytte/internal/transit"
+	"github.com/Robin831/Hytte/internal/trips"
 	"github.com/Robin831/Hytte/internal/vault"
 	"github.com/Robin831/Hytte/internal/wardrobe"
 	"github.com/Robin831/Hytte/internal/weather"
@@ -962,6 +963,23 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/offers/watchlist", offers.HandleAddWatch(db))
 				r.Delete("/offers/watchlist/{id}", offers.HandleDeleteWatch(db))
 				r.With(auth.RequireAdmin()).Post("/offers/refresh", offers.HandleRefresh(db))
+			})
+
+			// Trips — gated by "trips" feature. Access per trip: owner and
+			// travelling members edit; family sharing lets others view.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "trips"))
+				r.Get("/trips", trips.HandleList(db))
+				r.Post("/trips", trips.HandleCreate(db))
+				r.Get("/trips/{id}", trips.HandleGet(db))
+				r.Put("/trips/{id}", trips.HandleUpdate(db))
+				r.Delete("/trips/{id}", trips.HandleDelete(db))
+				r.Post("/trips/{id}/checklists", trips.HandleAddChecklist(db))
+				r.Delete("/trips/checklists/{id}", trips.HandleDeleteChecklist(db))
+				r.Post("/trips/checklists/{id}/items", trips.HandleAddItem(db))
+				r.Put("/trips/items/{id}", trips.HandleUpdateItem(db))
+				r.Post("/trips/items/{id}/done", trips.HandleToggleItem(db))
+				r.Delete("/trips/items/{id}", trips.HandleDeleteItem(db))
 			})
 
 			// Race catalog — gated by "races" feature. The catalog is shared,

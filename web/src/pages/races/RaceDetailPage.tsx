@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
-import { ArrowLeft, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowLeft, ExternalLink, Pencil, Plane, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '../../auth'
 import {
   type Change, type Deadline, type FamilyWatch, type HomeBase, type ResearchRun, type DeadlineKind, type Lang, type RaceEvent, type RaceStatus, type Watch, type WatchState,
@@ -11,6 +11,16 @@ import { StatusPill, TravelBadge } from './RaceParts'
 import { useRaceFormat } from './useRaceFormat'
 import RaceEditor, { DeadlineEditor } from './RaceEditor'
 import { ResearchStatus } from './Research'
+import { createTrip, emptyDoc } from '../trips/tripsApi'
+
+// Main time zone per country, for prefilling a race trip.
+const COUNTRY_TZ: Record<string, string> = {
+  NO: 'Europe/Oslo', SE: 'Europe/Stockholm', DK: 'Europe/Copenhagen', FI: 'Europe/Helsinki', GB: 'Europe/London', IE: 'Europe/Dublin',
+  NL: 'Europe/Amsterdam', DE: 'Europe/Berlin', FR: 'Europe/Paris', ES: 'Europe/Madrid', PT: 'Europe/Lisbon', IT: 'Europe/Rome',
+  CZ: 'Europe/Prague', AT: 'Europe/Vienna', PL: 'Europe/Warsaw', HU: 'Europe/Budapest', GR: 'Europe/Athens', TR: 'Europe/Istanbul',
+  SI: 'Europe/Ljubljana', LV: 'Europe/Riga', LT: 'Europe/Vilnius', EE: 'Europe/Tallinn', RO: 'Europe/Bucharest', TH: 'Asia/Bangkok',
+  JP: 'Asia/Tokyo', US: 'America/New_York', AU: 'Australia/Sydney',
+}
 import { StrideLink } from './StrideLink'
 import { type Rates, RatesContext, HomeContext, usePriceText } from './prices'
 import { FamilyList } from './Phase5'
@@ -94,6 +104,26 @@ export default function RaceDetailPage() {
     }
   }
 
+  // A race trip: the day before to the day after, linked to this race.
+  const planTrip = async () => {
+    if (!event) return
+    const day = (offset: number) => {
+      const d = new Date(event.race_date + 'T12:00:00Z')
+      d.setUTCDate(d.getUTCDate() + offset)
+      return d.toISOString().slice(0, 10)
+    }
+    try {
+      const res = await createTrip({
+        kind: 'race', start_date: day(-1), end_date: day(1), home_tz: 'Europe/Oslo', dest_tz: COUNTRY_TZ[event.country] ?? 'Europe/Oslo',
+        share_family: false, race_event_id: event.id, result_id: null,
+        doc: { ...emptyDoc(), title: { [lang]: event.name }, race: { name: event.name, date: event.race_date, bib: '', result: '' } },
+      })
+      navigate(`/trips/${res.id}`)
+    } catch {
+      setError(t('errors.save'))
+    }
+  }
+
   const removeRace = async () => {
     if (!event || !window.confirm(t('admin.confirmDelete', { name: event.name }))) return
     try {
@@ -158,6 +188,11 @@ export default function RaceDetailPage() {
             {event.series.map(s => <span key={s} className="rounded-full bg-gray-800 px-2.5 py-0.5 text-gray-300">{t(`series.${s}`)}</span>)}
           </div>
         </div>
+        {hasFeature('trips') && (
+          <button type="button" onClick={planTrip} className="mt-1 inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700 cursor-pointer">
+            <Plane size={14} /> {t('planTrip')}
+          </button>
+        )}
         {user?.is_admin && !editing && (
           <div className="flex gap-2">
             <button type="button" onClick={() => setEditing(true)} className="inline-flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-sm hover:bg-gray-700 cursor-pointer">

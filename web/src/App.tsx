@@ -78,6 +78,8 @@ import WardrobePage from './pages/WardrobePage'
 import OffersPage from './pages/OffersPage'
 import RacesPage from './pages/races/RacesPage'
 import RaceDetailPage from './pages/races/RaceDetailPage'
+import TripsPage from './pages/trips/TripsPage'
+import TripPage from './pages/trips/TripPage'
 import HomeworkPage from './pages/HomeworkPage'
 import HomeworkChat from './pages/HomeworkChat'
 import HomeworkSettings from './pages/HomeworkSettings'
@@ -598,6 +600,24 @@ function MainLayout() {
             element={
               <FeatureRoute feature="races">
                 <RaceDetailPage />
+              </FeatureRoute>
+            }
+          />
+
+          {/* Trip routes */}
+          <Route
+            path="/trips"
+            element={
+              <FeatureRoute feature="trips">
+                <TripsPage />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/trips/:id"
+            element={
+              <FeatureRoute feature="trips">
+                <TripPage />
               </FeatureRoute>
             }
           />

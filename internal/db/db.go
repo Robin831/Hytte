@@ -2348,6 +2348,58 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY (user_id, race_key, year)
 	);
 
+	-- Trips (internal/trips): doc is the encrypted trip content (flights,
+	-- stays, day plans, contacts, notes, all texts in nb/en/th). Members are
+	-- the Hytte users among the travellers; they can edit like the owner.
+	CREATE TABLE IF NOT EXISTS trips (
+		id            INTEGER PRIMARY KEY,
+		owner_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		kind          TEXT NOT NULL,
+		start_date    TEXT NOT NULL,
+		end_date      TEXT NOT NULL,
+		home_tz       TEXT NOT NULL,
+		dest_tz       TEXT NOT NULL,
+		share_family  INTEGER NOT NULL DEFAULT 0,
+		race_event_id INTEGER REFERENCES race_events(id) ON DELETE SET NULL,
+		result_id     INTEGER REFERENCES race_results(id) ON DELETE SET NULL,
+		doc           TEXT NOT NULL,
+		created_at    TEXT NOT NULL,
+		updated_at    TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_trips_owner ON trips(owner_id, start_date);
+
+	CREATE TABLE IF NOT EXISTS trip_members (
+		trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+		user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		PRIMARY KEY (trip_id, user_id)
+	);
+
+	-- Checklists are rows so several travellers can tick at once; texts are
+	-- encrypted JSON in nb/en/th, done_by records who ticked.
+	CREATE TABLE IF NOT EXISTS trip_check_groups (
+		id       INTEGER PRIMARY KEY,
+		trip_id  INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+		phase    TEXT NOT NULL DEFAULT '',
+		title    TEXT NOT NULL,
+		position INTEGER NOT NULL DEFAULT 0
+	);
+
+	CREATE TABLE IF NOT EXISTS trip_check_items (
+		id           INTEGER PRIMARY KEY,
+		group_id     INTEGER NOT NULL REFERENCES trip_check_groups(id) ON DELETE CASCADE,
+		trip_id      INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+		texts        TEXT NOT NULL,
+		urgent       INTEGER NOT NULL DEFAULT 0,
+		done         INTEGER NOT NULL DEFAULT 0,
+		done_by      INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		done_by_name TEXT NOT NULL DEFAULT '',
+		done_at      TEXT NOT NULL DEFAULT '',
+		position     INTEGER NOT NULL DEFAULT 0
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_trip_check_items_trip ON trip_check_items(trip_id);
+
 	-- App-wide settings for the race catalog (research limits). Shared, so
 	-- not per-user preferences.
 	CREATE TABLE IF NOT EXISTS race_settings (

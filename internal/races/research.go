@@ -130,6 +130,39 @@ func researchConfig(ctx context.Context, db *sql.DB) (*training.ClaudeConfig, Re
 	return nil, settings, ErrResearchNoClaude
 }
 
+// TranslationModel is the cheap model used for background translation.
+const TranslationModel = "claude-haiku-4-5-20251001"
+
+// BackgroundClaude returns a Claude config for small background jobs (e.g.
+// translating trip texts) with the given model, or an error when research is
+// off, no admin has Claude, or today's/this month's budget is used up — the
+// same guard rails as the research job, so all Claude spend shows in one place.
+func BackgroundClaude(ctx context.Context, db *sql.DB, model string) (*training.ClaudeConfig, error) {
+	cfg, err := DefaultResearcher(db).checkBudget(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c := *cfg
+	c.Model = model
+	return &c, nil
+}
+
+// LogBackgroundRun records a finished background Claude call in the research
+// log (so it counts toward the budget and shows in the spend view).
+func LogBackgroundRun(ctx context.Context, db *sql.DB, kind string, userID int64, cost float64, changes int, summary, errText string) {
+	r := DefaultResearcher(db)
+	id, err := r.beginRun(ctx, kind, nil, "manual", userID)
+	if err != nil {
+		log.Printf("races: log background run: %v", err)
+		return
+	}
+	status := "done"
+	if errText != "" {
+		status = "failed"
+	}
+	r.finishRun(id, status, cost, changes, summary, nil, errText)
+}
+
 func (r *Researcher) now() time.Time {
 	if r.Now != nil {
 		return r.Now()
