@@ -54,6 +54,10 @@ const PREF_KEY_SECTIONS: Record<string, string> = {
   offers_notify: 'offers',
   races_notify_deadlines: 'races',
   races_notify_changes: 'races',
+  races_calendar_sync: 'races',
+  races_calendar_id: 'races',
+  athlete_birth_year: 'races',
+  athlete_sex: 'races',
 }
 
 function sectionForPrefKey(key: string): string {
@@ -363,7 +367,7 @@ function Settings() {
             </span>
           }
         >
-          <RacesSection preferences={preferences} saving={saving} savePreference={savePreference} />
+          <RacesSection preferences={preferences} saving={saving} savePreference={savePreference} calendarEnabled={hasFeature('calendar')} />
         </CollapsibleSection>
       )}
 

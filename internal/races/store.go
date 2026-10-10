@@ -336,7 +336,13 @@ func UpdateEvent(ctx context.Context, db *sql.DB, id int64, in EventInput, sourc
 	if err != nil {
 		return nil, nil, err
 	}
-	return e, diffs, tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return nil, nil, err
+	}
+	if old.RaceDate != in.RaceDate {
+		syncStrideDates(ctx, db, id, old.RaceDate, in.RaceDate)
+	}
+	return e, diffs, nil
 }
 
 // DeleteEvent removes a race and (by cascade) its deadlines, changes and watches.

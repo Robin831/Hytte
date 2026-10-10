@@ -75,28 +75,59 @@ describe('ResearchStatus', () => {
   })
 })
 
+// recharts measures its container; give it a size under happy-dom.
+vi.mock('recharts', async () => {
+  const actual = await vi.importActual<typeof import('recharts')>('recharts')
+  return {
+    ...actual,
+    ResponsiveContainer: ({ children }: { children: React.ReactElement }) => <div style={{ width: 600, height: 200 }}>{children}</div>,
+  }
+})
+
+const SETTINGS = { enabled: true, discovery_enabled: true, model: 'claude-sonnet-5-5', daily_budget_usd: 5, monthly_budget_usd: 60, nightly_max_races: 12 }
+const STATS = {
+  today_usd: 1.2, last_7_days_usd: 3.4, month_to_date_usd: 9.5, last_30_days_usd: 12, all_time_usd: 20,
+  race_checks_30d: 40, discoveries_30d: 4, avg_race_check_usd: 0.25, changes_30d: 31,
+  daily: Array.from({ length: 30 }, (_, i) => ({ date: `2026-09-${String(i + 1).padStart(2, '0')}`, cost_usd: i === 29 ? 1.2 : 0, runs: i === 29 ? 3 : 0 })),
+}
+
 describe('ResearchLogPanel', () => {
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
   })
 
-  it('shows spend, runs and starts a discovery pass', async () => {
-    const calls = installFetch((_url, init) => {
+  it('shows spend against the caps, the runs, saves limits and starts a discovery pass', async () => {
+    let saved: unknown = null
+    const calls = installFetch((url, init) => {
+      if (url === '/api/races/research/settings' && init?.method === 'PUT') {
+        saved = JSON.parse(String(init.body))
+        return { status: 200, body: { settings: saved } }
+      }
       if (init?.method === 'POST') return { status: 202, body: { run: run({ id: 9, kind: 'discover', event_id: null, status: 'running' }) } }
       return {
         status: 200,
         body: {
-          spent_today_usd: 1.2, budget_usd: 5, model: 'claude-sonnet-5-5',
+          stats: STATS, settings: SETTINGS, models: ['claude-haiku-4-5-20251001', 'claude-sonnet-5-5', 'claude-opus-5-5'],
           runs: [run({ status: 'done', changes: 2, summary: 'Price went up.' }), run({ id: 3, status: 'failed', error: 'timeout' })],
         },
       }
     })
     render(<MemoryRouter><ResearchLogPanel /></MemoryRouter>)
-    expect(await screen.findByText(/research.spend:\$1.20\/\$5.00/)).toBeInTheDocument()
+    expect(await screen.findByText('research.today')).toBeInTheDocument()
+    expect(screen.getAllByText('$1.20').length).toBeGreaterThan(0) // today (tile and table)
+    expect(screen.getAllByText('/ $5.00').length).toBe(1) // daily cap
+    expect(screen.getByText('$9.50')).toBeInTheDocument() // month
+    expect(screen.getByRole('img', { name: 'research.dailyChart' })).toBeInTheDocument()
     expect(screen.getAllByRole('link', { name: 'Berlin Marathon' })).toHaveLength(2)
     expect(screen.getByText(/Price went up\./)).toBeInTheDocument()
     expect(screen.getByText('timeout')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('research.dailyBudget'), { target: { value: '2.5' } })
+    fireEvent.change(screen.getByLabelText('research.model'), { target: { value: 'claude-haiku-4-5-20251001' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'admin.save' })) })
+    expect(saved).toEqual({ ...SETTINGS, daily_budget_usd: 2.5, model: 'claude-haiku-4-5-20251001' })
+    expect(screen.getByRole('status')).toHaveTextContent('watch.saved')
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /research.discover/ })) })
     expect(calls.some(c => c.method === 'POST' && c.url === '/api/races/research/discover')).toBe(true)

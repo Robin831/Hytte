@@ -2280,6 +2280,28 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY (user_id, deadline_id, slot, due_key)
 	);
 
+	-- Google Calendar events Hytte created for a user's tracked races
+	-- (races.SyncCalendar): item_key is "race:<event id>" or
+	-- "deadline:<deadline id>"; synced_hash detects when an update is due.
+	CREATE TABLE IF NOT EXISTS race_calendar_events (
+		user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		item_key        TEXT NOT NULL,
+		calendar_id     TEXT NOT NULL,
+		google_event_id TEXT NOT NULL,
+		synced_hash     TEXT NOT NULL,
+		synced_at       TEXT NOT NULL,
+		PRIMARY KEY (user_id, item_key)
+	);
+
+	-- App-wide settings for the race catalog (research limits). Shared, so
+	-- not per-user preferences.
+	CREATE TABLE IF NOT EXISTS race_settings (
+		key        TEXT PRIMARY KEY,
+		value      TEXT NOT NULL,
+		updated_at TEXT NOT NULL DEFAULT '',
+		updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+	);
+
 	-- Automatic research (races.Researcher): one row per Claude call that
 	-- checked a race (kind 'race', event_id set) or looked for missing races
 	-- (kind 'discover'). Drives the research log, the daily cost cap and the

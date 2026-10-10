@@ -13,7 +13,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/Robin831/Hytte/internal/training"
 )
 
@@ -24,12 +23,10 @@ import (
 // change notifications like any manual edit.
 
 const (
-	// DefaultResearchModel is used unless the admin sets races_research_model.
+	// DefaultResearchModel is used until an admin picks another in the
+	// research settings.
 	DefaultResearchModel = "claude-sonnet-5-5"
-	PrefResearchModel    = "races_research_model"
-	// PrefResearchBudget is the admin's daily research spend cap in USD.
-	PrefResearchBudget = "races_research_daily_usd"
-	defaultDailyBudget = 5.0
+	defaultDailyBudget   = 5.0
 
 	raceResearchTimeout     = 8 * time.Minute
 	discoverResearchTimeout = 15 * time.Minute
@@ -54,6 +51,8 @@ var (
 	ErrResearchBusy     = errors.New("a check of this race is already running")
 	ErrResearchCooldown = errors.New("this race was checked recently")
 	ErrResearchBudget   = errors.New("today's research budget is used up")
+	ErrResearchMonthly  = errors.New("this month's research budget is used up")
+	ErrResearchDisabled = errors.New("automatic research is turned off")
 	ErrResearchNoClaude = errors.New("no admin has Claude enabled")
 )
 
@@ -79,7 +78,7 @@ type ResearchRun struct {
 type Researcher struct {
 	DB     *sql.DB
 	Run    func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, float64, error)
-	Config func(ctx context.Context, db *sql.DB) (*training.ClaudeConfig, float64, error)
+	Config func(ctx context.Context, db *sql.DB) (*training.ClaudeConfig, ResearchSettings, error)
 	Now    func() time.Time
 
 	mu sync.Mutex // serializes Claude calls: scheduled and manual share it
@@ -99,20 +98,23 @@ func DefaultResearcher(db *sql.DB) *Researcher {
 	return defaultResearcher
 }
 
-// researchConfig borrows the first Claude-enabled admin's CLI setup, with
-// the research model (default Sonnet: the job runs nightly over many races)
-// and the daily budget from their preferences.
-func researchConfig(ctx context.Context, db *sql.DB) (*training.ClaudeConfig, float64, error) {
+// researchConfig borrows the first Claude-enabled admin's CLI setup and
+// applies the app-wide research settings (model, limits).
+func researchConfig(ctx context.Context, db *sql.DB) (*training.ClaudeConfig, ResearchSettings, error) {
+	settings, err := LoadResearchSettings(ctx, db)
+	if err != nil {
+		return nil, settings, err
+	}
 	rows, err := db.QueryContext(ctx, `SELECT id FROM users WHERE is_admin = 1 ORDER BY id`)
 	if err != nil {
-		return nil, 0, err
+		return nil, settings, err
 	}
 	var admins []int64
 	for rows.Next() {
 		var id int64
 		if err := rows.Scan(&id); err != nil {
 			rows.Close()
-			return nil, 0, err
+			return nil, settings, err
 		}
 		admins = append(admins, id)
 	}
@@ -122,18 +124,10 @@ func researchConfig(ctx context.Context, db *sql.DB) (*training.ClaudeConfig, fl
 		if err != nil || !cfg.Enabled {
 			continue
 		}
-		prefs, _ := auth.GetPreferences(db, id)
-		cfg.Model = DefaultResearchModel
-		if m := prefs[PrefResearchModel]; m != "" {
-			cfg.Model = m
-		}
-		budget := defaultDailyBudget
-		if b, err := strconv.ParseFloat(prefs[PrefResearchBudget], 64); err == nil && b >= 0 {
-			budget = b
-		}
-		return cfg, budget, nil
+		cfg.Model = settings.Model
+		return cfg, settings, nil
 	}
-	return nil, 0, ErrResearchNoClaude
+	return nil, settings, ErrResearchNoClaude
 }
 
 func (r *Researcher) now() time.Time {
@@ -164,16 +158,27 @@ func (r *Researcher) SpentToday(ctx context.Context) (float64, error) {
 }
 
 func (r *Researcher) checkBudget(ctx context.Context) (*training.ClaudeConfig, error) {
-	cfg, budget, err := r.Config(ctx, r.DB)
+	cfg, settings, err := r.Config(ctx, r.DB)
 	if err != nil {
 		return nil, err
+	}
+	if !settings.Enabled {
+		return nil, ErrResearchDisabled
 	}
 	spent, err := r.SpentToday(ctx)
 	if err != nil {
 		return nil, err
 	}
-	if spent >= budget {
+	if spent >= settings.DailyBudgetUSD {
 		return nil, ErrResearchBudget
+	}
+	var month float64
+	if err := r.DB.QueryRowContext(ctx, `SELECT COALESCE(SUM(cost_usd), 0) FROM race_research_runs WHERE started_at >= ?`,
+		ts(osloMonthStart(r.now()))).Scan(&month); err != nil {
+		return nil, err
+	}
+	if month >= settings.MonthlyBudgetUSD {
+		return nil, ErrResearchMonthly
 	}
 	return cfg, nil
 }
@@ -641,7 +646,14 @@ func (r *Researcher) pickNightly(ctx context.Context, now time.Time, limit int) 
 // Nightly re-checks due races within the budget and, about weekly, runs a
 // discovery pass. It returns when done or when the budget runs out.
 func (r *Researcher) Nightly(ctx context.Context) error {
-	ids, err := r.pickNightly(ctx, r.now(), nightlyMaxRaces)
+	_, settings, err := r.Config(ctx, r.DB)
+	if err != nil {
+		return err
+	}
+	if !settings.Enabled {
+		return nil
+	}
+	ids, err := r.pickNightly(ctx, r.now(), settings.NightlyMaxRaces)
 	if err != nil {
 		return err
 	}
@@ -666,7 +678,7 @@ func (r *Researcher) Nightly(ctx context.Context) error {
 		Scan(&last); err != nil {
 		return err
 	}
-	if t, _ := time.Parse(time.RFC3339, last); r.now().Sub(t) >= discoverEvery {
+	if t, _ := time.Parse(time.RFC3339, last); settings.DiscoveryEnabled && r.now().Sub(t) >= discoverEvery {
 		cfg, err := r.checkBudget(ctx)
 		if err != nil {
 			return err

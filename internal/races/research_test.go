@@ -13,14 +13,16 @@ import (
 )
 
 func testResearcher(t *testing.T, d *sql.DB, reply func(prompt string) (string, float64, error), budget float64) *Researcher {
+	settings := DefaultResearchSettings
+	settings.DailyBudgetUSD = budget
 	t.Helper()
 	return &Researcher{
 		DB: d,
 		Run: func(_ context.Context, _ *training.ClaudeConfig, prompt string) (string, float64, error) {
 			return reply(prompt)
 		},
-		Config: func(context.Context, *sql.DB) (*training.ClaudeConfig, float64, error) {
-			return &training.ClaudeConfig{Enabled: true, CLIPath: "claude", Model: DefaultResearchModel}, budget, nil
+		Config: func(context.Context, *sql.DB) (*training.ClaudeConfig, ResearchSettings, error) {
+			return &training.ClaudeConfig{Enabled: true, CLIPath: "claude", Model: DefaultResearchModel}, settings, nil
 		},
 		Now: time.Now,
 	}

@@ -1,14 +1,17 @@
 package races
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/calendar"
 	"github.com/Robin831/Hytte/internal/currency"
 	"github.com/go-chi/chi/v5"
 )
@@ -149,6 +152,7 @@ func HandleSetWatch(db *sql.DB) http.HandlerFunc {
 			writeStoreError(w, err, "race")
 			return
 		}
+		SyncUserCalendarSoon(db, user.ID)
 		writeJSON(w, http.StatusOK, map[string]any{"watch": watch})
 	}
 }
@@ -166,6 +170,7 @@ func HandleDeleteWatch(db *sql.DB) http.HandlerFunc {
 			writeStoreError(w, err, "watch")
 			return
 		}
+		SyncUserCalendarSoon(db, user.ID)
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }
@@ -293,7 +298,8 @@ func writeResearchError(w http.ResponseWriter, err error) {
 		writeError(w, http.StatusNotFound, "race not found")
 	case errors.Is(err, ErrResearchBusy):
 		writeError(w, http.StatusConflict, err.Error())
-	case errors.Is(err, ErrResearchCooldown), errors.Is(err, ErrResearchBudget):
+	case errors.Is(err, ErrResearchCooldown), errors.Is(err, ErrResearchBudget), errors.Is(err, ErrResearchMonthly),
+		errors.Is(err, ErrResearchDisabled):
 		writeError(w, http.StatusTooManyRequests, err.Error())
 	case errors.Is(err, ErrResearchNoClaude):
 		writeError(w, http.StatusServiceUnavailable, err.Error())
@@ -346,17 +352,116 @@ func HandleResearchLog(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		res := DefaultResearcher(db)
-		spent, err := res.SpentToday(r.Context())
+		stats, err := ComputeSpendStats(r.Context(), db, res.now())
 		if err != nil {
-			log.Printf("races: research spend: %v", err)
+			log.Printf("races: research stats: %v", err)
 		}
-		resp := map[string]any{"runs": runs, "spent_today_usd": spent}
-		if cfg, budget, err := res.Config(r.Context(), db); err == nil {
-			resp["budget_usd"] = budget
-			resp["model"] = cfg.Model
-		} else {
+		settings, err := LoadResearchSettings(r.Context(), db)
+		if err != nil {
+			log.Printf("races: research settings: %v", err)
+		}
+		resp := map[string]any{"runs": runs, "stats": stats, "settings": settings, "models": ResearchModels}
+		if _, _, err := res.Config(r.Context(), db); err != nil {
 			resp["config_error"] = err.Error()
 		}
 		writeJSON(w, http.StatusOK, resp)
+	}
+}
+
+// HandleSaveResearchSettings stores the app-wide research limits. Admin-only.
+func HandleSaveResearchSettings(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		var in ResearchSettings
+		if !decode(w, r, &in) {
+			return
+		}
+		if err := SaveResearchSettings(r.Context(), db, in, user.ID); err != nil {
+			writeStoreError(w, err, "research settings")
+			return
+		}
+		saved, err := LoadResearchSettings(r.Context(), db)
+		if err != nil {
+			log.Printf("races: reload research settings: %v", err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"settings": saved})
+	}
+}
+
+// HandleLinkStride adds a catalog race to the user's Stride races.
+func HandleLinkStride(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid race ID")
+			return
+		}
+		var in StrideLinkInput
+		if !decode(w, r, &in) {
+			return
+		}
+		watch, sr, err := LinkToStride(r.Context(), db, user.ID, id, in)
+		switch {
+		case errors.Is(err, ErrNoStride):
+			writeError(w, http.StatusForbidden, err.Error())
+			return
+		case errors.Is(err, ErrAlreadyLinked):
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		case err != nil:
+			writeStoreError(w, err, "race")
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"watch": watch, "stride_race": sr})
+	}
+}
+
+// HandleUnlinkStride removes the Stride link; ?delete=1 also deletes the
+// Stride race.
+func HandleUnlinkStride(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid race ID")
+			return
+		}
+		err := UnlinkFromStride(r.Context(), db, user.ID, id, r.URL.Query().Get("delete") == "1")
+		switch {
+		case errors.Is(err, ErrNotLinked):
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		case err != nil:
+			writeStoreError(w, err, "watch")
+			return
+		}
+		watch, err := GetWatch(r.Context(), db, user.ID, id)
+		if err != nil {
+			writeStoreError(w, err, "watch")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"watch": watch})
+	}
+}
+
+// HandleCalendarSync syncs the user's Google Calendar now (after turning the
+// setting on or off, or changing calendars) and reports what changed.
+func HandleCalendarSync(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if ok, err := auth.HasGoogleToken(db, user.ID); err != nil || !ok {
+			writeError(w, http.StatusConflict, "google calendar is not connected")
+			return
+		}
+		ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+		defer cancel()
+		res, err := SyncCalendar(ctx, db, calendar.NewClient(db), user.ID, time.Now())
+		if err != nil {
+			log.Printf("races: calendar sync for user %d: %v", user.ID, err)
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "calendar sync failed", "result": res})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"result": res})
 	}
 }

@@ -11,13 +11,14 @@ import { StatusPill, TravelBadge } from './RaceParts'
 import { useRaceFormat } from './useRaceFormat'
 import RaceEditor, { DeadlineEditor } from './RaceEditor'
 import { ResearchStatus } from './Research'
+import { StrideLink } from './StrideLink'
 import { type Rates, RatesContext, usePriceText } from './prices'
 
 export default function RaceDetailPage() {
   const { id } = useParams()
   const raceId = Number(id)
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, hasFeature } = useAuth()
   const { t, lang, fuzzy } = useRaceFormat()
 
   const [event, setEvent] = useState<RaceEvent | null>(null)
@@ -226,6 +227,9 @@ export default function RaceDetailPage() {
               {t('watch.track')}
             </button>
           </div>
+        )}
+        {hasFeature('stride') && (
+          <StrideLink eventId={event.id} watch={watch} onChange={w => { setWatchState(w); setNotes(w.notes) }} />
         )}
       </section>
 

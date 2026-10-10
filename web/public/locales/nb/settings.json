@@ -282,7 +282,21 @@
     "deadlinesDescription": "Et varsel 7 dager og 1 dag før frister for løp du følger, og et siste samme dag. Påminnelser som ville havnet i stilletiden din, kommer like før den starter.",
     "changesTitle": "Endringer i løp",
     "changesDescription": "Et varsel når et løp du følger, endrer status, dato eller frister.",
-    "pushHint": "Krever push-abonnement — slå på push-varsler under Varsler først."
+    "pushHint": "Krever push-abonnement — slå på push-varsler under Varsler først.",
+    "calendarTitle": "Legg til i Google Kalender",
+    "calendarDescription": "Løpsdager du er påmeldt og fristene som gjelder løpene dine legges i kalenderen og holdes oppdatert.",
+    "calendarWhich": "Kalender",
+    "calendarPrimary": "Hovedkalender",
+    "calendarSyncNow": "Synkroniser nå",
+    "calendarResult": "Synkronisert: {{created}} lagt til, {{updated}} oppdatert, {{deleted}} fjernet.",
+    "calendarFailed": "Synkroniseringen mislyktes. Prøv igjen senere.",
+    "calendarNotConnected": "Koble til Google Kalender under Kalender for å legge løpsdager og frister inn der.",
+    "athleteTitle": "Løperprofil",
+    "athleteDescription": "Brukes til å finne aldersgruppen din for kvalifiseringstider på Sesong-fanen.",
+    "birthYear": "Fødselsår",
+    "sex": "Kjønn",
+    "female": "Kvinne",
+    "male": "Mann"
   },
   "kioskTokens": {
     "heading": "Kiosktokens",

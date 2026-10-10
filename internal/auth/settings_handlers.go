@@ -282,8 +282,10 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"races_notify_deadlines":          true,
 			"races_notify_changes":            true,
 			"ui_language":                     true,
-			"races_research_model":            true,
-			"races_research_daily_usd":        true,
+			"races_calendar_sync":             true,
+			"races_calendar_id":               true,
+			"athlete_birth_year":              true,
+			"athlete_sex":                     true,
 		}
 
 		// Integer range keys: HR/pace, work hours, budget preferences, and other numeric settings.
@@ -479,17 +481,26 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": k + ` must be "true" or "false"`})
 				return
 			}
-			// Validate the race research settings: a Claude model id, and a
-			// daily spend cap in USD.
-			if k == "races_research_model" && v != "" && (!strings.HasPrefix(v, "claude-") || len(v) > 80 || strings.ContainsAny(v, " \t\n;&|$`")) {
-				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "races_research_model must be a Claude model id"})
+			// Validate the race calendar sync settings: an on/off switch and a
+			// Google calendar id.
+			if k == "races_calendar_sync" && v != "" && v != "true" && v != "false" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": `races_calendar_sync must be "true" or "false"`})
 				return
 			}
-			if k == "races_research_daily_usd" && v != "" {
-				if f, err := strconv.ParseFloat(v, 64); err != nil || f < 0 || f > 100 {
-					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "races_research_daily_usd must be a number from 0 to 100"})
+			if k == "races_calendar_id" && (len(v) > 255 || strings.ContainsAny(v, "\r\n")) {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "races_calendar_id is not a calendar id"})
+				return
+			}
+			// Validate the athlete profile used for qualifying-time checks.
+			if k == "athlete_birth_year" && v != "" {
+				if y, err := strconv.Atoi(v); err != nil || y < 1900 || y > time.Now().Year() {
+					writeJSON(w, http.StatusBadRequest, map[string]string{"error": "athlete_birth_year must be a year"})
 					return
 				}
+			}
+			if k == "athlete_sex" && v != "" && v != "male" && v != "female" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": `athlete_sex must be "male" or "female"`})
+				return
 			}
 			// Validate ui_language: server-rendered texts (push notifications)
 			// only exist in the app's languages.

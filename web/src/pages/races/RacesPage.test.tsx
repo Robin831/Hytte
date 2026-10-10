@@ -18,7 +18,10 @@ vi.mock('react-i18next', () => ({
   initReactI18next: { type: '3rdParty', init: () => {} },
 }))
 
-const authState: { user: object | null } = { user: { id: 1, is_admin: false } }
+const authState: { user: object | null; hasFeature: (f: string) => boolean } = {
+  user: { id: 1, is_admin: false },
+  hasFeature: () => false,
+}
 vi.mock('../../auth', () => ({ useAuth: () => authState }))
 
 function race(over: Partial<RaceEvent>): RaceEvent {

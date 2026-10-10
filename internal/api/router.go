@@ -972,6 +972,9 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/races/{id}", races.HandleGet(db))
 				r.Put("/races/{id}/watch", races.HandleSetWatch(db))
 				r.Post("/races/{id}/research", races.HandleStartResearch(db))
+				r.Post("/races/{id}/stride", races.HandleLinkStride(db))
+				r.Delete("/races/{id}/stride", races.HandleUnlinkStride(db))
+				r.Post("/races/calendar/sync", races.HandleCalendarSync(db))
 				r.Delete("/races/{id}/watch", races.HandleDeleteWatch(db))
 				r.Group(func(r chi.Router) {
 					r.Use(auth.RequireAdmin())
@@ -983,6 +986,7 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Delete("/races/deadlines/{id}", races.HandleDeleteDeadline(db))
 					r.Get("/races/research/runs", races.HandleResearchLog(db))
 					r.Post("/races/research/discover", races.HandleStartDiscovery(db))
+					r.Put("/races/research/settings", races.HandleSaveResearchSettings(db))
 				})
 			})
 

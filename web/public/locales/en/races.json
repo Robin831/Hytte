@@ -6,6 +6,7 @@
   "nokNote": "Amounts marked ≈ are converted to kroner at today's Norges Bank rate.",
   "tabs": {
     "mine": "My races",
+    "season": "Season",
     "discover": "Discover",
     "deadlines": "Deadlines",
     "research": "Research"
@@ -238,6 +239,78 @@
     "trigger": {
       "manual": "manual",
       "scheduled": "nightly"
+    },
+    "monthly": "This month’s research budget is used up.",
+    "disabled": "Automatic research is turned off.",
+    "spendTitle": "Spending",
+    "today": "Today",
+    "thisMonth": "This month",
+    "last7": "Last 7 days",
+    "allTime": "All time",
+    "last30": "Last 30 days: {{cost}} on {{checks}} race checks (avg {{avg}}) and {{discoveries}} searches for new races; {{changes}} changes applied.",
+    "dailyChart": "Spend per day, last 30 days",
+    "cost": "Cost",
+    "runs_one": "{{count}} run",
+    "runs_other": "{{count}} runs",
+    "dailyCap": "Daily cap",
+    "asTable": "Show as table",
+    "date": "Date",
+    "runsCol": "Runs",
+    "limits": "Limits",
+    "enabled": "Automatic research on",
+    "discoveryEnabled": "Search for new races weekly",
+    "model": "Model",
+    "modelHint": "Sonnet is a good balance; Opus is more thorough and costs several times more.",
+    "nightly": "Races per night",
+    "nightlyHint": "0 turns off the nightly checks (manual checks still work).",
+    "dailyBudget": "Daily cap (USD)",
+    "monthlyBudget": "Monthly cap (USD)",
+    "log": "Recent runs"
+  },
+  "stride": {
+    "add": "Add to Stride",
+    "linked": "In Stride",
+    "open": "Open Stride",
+    "remove": "Remove from Stride",
+    "confirmDelete": "Also delete the race from Stride? OK deletes it (it leaves your training plan); Cancel only removes the link.",
+    "already": "This race is already in Stride.",
+    "priority": "Priority",
+    "target": "Target time",
+    "priorityA": "A: the main goal — the plan builds and tapers for it.",
+    "priorityB": "B: an important race, trained through with a light taper.",
+    "priorityC": "C: a training race, no taper.",
+    "suggest": "You’re registered — add it to Stride so your plan builds towards it."
+  },
+  "season": {
+    "title": "Your season",
+    "intro": "Races you’re registered for (solid) and considering (dashed), with the time between them.",
+    "empty": "No upcoming races planned yet. Set a race to Planning, In the lottery, Got a place or Registered to see it here.",
+    "weeksBetween_one": "{{count}} week later",
+    "weeksBetween_other": "{{count}} weeks later",
+    "priority": "{{priority}}-race",
+    "legend": "Spacing warnings are rules of thumb; your Stride plan knows your training best.",
+    "warning": {
+      "sameWeek": "Two races in the same week.",
+      "marathonGap": "Less than 8 weeks after another marathon — little time to recover and build again.",
+      "shortRecovery": "Less than 3 weeks between a marathon and a half — treat one of them as an easy run.",
+      "aRaceGap": "Two A-race marathons less than 12 weeks apart — hard to peak for both."
     }
+  },
+  "qualifying": {
+    "title": "Qualifying times",
+    "basedOn": "Compared with your predicted marathon time of {{time}} (from Training).",
+    "noPrediction": "No marathon prediction yet — refresh it under Training → Predictions.",
+    "noTraining": "Turn on Training to compare with your predicted marathon time.",
+    "needProfile": "Add your birth year and sex to see your age group.",
+    "openSettings": "Settings",
+    "standard": "Standard {{time}} (age {{age}})",
+    "none": "No time standard for this race.",
+    "source": "Organizer’s rules",
+    "unverified": "not yet confirmed for this edition",
+    "kind": {
+      "qualifier": "Qualifying time",
+      "guaranteed_entry": "Guaranteed entry"
+    },
+    "disclaimer": "Standards researched from the organizers on {{date}}. Age is estimated from your birth year and can be a year off. Check the rules before you apply."
   }
 }

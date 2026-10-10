@@ -6,6 +6,7 @@
   "nokNote": "Beløp merket ≈ er regnet om til kroner etter dagens kurs fra Norges Bank.",
   "tabs": {
     "mine": "Mine løp",
+    "season": "Sesong",
     "discover": "Utforsk",
     "deadlines": "Frister",
     "research": "Research"
@@ -238,6 +239,78 @@
     "trigger": {
       "manual": "manuell",
       "scheduled": "nattlig"
+    },
+    "monthly": "Månedens budsjett for research er brukt opp.",
+    "disabled": "Automatisk research er slått av.",
+    "spendTitle": "Forbruk",
+    "today": "I dag",
+    "thisMonth": "Denne måneden",
+    "last7": "Siste 7 dager",
+    "allTime": "Totalt",
+    "last30": "Siste 30 dager: {{cost}} på {{checks}} løpssjekker (snitt {{avg}}) og {{discoveries}} søk etter nye løp; {{changes}} endringer lagt inn.",
+    "dailyChart": "Forbruk per dag, siste 30 dager",
+    "cost": "Kostnad",
+    "runs_one": "{{count}} kjøring",
+    "runs_other": "{{count}} kjøringer",
+    "dailyCap": "Daglig tak",
+    "asTable": "Vis som tabell",
+    "date": "Dato",
+    "runsCol": "Kjøringer",
+    "limits": "Grenser",
+    "enabled": "Automatisk research på",
+    "discoveryEnabled": "Søk etter nye løp hver uke",
+    "model": "Modell",
+    "modelHint": "Sonnet er en god balanse; Opus er grundigere og koster flere ganger så mye.",
+    "nightly": "Løp per natt",
+    "nightlyHint": "0 slår av de nattlige sjekkene (manuelle sjekker virker fortsatt).",
+    "dailyBudget": "Daglig tak (USD)",
+    "monthlyBudget": "Månedlig tak (USD)",
+    "log": "Siste kjøringer"
+  },
+  "stride": {
+    "add": "Legg til i Stride",
+    "linked": "I Stride",
+    "open": "Åpne Stride",
+    "remove": "Fjern fra Stride",
+    "confirmDelete": "Vil du også slette løpet i Stride? OK sletter det (det forsvinner fra treningsplanen); Avbryt fjerner bare koblingen.",
+    "already": "Løpet er allerede i Stride.",
+    "priority": "Prioritet",
+    "target": "Måltid",
+    "priorityA": "A: hovedmålet — planen bygger opp og trapper ned mot det.",
+    "priorityB": "B: et viktig løp, trent gjennom med lett nedtrapping.",
+    "priorityC": "C: et treningsløp, uten nedtrapping.",
+    "suggest": "Du er påmeldt — legg løpet til i Stride så planen bygger mot det."
+  },
+  "season": {
+    "title": "Din sesong",
+    "intro": "Løp du er påmeldt (heltrukket) og vurderer (stiplet), med tiden mellom dem.",
+    "empty": "Ingen kommende løp planlagt ennå. Sett et løp til Planlegger, Med i trekningen, Fikk plass eller Påmeldt for å se det her.",
+    "weeksBetween_one": "{{count}} uke senere",
+    "weeksBetween_other": "{{count}} uker senere",
+    "priority": "{{priority}}-løp",
+    "legend": "Advarslene om avstand er tommelfingerregler; Stride-planen kjenner treningen din best.",
+    "warning": {
+      "sameWeek": "To løp i samme uke.",
+      "marathonGap": "Mindre enn 8 uker etter et annet maraton — lite tid til å hente seg inn og bygge igjen.",
+      "shortRecovery": "Mindre enn 3 uker mellom et maraton og et halvmaraton — ta ett av dem som en rolig tur.",
+      "aRaceGap": "To A-maraton mindre enn 12 uker fra hverandre — vanskelig å toppe formen til begge."
     }
+  },
+  "qualifying": {
+    "title": "Kvalifiseringstider",
+    "basedOn": "Sammenlignet med den beregnede maratontiden din på {{time}} (fra Trening).",
+    "noPrediction": "Ingen maratonprognose ennå — oppdater den under Trening → Prognoser.",
+    "noTraining": "Slå på Trening for å sammenligne med den beregnede maratontiden din.",
+    "needProfile": "Legg inn fødselsår og kjønn for å se aldersgruppen din.",
+    "openSettings": "Innstillinger",
+    "standard": "Krav {{time}} (alder {{age}})",
+    "none": "Ingen tidskrav for dette løpet.",
+    "source": "Arrangørens regler",
+    "unverified": "ikke bekreftet for denne utgaven ennå",
+    "kind": {
+      "qualifier": "Kvalifiseringstid",
+      "guaranteed_entry": "Garantert plass"
+    },
+    "disclaimer": "Kravene er hentet fra arrangørene {{date}}. Alderen er beregnet fra fødselsåret og kan bomme med ett år. Sjekk reglene før du søker."
   }
 }

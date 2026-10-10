@@ -113,12 +113,49 @@ export interface ResearchRun {
   error: string
 }
 
+export interface SpendDay {
+  date: string
+  cost_usd: number
+  runs: number
+}
+
+export interface SpendStats {
+  today_usd: number
+  last_7_days_usd: number
+  month_to_date_usd: number
+  last_30_days_usd: number
+  all_time_usd: number
+  race_checks_30d: number
+  discoveries_30d: number
+  avg_race_check_usd: number
+  changes_30d: number
+  daily: SpendDay[]
+}
+
+export interface ResearchSettings {
+  enabled: boolean
+  discovery_enabled: boolean
+  model: string
+  daily_budget_usd: number
+  monthly_budget_usd: number
+  nightly_max_races: number
+}
+
 export interface ResearchLog {
   runs: ResearchRun[]
-  spent_today_usd: number
-  budget_usd?: number
-  model?: string
+  stats: SpendStats
+  settings: ResearchSettings
+  models: string[]
   config_error?: string
+}
+
+export interface StrideRace {
+  id: number
+  name: string
+  date: string
+  distance_m: number
+  target_time: number | null
+  priority: 'A' | 'B' | 'C'
 }
 
 export type EventInput = Omit<RaceEvent, 'id' | 'slug' | 'checked_at' | 'created_at' | 'updated_at' | 'deadlines'>
@@ -154,6 +191,49 @@ export function startResearch(id: number) {
 
 export function fetchResearchLog(signal?: AbortSignal) {
   return request<ResearchLog>('/api/races/research/runs', { signal })
+}
+
+export function saveResearchSettings(settings: ResearchSettings) {
+  return request<{ settings: ResearchSettings }>('/api/races/research/settings', {
+    method: 'PUT',
+    body: JSON.stringify(settings),
+  })
+}
+
+export function linkStride(id: number, priority: 'A' | 'B' | 'C', targetTime: number | null) {
+  return request<{ watch: Watch; stride_race: StrideRace }>(`/api/races/${id}/stride`, {
+    method: 'POST',
+    body: JSON.stringify({ priority, target_time: targetTime }),
+  })
+}
+
+export function unlinkStride(id: number, deleteRace: boolean) {
+  return request<{ watch: Watch }>(`/api/races/${id}/stride${deleteRace ? '?delete=1' : ''}`, { method: 'DELETE' })
+}
+
+export function syncCalendar() {
+  return request<{ result: { created: number; updated: number; deleted: number; kept: number } }>(
+    '/api/races/calendar/sync', { method: 'POST' })
+}
+
+/** "3:15:00" / "1:45" / "95:00" → seconds; null when blank or unreadable. */
+export function parseDuration(text: string): number | null {
+  const parts = text.trim().split(':').map(p => p.trim())
+  if (parts.length < 2 || parts.length > 3 || parts.some(p => !/^\d+$/.test(p))) return null
+  const nums = parts.map(Number)
+  const [h, m, s] = parts.length === 3 ? nums : [0, nums[0], nums[1]]
+  if (m > 59 && parts.length === 3) return null
+  if (s > 59) return null
+  const total = h * 3600 + m * 60 + s
+  return total > 0 ? total : null
+}
+
+/** Seconds → "3:15:00". */
+export function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600)
+  const m = Math.floor((seconds % 3600) / 60)
+  const s = Math.round(seconds % 60)
+  return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
 }
 
 export function startDiscovery() {
