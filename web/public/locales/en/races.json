@@ -3,6 +3,7 @@
   "subtitle": "Keep track of races, plan the next one and never miss a lottery deadline.",
   "loading": "Loading races…",
   "disclaimer": "Statuses, dates and prices come from organizers and third-party sources and can change. Check the organizer's site before you pay.",
+  "nokNote": "Amounts marked ≈ are converted to kroner at today's Norges Bank rate.",
   "tabs": {
     "mine": "My races",
     "discover": "Discover",

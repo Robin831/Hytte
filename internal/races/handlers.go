@@ -9,6 +9,7 @@ import (
 	"strconv"
 
 	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/Robin831/Hytte/internal/currency"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -39,6 +40,18 @@ func writeStoreError(w http.ResponseWriter, err error, what string) {
 		log.Printf("races: %s: %v", what, err)
 		writeError(w, http.StatusInternalServerError, "failed to save "+what)
 	}
+}
+
+// nokRates returns NOK per unit for every synced currency, so the page can
+// show entry fees in kroner. Rates are a nicety: on failure the page just
+// shows prices as published.
+func nokRates(r *http.Request, db *sql.DB) map[string]float64 {
+	rates, err := currency.LatestNOKRates(r.Context(), db)
+	if err != nil {
+		log.Printf("races: load NOK rates: %v", err)
+		return map[string]float64{"NOK": 1}
+	}
+	return rates
 }
 
 func idParam(r *http.Request, name string) (int64, bool) {
@@ -72,7 +85,7 @@ func HandleList(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "failed to list races")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"events": events, "watches": watches})
+		writeJSON(w, http.StatusOK, map[string]any{"events": events, "watches": watches, "rates": nokRates(r, db)})
 	}
 }
 
@@ -109,7 +122,7 @@ func HandleGet(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "failed to load race")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"event": event, "changes": changes, "watch": watch})
+		writeJSON(w, http.StatusOK, map[string]any{"event": event, "changes": changes, "watch": watch, "rates": nokRates(r, db)})
 	}
 }
 

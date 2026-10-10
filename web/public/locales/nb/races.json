@@ -3,6 +3,7 @@
   "subtitle": "Hold oversikt over løp, planlegg det neste og gå aldri glipp av en trekningsfrist.",
   "loading": "Laster løp …",
   "disclaimer": "Status, datoer og priser kommer fra arrangører og tredjepartskilder og kan endre seg. Sjekk arrangørens side før du betaler.",
+  "nokNote": "Beløp merket ≈ er regnet om til kroner etter dagens kurs fra Norges Bank.",
   "tabs": {
     "mine": "Mine løp",
     "discover": "Utforsk",

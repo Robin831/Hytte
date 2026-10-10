@@ -10,6 +10,7 @@ import {
 import { StatusPill, TravelBadge } from './RaceParts'
 import { useRaceFormat } from './useRaceFormat'
 import RaceEditor, { DeadlineEditor } from './RaceEditor'
+import { type Rates, RatesContext, usePriceText } from './prices'
 
 export default function RaceDetailPage() {
   const { id } = useParams()
@@ -21,6 +22,7 @@ export default function RaceDetailPage() {
   const [event, setEvent] = useState<RaceEvent | null>(null)
   const [changes, setChanges] = useState<Change[]>([])
   const [watch, setWatchState] = useState<Watch | null>(null)
+  const [rates, setRates] = useState<Rates>({})
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -40,6 +42,7 @@ export default function RaceDetailPage() {
     setChanges(data.changes)
     setWatchState(data.watch)
     setNotes(data.watch?.notes ?? '')
+    setRates(data.rates ?? {})
     setError('')
   }, [raceId])
 
@@ -127,6 +130,7 @@ export default function RaceDetailPage() {
     : ''
 
   return (
+    <RatesContext.Provider value={rates}>
     <div className="mx-auto max-w-3xl p-4 md:p-8">
       <Link to="/races" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-200">
         <ArrowLeft size={16} /> {t('detail.back')}
@@ -229,12 +233,12 @@ export default function RaceDetailPage() {
           {text?.participants && <><dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.participants')}</dt><dd>{text.participants}</dd></>}
           {text?.course && <><dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.course')}</dt><dd>{text.course}</dd></>}
           {(event.travel || text?.travel) && <><dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.travel')}</dt><dd><TravelBadge travel={event.travel} />{text?.travel}</dd></>}
-          {text?.price && <><dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.price')}</dt><dd className="tabular-nums">{text.price}</dd></>}
+          {text?.price && <><dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.price')}</dt><dd className="tabular-nums"><Priced text={text.price} country={event.country} /></dd></>}
         </dl>
         {text?.how && (
           <>
             <h3 className="mt-4 text-xs font-semibold uppercase tracking-wide text-gray-500">{t('detail.howToGetIn')}</h3>
-            <p className="mt-1 text-gray-200">{text.how}</p>
+            <p className="mt-1 text-gray-200"><Priced text={text.how} country={event.country} /></p>
           </>
         )}
         <div className="mt-3 flex flex-wrap items-center gap-4 text-sm">
@@ -299,6 +303,7 @@ export default function RaceDetailPage() {
         )}
       </section>
     </div>
+    </RatesContext.Provider>
   )
 }
 
@@ -310,6 +315,7 @@ function DeadlineItem({ deadline: d, past, admin, onEdit, onDelete }: {
   onDelete: () => void
 }) {
   const { t, lang, deadlineWhen, daysLeft } = useRaceFormat()
+  const priced = usePriceText(lang)
   const what = pickText(d.texts, lang)?.what
   return (
     <div className={`grid grid-cols-1 gap-1 border-t border-gray-800 py-3 sm:grid-cols-[11rem_minmax(0,1fr)_auto] sm:gap-4 ${past ? 'opacity-50' : ''}`}>
@@ -322,7 +328,7 @@ function DeadlineItem({ deadline: d, past, admin, onEdit, onDelete }: {
       </div>
       <div className="min-w-0 text-sm">
         <span className="font-medium text-amber-300">{t(`kind.${d.kind}`)}</span>
-        {what && <p className="mt-0.5 text-gray-300">{what}</p>}
+        {what && <p className="mt-0.5 text-gray-300">{priced(what)}</p>}
       </div>
       {admin && (
         <div className="flex gap-1">
@@ -384,4 +390,11 @@ function ChangeItem({ change: c }: { change: Change }) {
       )}
     </li>
   )
+}
+
+/** A text with kroner amounts added after foreign prices. Must render inside RatesContext. */
+function Priced({ text, country }: { text: string; country: string }) {
+  const { lang } = useRaceFormat()
+  const priced = usePriceText(lang)
+  return <>{priced(text, { country })}</>
 }

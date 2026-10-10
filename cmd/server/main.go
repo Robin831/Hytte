@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -367,8 +369,8 @@ func main() {
 			loc = time.UTC
 		}
 		startupCtx, startupCancel := context.WithTimeout(notifCtx, 30*time.Second)
-		if err := currency.SyncEURNOK(startupCtx, database); err != nil {
-			log.Printf("currency: startup EUR/NOK sync failed: %v", err)
+		if err := syncCurrencyRates(startupCtx, database); err != nil {
+			log.Printf("currency: startup sync failed: %v", err)
 		}
 		startupCancel()
 
@@ -381,10 +383,10 @@ func main() {
 				return
 			case <-timer.C:
 				syncCtx, syncCancel := context.WithTimeout(notifCtx, 30*time.Second)
-				if err := currency.SyncEURNOK(syncCtx, database); err != nil {
-					log.Printf("currency: scheduled EUR/NOK sync failed: %v", err)
+				if err := syncCurrencyRates(syncCtx, database); err != nil {
+					log.Printf("currency: scheduled sync failed: %v", err)
 				} else {
-					log.Println("currency: EUR/NOK rate synced")
+					log.Println("currency: NOK rates synced")
 				}
 				syncCancel()
 			}
@@ -534,4 +536,18 @@ func main() {
 	}
 
 	log.Println("Server stopped")
+}
+
+// syncCurrencyRates mirrors NOK rates for every currency race prices use
+// (EUR included). If the multi-currency request fails, it still refreshes
+// EUR/NOK on its own so the Pokémon NOK prices never go stale.
+func syncCurrencyRates(ctx context.Context, db *sql.DB) error {
+	err := currency.SyncRates(ctx, db)
+	if err == nil {
+		return nil
+	}
+	if eurErr := currency.SyncEURNOK(ctx, db); eurErr != nil {
+		return fmt.Errorf("%v; EUR/NOK fallback: %w", err, eurErr)
+	}
+	return fmt.Errorf("multi-currency sync failed (EUR/NOK refreshed): %w", err)
 }

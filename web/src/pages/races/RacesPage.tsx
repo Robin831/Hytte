@@ -9,6 +9,7 @@ import {
 import { RaceRow, StatusPill } from './RaceParts'
 import { useRaceFormat } from './useRaceFormat'
 import RaceEditor from './RaceEditor'
+import { type Rates, RatesContext, matchesQuery, usePriceText } from './prices'
 
 type Tab = 'mine' | 'discover' | 'deadlines'
 const TABS: Tab[] = ['mine', 'discover', 'deadlines']
@@ -30,6 +31,7 @@ export default function RacesPage() {
 
   const [events, setEvents] = useState<RaceEvent[]>([])
   const [watches, setWatches] = useState<Watch[]>([])
+  const [rates, setRates] = useState<Rates>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
@@ -40,6 +42,7 @@ export default function RacesPage() {
     if (signal?.aborted) return
     setEvents(data.events)
     setWatches(data.watches)
+    setRates(data.rates ?? {})
     setError('')
   }, [])
 
@@ -90,6 +93,7 @@ export default function RacesPage() {
   }, [watchByEvent, t])
 
   return (
+    <RatesContext.Provider value={rates}>
     <div className="mx-auto max-w-4xl p-4 md:p-8">
       <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -152,8 +156,9 @@ export default function RacesPage() {
           {tab === 'deadlines' && <Deadlines events={events} watchByEvent={watchByEvent} />}
         </div>
       )}
-      <p className="mt-8 text-xs text-gray-500">{t('disclaimer')}</p>
+      <p className="mt-8 text-xs text-gray-500">{t('disclaimer')} {t('nokNote')}</p>
     </div>
+    </RatesContext.Provider>
   )
 }
 
@@ -241,17 +246,12 @@ function Discover({ events, watchByEvent, onToggleWatch, busyId }: {
 
   // Everything except the status filter, so the status chips show live counts.
   const base = useMemo(() => {
-    const q = query.trim().toLowerCase()
     return events.filter(e => {
       if (upcomingOnly && e.race_date < today) return false
       if (distance !== 'all' && distanceKind(e.distance_m) !== distance) return false
       if (series !== 'all' && !e.series.includes(series)) return false
       if (directOnly && e.travel !== 'direct') return false
-      if (q) {
-        const hay = [e.name, ...Object.values(e.texts).map(x => x?.place ?? '')].join(' ').toLowerCase()
-        if (!hay.includes(q)) return false
-      }
-      return true
+      return matchesQuery(e, query, distanceKind(e.distance_m))
     })
   }, [events, query, distance, series, directOnly, upcomingOnly, today])
 
@@ -344,6 +344,7 @@ function Discover({ events, watchByEvent, onToggleWatch, busyId }: {
 
 function Deadlines({ events, watchByEvent }: { events: RaceEvent[]; watchByEvent: Map<number, Watch> }) {
   const { t, lang, deadlineWhen, daysLeft } = useRaceFormat()
+  const priced = usePriceText(lang)
   const [onlyMine, setOnlyMine] = useState(watchByEvent.size > 0)
   // Captured once per visit: deadlines passing while the page is open can wait for the next load.
   const [now] = useState(() => Date.now())
@@ -407,7 +408,7 @@ function Deadlines({ events, watchByEvent }: { events: RaceEvent[]; watchByEvent
                   <div className="min-w-0 text-sm">
                     <span className="font-medium text-amber-300">{t(`kind.${d.kind}`)}</span>{' · '}
                     <Link to={`/races/${e.id}`} className="font-semibold hover:text-blue-300">{e.name}</Link>
-                    {what && <p className="mt-0.5 text-gray-300">{what}</p>}
+                    {what && <p className="mt-0.5 text-gray-300">{priced(what, e)}</p>}
                   </div>
                 </div>
               </li>

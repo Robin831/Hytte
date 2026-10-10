@@ -117,11 +117,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function fetchRaces(signal?: AbortSignal) {
-  return request<{ events: RaceEvent[]; watches: Watch[] }>('/api/races', { signal })
+  return request<{ events: RaceEvent[]; watches: Watch[]; rates?: Record<string, number> }>('/api/races', { signal })
 }
 
 export function fetchRace(id: number, signal?: AbortSignal) {
-  return request<{ event: RaceEvent; changes: Change[]; watch: Watch | null }>(`/api/races/${id}`, { signal })
+  return request<{ event: RaceEvent; changes: Change[]; watch: Watch | null; rates?: Record<string, number> }>(`/api/races/${id}`, { signal })
 }
 
 export function setWatch(id: number, state: WatchState, notes: string) {

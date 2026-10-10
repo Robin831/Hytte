@@ -3,6 +3,7 @@ import { Link } from 'react-router'
 import { Bookmark, BookmarkCheck, ExternalLink, Plane } from 'lucide-react'
 import { type RaceEvent, type RaceStatus, type Travel, type Watch, dateBlock, flag, pickText } from './racesApi'
 import { useRaceFormat } from './useRaceFormat'
+import { usePriceText } from './prices'
 
 const STATUS_CLASS: Record<RaceStatus, string> = {
   open: 'bg-green-900/50 text-green-300 border-green-800',
@@ -64,6 +65,7 @@ interface RaceRowProps {
 export function RaceRow({ event, watch, onToggleWatch, busy }: RaceRowProps) {
   const { t, lang, fuzzy } = useRaceFormat()
   const text = pickText(event.texts, lang)
+  const priced = usePriceText(lang)
   const tracked = !!watch
 
   return (
@@ -114,8 +116,8 @@ export function RaceRow({ event, watch, onToggleWatch, busy }: RaceRowProps) {
           </>}
         </dl>
 
-        {text?.how && <p className="mt-2 text-sm text-gray-300">{text.how}</p>}
-        {text?.price && <p className="mt-1 text-sm tabular-nums"><span className="font-semibold">{t('facts.price')}:</span> {text.price}</p>}
+        {text?.how && <p className="mt-2 text-sm text-gray-300">{priced(text.how, event)}</p>}
+        {text?.price && <p className="mt-1 text-sm tabular-nums"><span className="font-semibold">{t('facts.price')}:</span> {priced(text.price, event)}</p>}
         {event.url && (
           <a href={event.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-blue-400 hover:text-blue-300">
             {t('facts.organizer')} <ExternalLink size={12} aria-hidden="true" />

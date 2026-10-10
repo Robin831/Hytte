@@ -97,6 +97,160 @@ func SyncEURNOK(ctx context.Context, db *sql.DB) error {
 	return nil
 }
 
+// RateCurrencies are the currencies SyncRates mirrors against NOK: every
+// currency race entry fees are published in, plus EUR (which keeps
+// PairEURNOK fresh for the Pokémon prices).
+var RateCurrencies = []string{"EUR", "GBP", "USD", "SEK", "DKK", "CHF", "AUD", "JPY", "CZK", "PLN", "HUF", "THB"}
+
+// norgesBankRatesURL fetches the latest observation for every currency in
+// one request. The %s is a "+"-joined list of currency codes.
+const norgesBankRatesURL = "https://data.norges-bank.no/api/data/EXR/B.%s.NOK.SP?lastNObservations=1&format=csv"
+
+// overrideRatesURL, when non-empty, replaces norgesBankRatesURL. Used by tests.
+var overrideRatesURL string
+
+// SyncRates fetches the latest NOK rate for every RateCurrencies entry and
+// upserts one currency_rates row per currency ("GBP/NOK", …), normalized to
+// NOK per ONE unit — Norges Bank quotes some currencies (SEK, JPY, …) per
+// 100, signalled by UNIT_MULT.
+func SyncRates(ctx context.Context, db *sql.DB) error {
+	url := fmt.Sprintf(norgesBankRatesURL, strings.Join(RateCurrencies, "+"))
+	if overrideRatesURL != "" {
+		url = overrideRatesURL
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("build norges bank request: %w", err)
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("fetch norges bank: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, maxErrorBodyBytes))
+		return fmt.Errorf("norges bank: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	rates, err := parseRatesCSV(io.LimitReader(resp.Body, maxResponseBytes))
+	if err != nil {
+		return fmt.Errorf("parse norges bank csv: %w", err)
+	}
+	if len(rates) == 0 {
+		return fmt.Errorf("norges bank: no rates in response")
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	fetched := time.Now().UTC()
+	for _, r := range rates {
+		if _, err := tx.ExecContext(ctx, `
+			INSERT INTO currency_rates (pair, rate, observed, fetched_at)
+			VALUES (?, ?, ?, ?)
+			ON CONFLICT(pair, observed) DO UPDATE SET
+				rate       = excluded.rate,
+				fetched_at = excluded.fetched_at
+		`, r.base+"/NOK", r.rate, r.observed, fetched); err != nil {
+			return fmt.Errorf("upsert currency_rates: %w", err)
+		}
+	}
+	return tx.Commit()
+}
+
+type parsedRate struct {
+	base     string
+	observed string
+	rate     float64
+}
+
+// parseRatesCSV reads a multi-currency Norges Bank response: one row per
+// currency with BASE_CUR, UNIT_MULT (power of ten the quote is per),
+// TIME_PERIOD and OBS_VALUE.
+func parseRatesCSV(r io.Reader) ([]parsedRate, error) {
+	reader := csv.NewReader(r)
+	reader.Comma = ';'
+	reader.FieldsPerRecord = -1
+	reader.LazyQuotes = true
+
+	header, err := reader.Read()
+	if err != nil {
+		return nil, fmt.Errorf("read csv header: %w", err)
+	}
+	idx := map[string]int{}
+	for i, col := range header {
+		idx[strings.TrimSpace(strings.ToUpper(col))] = i
+	}
+	for _, col := range []string{"BASE_CUR", "UNIT_MULT", "TIME_PERIOD", "OBS_VALUE"} {
+		if _, ok := idx[col]; !ok {
+			return nil, fmt.Errorf("missing %s column in header %v", col, header)
+		}
+	}
+
+	var out []parsedRate
+	for {
+		row, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("read csv row: %w", err)
+		}
+		get := func(col string) string {
+			if i := idx[col]; i < len(row) {
+				return strings.TrimSpace(row[i])
+			}
+			return ""
+		}
+		base := strings.ToUpper(get("BASE_CUR"))
+		observed := get("TIME_PERIOD")
+		if len(base) != 3 {
+			continue
+		}
+		if _, err := time.Parse("2006-01-02", observed); err != nil {
+			return nil, fmt.Errorf("parse observed date %q for %s: %w", observed, base, err)
+		}
+		value, err := strconv.ParseFloat(strings.Replace(strings.ReplaceAll(get("OBS_VALUE"), " ", ""), ",", ".", 1), 64)
+		if err != nil || value <= 0 {
+			return nil, fmt.Errorf("parse rate %q for %s", get("OBS_VALUE"), base)
+		}
+		mult, err := strconv.Atoi(get("UNIT_MULT"))
+		if err != nil || mult < 0 || mult > 6 {
+			return nil, fmt.Errorf("parse unit multiplier %q for %s", get("UNIT_MULT"), base)
+		}
+		for i := 0; i < mult; i++ {
+			value /= 10
+		}
+		out = append(out, parsedRate{base: base, observed: observed, rate: value})
+	}
+	return out, nil
+}
+
+// LatestNOKRates returns NOK per one unit for every currency with a stored
+// rate, keyed by currency code ("EUR": 10.71), using each pair's newest
+// observation. NOK itself is included as 1.
+func LatestNOKRates(ctx context.Context, db *sql.DB) (map[string]float64, error) {
+	rows, err := db.QueryContext(ctx, `
+		SELECT r.pair, r.rate FROM currency_rates r
+		WHERE r.pair LIKE '%/NOK'
+		  AND r.observed = (SELECT MAX(observed) FROM currency_rates WHERE pair = r.pair)`)
+	if err != nil {
+		return nil, fmt.Errorf("query latest NOK rates: %w", err)
+	}
+	defer rows.Close()
+	rates := map[string]float64{"NOK": 1}
+	for rows.Next() {
+		var pair string
+		var rate float64
+		if err := rows.Scan(&pair, &rate); err != nil {
+			return nil, err
+		}
+		rates[strings.TrimSuffix(pair, "/NOK")] = rate
+	}
+	return rates, rows.Err()
+}
+
 // LatestRate returns the most recent rate stored for pair, along with the
 // observation date it was recorded for. Returns sql.ErrNoRows wrapped in a
 // descriptive error if no rate exists yet.

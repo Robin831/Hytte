@@ -116,6 +116,34 @@ func TestSeedCatalogLoadsOnceAndRespectsDeletes(t *testing.T) {
 	}
 }
 
+func TestCatalogFixesApplyOnceWithHistory(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	if err := SeedCatalog(ctx, d); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	var id int64
+	var date string
+	if err := d.QueryRow(`SELECT id, race_date FROM race_events WHERE slug = 'tcs-amsterdam-marathon-halvmaraton-2027'`).Scan(&id, &date); err != nil {
+		t.Fatalf("amsterdam half: %v", err)
+	}
+	if date != "2027-10-17" {
+		t.Fatalf("amsterdam half date = %s, want the Sunday 2027-10-17", date)
+	}
+	changes, _ := ListChanges(ctx, d, id, 10)
+	if len(changes) == 0 || changes[len(changes)-1].Source != "seed" {
+		t.Fatalf("changes = %+v, want the fix logged with source seed", changes)
+	}
+	// A second startup doesn't re-apply it.
+	if err := SeedCatalog(ctx, d); err != nil {
+		t.Fatalf("reseed: %v", err)
+	}
+	again, _ := ListChanges(ctx, d, id, 10)
+	if len(again) != len(changes) {
+		t.Fatalf("fix re-applied: %d changes, want %d", len(again), len(changes))
+	}
+}
+
 func TestEventInputValidation(t *testing.T) {
 	cases := map[string]func(*EventInput){
 		"empty name":      func(in *EventInput) { in.Name = " " },
