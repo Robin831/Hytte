@@ -88,7 +88,13 @@ func HandleList(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "failed to list races")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"events": events, "watches": watches, "rates": nokRates(r, db)})
+		family, err := FamilyWatches(r.Context(), db, user.ID)
+		if err != nil {
+			log.Printf("races: family watches: %v", err)
+			family = map[int64][]FamilyWatch{}
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"events": events, "watches": watches, "rates": nokRates(r, db),
+			"family": family, "home": homeBase(r, db)})
 	}
 }
 
@@ -129,8 +135,16 @@ func HandleGet(db *sql.DB) http.HandlerFunc {
 		if err != nil {
 			log.Printf("races: latest research run: %v", err)
 		}
+		family, err := FamilyWatches(r.Context(), db, user.ID)
+		if err != nil {
+			log.Printf("races: family watches: %v", err)
+		}
+		familyHere := family[id]
+		if familyHere == nil {
+			familyHere = []FamilyWatch{}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"event": event, "changes": changes, "watch": watch,
-			"rates": nokRates(r, db), "research": research})
+			"rates": nokRates(r, db), "research": research, "family": familyHere, "home": homeBase(r, db)})
 	}
 }
 
@@ -463,5 +477,76 @@ func HandleCalendarSync(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]any{"result": res})
+	}
+}
+
+// homeBase is where travel texts are written from, for the page labels.
+func homeBase(r *http.Request, db *sql.DB) map[string]string {
+	s, err := LoadResearchSettings(r.Context(), db)
+	if err != nil {
+		s = DefaultResearchSettings
+	}
+	return map[string]string{"city": s.HomeCity, "airport": s.HomeAirport}
+}
+
+// HandleLedger returns the user's lottery record.
+func HandleLedger(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		l, err := BuildLedger(r.Context(), db, user.ID)
+		if err != nil {
+			log.Printf("races: ledger: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to load lottery ledger")
+			return
+		}
+		writeJSON(w, http.StatusOK, l)
+	}
+}
+
+// HandleSeries returns the user's progress through each series.
+func HandleSeries(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		p, err := BuildSeriesProgress(r.Context(), db, user.ID, time.Now().In(zoneOrUTC()).Format("2006-01-02"))
+		if err != nil {
+			log.Printf("races: series: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to load series")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"series": p})
+	}
+}
+
+// HandleSaveFinish records a finished series race (e.g. one run before
+// the catalog existed).
+func HandleSaveFinish(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		var in FinishInput
+		if !decode(w, r, &in) {
+			return
+		}
+		if err := SaveFinish(r.Context(), db, user.ID, in, "manual"); err != nil {
+			writeStoreError(w, err, "finish")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+// HandleDeleteFinish removes a finished series race (?race_key=&year=).
+func HandleDeleteFinish(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		year, err := strconv.Atoi(r.URL.Query().Get("year"))
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "invalid year")
+			return
+		}
+		if err := DeleteFinish(r.Context(), db, user.ID, r.URL.Query().Get("race_key"), year); err != nil {
+			writeStoreError(w, err, "finish")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }

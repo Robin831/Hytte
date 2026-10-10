@@ -296,7 +296,9 @@
     "birthYear": "Fødselsår",
     "sex": "Kjønn",
     "female": "Kvinne",
-    "male": "Mann"
+    "male": "Mann",
+    "shareTitle": "Vis løpsplanene mine for familien",
+    "shareDescription": "Andre på denne Hytta ser hvilke løp du følger og statusen din (aldri notatene dine)."
   },
   "kioskTokens": {
     "heading": "Kiosktokens",

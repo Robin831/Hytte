@@ -10,6 +10,7 @@ type RacesSectionProps = Pick<PreferenceSectionProps, 'preferences' | 'saving' |
 const TOGGLES = [
   { key: 'races_notify_deadlines', label: 'deadlines' },
   { key: 'races_notify_changes', label: 'changes' },
+  { key: 'races_share', label: 'share' },
 ] as const
 
 interface CalendarInfo {

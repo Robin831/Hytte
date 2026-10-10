@@ -296,7 +296,9 @@
     "birthYear": "Birth year",
     "sex": "Sex",
     "female": "Female",
-    "male": "Male"
+    "male": "Male",
+    "shareTitle": "Show my race plans to the family",
+    "shareDescription": "Others on this Hytte see which races you track and your status (never your notes)."
   },
   "kioskTokens": {
     "heading": "Kiosk Tokens",

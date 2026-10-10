@@ -350,16 +350,20 @@ func eventToInput(e *Event) EventInput {
 		URL: e.URL, Series: e.Series, Texts: e.Texts}
 }
 
-const factRules = `Field meanings:
+func factRules(home ResearchSettings) string {
+	return strings.NewReplacer("{city}", home.HomeCity, "{airport}", home.HomeAirport).Replace(factRulesTemplate)
+}
+
+const factRulesTemplate = `Field meanings:
 - status: "open" = registration or lottery open right now; "later" = opens later or unclear; "closed" = sold out or lottery over.
 - entry_type: lottery | fcfs (first come, first served) | qualifier | unknown.
-- travel (from Bergen airport BGO): direct | nearby (connection, or nearby airport + train) | none.
+- travel (from {city} airport {airport}): direct | nearby (connection, or nearby airport + train) | none.
 - date_precision: day (confirmed) | approx (likely date) | early | mid | late (part of month) | month.
-- texts: per language nb (Norwegian bokmål, primary), en (English), th (Thai): place, participants (field size with year/source caveat), course (profile), travel (how to get there from Bergen), how (registration/lottery status and how to get in — the most important field), price (fees with currency exactly as published and price steps with dates).
+- texts: per language nb (Norwegian bokmål, primary), en (English), th (Thai): place, participants (field size with year/source caveat), course (profile), travel (how to get there from {city}), how (registration/lottery status and how to get in — the most important field), price (fees with currency exactly as published and price steps with dates).
 - Thai text: natural Thai, Gregorian years (never Buddhist-era years like 2570), race/brand names in Latin script.
 - deadlines kinds: entry_opens, entry_closes, lottery_opens, lottery_closes, lottery_results, payment_due, price_increase, waitlist_closes, other. price_increase due_date = the LAST day at the old price, and the text says so. due_time (HH:MM) + tz (IANA zone) only when the organizer gives a clock time. expected=true when inferred from earlier years. Only deadlines after today.`
 
-func raceResearchPrompt(e *Event, today string) (string, error) {
+func raceResearchPrompt(e *Event, today string, home ResearchSettings) (string, error) {
 	pe := promptEvent{EventInput: eventToInput(e)}
 	for i := range e.Deadlines {
 		d := e.Deadlines[i]
@@ -371,7 +375,7 @@ func raceResearchPrompt(e *Event, today string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return `You maintain a shared race catalog for a family of runners based in Bergen, Norway. Today is ` + today + `.
+	return `You maintain a shared race catalog for a family of runners based in ` + home.HomeCity + `. Today is ` + today + `.
 Re-check this race on the web and return its CURRENT facts.
 
 Current catalog entry:
@@ -387,7 +391,7 @@ Rules:
 - deadlines: return the full list you believe in. Keep "id" for existing ones (copy unchanged ones exactly); use "id": null for new ones. Put ids of deadlines that are wrong or no longer apply in remove_deadline_ids.
 - If you could not reach reliable sources, set "confident": false — nothing will be applied.
 
-` + factRules + `
+` + factRules(home) + `
 
 Reply with ONLY this JSON object, no text before it:
 {"event": {<all fields of the entry except deadlines>}, "deadlines": [<deadline objects with id>], "remove_deadline_ids": [], "summary": "<one short English sentence: what changed, or No changes>", "sources": ["<urls you opened>"], "confident": true}`, nil
@@ -545,7 +549,8 @@ func (r *Researcher) researchEvent(ctx context.Context, cfg *training.ClaudeConf
 		r.finishRun(runID, "failed", 0, 0, "", nil, err.Error())
 		return
 	}
-	prompt, err := raceResearchPrompt(old, r.now().In(zoneOrUTC()).Format("2006-01-02"))
+	home, _ := LoadResearchSettings(ctx, r.DB)
+	prompt, err := raceResearchPrompt(old, r.now().In(zoneOrUTC()).Format("2006-01-02"), home)
 	if err != nil {
 		r.finishRun(runID, "failed", 0, 0, "", nil, err.Error())
 		return
@@ -721,12 +726,12 @@ func RunResearchLoop(ctx context.Context, db *sql.DB) {
 	}
 }
 
-func discoverPrompt(existing []Event, today, until string) string {
+func discoverPrompt(existing []Event, today, until string, home ResearchSettings) string {
 	var b strings.Builder
 	for _, e := range existing {
 		fmt.Fprintf(&b, "- %s | %s | %s | %d m\n", e.Slug, e.Name, e.RaceDate, e.DistanceM)
 	}
-	return `You maintain a shared race catalog for a family of runners based in Bergen, Norway (one family member is Thai). Today is ` + today + `.
+	return `You maintain a shared race catalog for a family of runners based in ` + home.HomeCity + ` (one family member is Thai). Today is ` + today + `.
 Scope: World Marathon Majors; European Marathon Classics; big European marathons and half marathons popular with Norwegian runners; major races in Norway, Sweden, Denmark, Finland and the Baltics; the main road races in Thailand. Distances: marathon (42195) and half marathon (21097) only.
 
 Already in the catalog — do not add these again:
@@ -736,7 +741,7 @@ Find up to ` + strconv.Itoa(discoverMaxNew) + ` races that are missing, taking p
 2. notable races in scope that are missing entirely.
 Research each one on the web (WebSearch, then WebFetch the organizer's page and pages you take facts from). Never invent facts; say what you could not find, in the text.
 
-` + factRules + `
+` + factRules(home) + `
 
 Reply with ONLY this JSON object, no text before it:
 {"events": [{"name": "...", "edition_year": 2027, "race_date": "YYYY-MM-DD", "date_precision": "day", "country": "NL", "distance_m": 42195, "status": "later", "entry_type": "fcfs", "travel": "direct", "url": "https://...", "series": [], "texts": {"nb": {"place": "", "participants": "", "course": "", "travel": "", "how": "", "price": ""}, "en": {...}, "th": {...}}, "deadlines": [{"kind": "entry_opens", "due_date": "YYYY-MM-DD", "date_precision": "approx", "due_time": "", "tz": "", "expected": true, "texts": {"nb": {"what": ""}, "en": {"what": ""}, "th": {"what": ""}}}]}], "summary": "<one short English sentence>", "sources": ["<urls>"]}`
@@ -763,7 +768,8 @@ func (r *Researcher) discover(ctx context.Context, cfg *training.ClaudeConfig, r
 		return
 	}
 	now := r.now().In(zoneOrUTC())
-	prompt := discoverPrompt(existing, now.Format("2006-01-02"), now.AddDate(0, 15, 0).Format("2006-01-02"))
+	home, _ := LoadResearchSettings(ctx, r.DB)
+	prompt := discoverPrompt(existing, now.Format("2006-01-02"), now.AddDate(0, 15, 0).Format("2006-01-02"), home)
 	callCtx, cancel := context.WithTimeout(ctx, discoverResearchTimeout)
 	defer cancel()
 	reply, cost, err := r.Run(callCtx, cfg, prompt)

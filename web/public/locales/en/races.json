@@ -30,13 +30,28 @@
   "facts": {
     "participants": "Field",
     "course": "Course",
-    "travel": "From Bergen",
+    "travel": "From {{city}}",
     "price": "Price",
     "organizer": "Organizer's site"
   },
   "series": {
+    "title": "Series",
+    "intro": "Races you finish here count automatically; add earlier finishes yourself.",
     "majors": "World Marathon Majors",
     "emc": "European Marathon Classics",
+    "progress": "{{done}} of {{required}}",
+    "complete": {
+      "majors": "All seven Majors — Seven Star Finisher!",
+      "emc": "Five races done — you’ve earned the Finisher medal."
+    },
+    "done": "finished",
+    "nextEdition": "Next edition",
+    "fromCatalog": "from your races",
+    "addFinish": "Add a finish",
+    "year": "Year",
+    "time": "Time (optional)",
+    "remove": "Remove the {{year}} finish",
+    "confirmRemove": "Remove the {{year}} finish?",
     "superhalfs": "SuperHalfs"
   },
   "distance": {
@@ -80,7 +95,7 @@
     "status": "Filter by status",
     "more": "More filters",
     "all": "All",
-    "directOnly": "Direct flight from Bergen",
+    "directOnly": "Direct flight from {{city}}",
     "upcomingOnly": "Upcoming only",
     "empty": "No races match these filters."
   },
@@ -160,7 +175,7 @@
     "place": "Place",
     "participants": "Field size",
     "course": "Course",
-    "travel": "Travel from Bergen",
+    "travel": "Travel from {{city}}",
     "how": "How to get in",
     "price": "Price"
   },
@@ -265,7 +280,10 @@
     "nightlyHint": "0 turns off the nightly checks (manual checks still work).",
     "dailyBudget": "Daily cap (USD)",
     "monthlyBudget": "Monthly cap (USD)",
-    "log": "Recent runs"
+    "log": "Recent runs",
+    "homeCity": "Home city",
+    "homeAirport": "Home airport (IATA)",
+    "homeHint": "Travel info and direct-flight badges are written for this airport; existing texts update as races are re-checked."
   },
   "stride": {
     "add": "Add to Stride",
@@ -312,5 +330,25 @@
       "guaranteed_entry": "Guaranteed entry"
     },
     "disclaimer": "Standards researched from the organizers on {{date}}. Age is estimated from your birth year and can be a year off. Check the rules before you apply."
+  },
+  "family": {
+    "title": "Family",
+    "label": "Family: {{names}}"
+  },
+  "ledger": {
+    "title": "Lottery ledger",
+    "empty": "No lotteries yet. Set a race to “In the lottery” when you enter, and to “Got a place” or “Not selected” when the result comes.",
+    "summary": "{{entered}} entered: {{won}} won, {{lost}} not selected, {{pending}} waiting.",
+    "rate": "Win rate {{rate}} %.",
+    "streak_one": "{{race}}: not selected {{count}} time in a row.",
+    "streak_other": "{{race}}: not selected {{count}} times in a row.",
+    "race": "Race",
+    "entered": "Entered",
+    "result": "Result",
+    "outcome": {
+      "won": "Got a place",
+      "lost": "Not selected",
+      "pending": "Waiting"
+    }
   }
 }

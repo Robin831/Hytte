@@ -3,7 +3,7 @@ import { useSearchParams, Link } from 'react-router'
 import { Flag, Search, CalendarClock, Compass, Plus, Sparkles, Route } from 'lucide-react'
 import { useAuth } from '../../auth'
 import {
-  type Deadline, type RaceEvent, type RaceStatus, type Watch, type WatchState,
+  type Deadline, type FamilyWatch, type HomeBase, type RaceEvent, type RaceStatus, type Watch, type WatchState,
   WATCH_STATES, deadlineMoment, deleteWatch, distanceKind, fetchRaces, intlLocale, nextDeadline, pickText, setWatch,
 } from './racesApi'
 import { RaceRow, StatusPill } from './RaceParts'
@@ -11,7 +11,8 @@ import { useRaceFormat } from './useRaceFormat'
 import RaceEditor from './RaceEditor'
 import { ResearchLogPanel } from './Research'
 import { SeasonPlanner } from './SeasonPlanner'
-import { type Rates, RatesContext, matchesQuery, usePriceText } from './prices'
+import { type Rates, RatesContext, HomeContext, FamilyContext, useHome, matchesQuery, usePriceText } from './prices'
+import { RaceFamilyChips } from './Phase5'
 
 type Tab = 'mine' | 'season' | 'discover' | 'deadlines' | 'research'
 const TAB_ICONS = { mine: Flag, season: Route, discover: Compass, deadlines: CalendarClock, research: Sparkles }
@@ -34,6 +35,8 @@ export default function RacesPage() {
   const [events, setEvents] = useState<RaceEvent[]>([])
   const [watches, setWatches] = useState<Watch[]>([])
   const [rates, setRates] = useState<Rates>({})
+  const [home, setHome] = useState<HomeBase>({ city: 'Bergen', airport: 'BGO' })
+  const [family, setFamily] = useState<Record<string, FamilyWatch[]>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [busyId, setBusyId] = useState<number | null>(null)
@@ -45,6 +48,8 @@ export default function RacesPage() {
     setEvents(data.events)
     setWatches(data.watches)
     setRates(data.rates ?? {})
+    if (data.home) setHome(data.home)
+    setFamily(data.family ?? {})
     setError('')
   }, [])
 
@@ -98,6 +103,8 @@ export default function RacesPage() {
 
   return (
     <RatesContext.Provider value={rates}>
+    <HomeContext.Provider value={home}>
+    <FamilyContext.Provider value={family}>
     <div className="mx-auto max-w-4xl p-4 md:p-8">
       <header className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
@@ -164,6 +171,8 @@ export default function RacesPage() {
       )}
       <p className="mt-8 text-xs text-gray-500">{t('disclaimer')} {t('nokNote')}</p>
     </div>
+    </FamilyContext.Provider>
+    </HomeContext.Provider>
     </RatesContext.Provider>
   )
 }
@@ -207,7 +216,7 @@ function MyRaces({ events, watchByEvent, onDiscover }: {
                   <Link to={`/races/${e.id}`} className="block rounded-lg border border-gray-800 bg-gray-800/40 p-3 hover:border-gray-600">
                     <div className="flex items-start justify-between gap-2">
                       <span className="font-semibold leading-tight">{e.name}</span>
-                      <StatusPill status={e.status} />
+                      <span className="flex items-center gap-2"><RaceFamilyChips eventId={e.id} /><StatusPill status={e.status} /></span>
                     </div>
                     <p className="mt-0.5 text-sm text-gray-400">
                       {pickText(e.texts, lang)?.place} · {new Intl.DateTimeFormat(intlLocale(lang), { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' }).format(new Date(e.race_date + 'T12:00:00Z'))}
@@ -241,6 +250,7 @@ function Discover({ events, watchByEvent, onToggleWatch, busyId }: {
   busyId: number | null
 }) {
   const { t, lang } = useRaceFormat()
+  const home = useHome()
   const [query, setQuery] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [distance, setDistance] = useState<DistanceFilter>('all')
@@ -323,7 +333,7 @@ function Discover({ events, watchByEvent, onToggleWatch, busyId }: {
           </button>
         ))}
         <button type="button" aria-pressed={directOnly} onClick={() => setDirectOnly(v => !v)} className={chip(directOnly)}>
-          {t('filters.directOnly')}
+          {t('filters.directOnly', { city: home.city })}
         </button>
         <button type="button" aria-pressed={upcomingOnly} onClick={() => setUpcomingOnly(v => !v)} className={chip(upcomingOnly)}>
           {t('filters.upcomingOnly')}

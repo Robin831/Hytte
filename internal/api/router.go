@@ -975,6 +975,10 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/races/{id}/stride", races.HandleLinkStride(db))
 				r.Delete("/races/{id}/stride", races.HandleUnlinkStride(db))
 				r.Post("/races/calendar/sync", races.HandleCalendarSync(db))
+				r.Get("/races/ledger", races.HandleLedger(db))
+				r.Get("/races/series", races.HandleSeries(db))
+				r.Post("/races/series/finishes", races.HandleSaveFinish(db))
+				r.Delete("/races/series/finishes", races.HandleDeleteFinish(db))
 				r.Delete("/races/{id}/watch", races.HandleDeleteWatch(db))
 				r.Group(func(r chi.Router) {
 					r.Use(auth.RequireAdmin())

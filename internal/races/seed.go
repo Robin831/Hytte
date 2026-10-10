@@ -93,7 +93,7 @@ func SeedCatalog(ctx context.Context, db *sql.DB) error {
 			return err
 		}
 	}
-	return nil
+	return backfillWatchHistory(ctx, db)
 }
 
 func applyFix(ctx context.Context, db *sql.DB, key, slug string, fix func(*EventInput)) error {

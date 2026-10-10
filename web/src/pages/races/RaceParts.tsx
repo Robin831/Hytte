@@ -3,7 +3,8 @@ import { Link } from 'react-router'
 import { Bookmark, BookmarkCheck, ExternalLink, Plane } from 'lucide-react'
 import { type RaceEvent, type RaceStatus, type Travel, type Watch, dateBlock, flag, isNewRace, pickText } from './racesApi'
 import { useRaceFormat } from './useRaceFormat'
-import { usePriceText } from './prices'
+import { usePriceText, useHome } from './prices'
+import { RaceFamilyChips } from './Phase5'
 
 const STATUS_CLASS: Record<RaceStatus, string> = {
   open: 'bg-green-900/50 text-green-300 border-green-800',
@@ -66,6 +67,7 @@ export function RaceRow({ event, watch, onToggleWatch, busy }: RaceRowProps) {
   const { t, lang, fuzzy } = useRaceFormat()
   const text = pickText(event.texts, lang)
   const priced = usePriceText(lang)
+  const home = useHome()
   const tracked = !!watch
 
   return (
@@ -81,6 +83,7 @@ export function RaceRow({ event, watch, onToggleWatch, busy }: RaceRowProps) {
             </span>
           </h3>
           <div className="flex items-center gap-2">
+            <RaceFamilyChips eventId={event.id} />
             {isNewRace(event) && <span className="rounded-full bg-purple-900/50 px-2 py-0.5 text-xs font-semibold text-purple-200">{t('newBadge')}</span>}
             {watch && <span className="rounded-full bg-blue-900/50 px-2 py-0.5 text-xs text-blue-200">{t(`watchState.${watch.state}`)}</span>}
             <StatusPill status={event.status} />
@@ -112,7 +115,7 @@ export function RaceRow({ event, watch, onToggleWatch, busy }: RaceRowProps) {
             <dd className="mb-1 sm:mb-0">{text.course}</dd>
           </>}
           {(event.travel || text?.travel) && <>
-            <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.travel')}</dt>
+            <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.travel', { city: home.city })}</dt>
             <dd className="mb-1 sm:mb-0"><TravelBadge travel={event.travel} />{text?.travel}</dd>
           </>}
         </dl>

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { ArrowLeft, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '../../auth'
 import {
-  type Change, type Deadline, type ResearchRun, type DeadlineKind, type Lang, type RaceEvent, type RaceStatus, type Watch, type WatchState,
+  type Change, type Deadline, type FamilyWatch, type HomeBase, type ResearchRun, type DeadlineKind, type Lang, type RaceEvent, type RaceStatus, type Watch, type WatchState,
   DEADLINE_KINDS, LANGS, STATUSES, WATCH_STATES, deadlineMoment, deleteDeadline, deleteRace, deleteWatch, fetchRace, flag, intlLocale,
   pickText, setWatch,
 } from './racesApi'
@@ -12,7 +12,8 @@ import { useRaceFormat } from './useRaceFormat'
 import RaceEditor, { DeadlineEditor } from './RaceEditor'
 import { ResearchStatus } from './Research'
 import { StrideLink } from './StrideLink'
-import { type Rates, RatesContext, usePriceText } from './prices'
+import { type Rates, RatesContext, HomeContext, usePriceText } from './prices'
+import { FamilyList } from './Phase5'
 
 export default function RaceDetailPage() {
   const { id } = useParams()
@@ -26,6 +27,8 @@ export default function RaceDetailPage() {
   const [watch, setWatchState] = useState<Watch | null>(null)
   const [rates, setRates] = useState<Rates>({})
   const [research, setResearch] = useState<ResearchRun | null>(null)
+  const [family, setFamily] = useState<FamilyWatch[]>([])
+  const [home, setHome] = useState<HomeBase>({ city: 'Bergen', airport: 'BGO' })
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -47,6 +50,8 @@ export default function RaceDetailPage() {
     setNotes(data.watch?.notes ?? '')
     setRates(data.rates ?? {})
     setResearch(data.research ?? null)
+    setFamily(data.family ?? [])
+    if (data.home) setHome(data.home)
     setError('')
   }, [raceId])
 
@@ -135,6 +140,7 @@ export default function RaceDetailPage() {
 
   return (
     <RatesContext.Provider value={rates}>
+    <HomeContext.Provider value={home}>
     <div className="mx-auto max-w-3xl p-4 md:p-8">
       <Link to="/races" className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-200">
         <ArrowLeft size={16} /> {t('detail.back')}
@@ -233,13 +239,15 @@ export default function RaceDetailPage() {
         )}
       </section>
 
+      <FamilyList family={family} />
+
       {/* Facts */}
       <section className="mt-6" aria-labelledby="facts">
         <h2 id="facts" className="sr-only">{t('detail.facts')}</h2>
         <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-sm sm:grid-cols-[8rem_minmax(0,1fr)]">
           {text?.participants && <><dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.participants')}</dt><dd>{text.participants}</dd></>}
           {text?.course && <><dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.course')}</dt><dd>{text.course}</dd></>}
-          {(event.travel || text?.travel) && <><dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.travel')}</dt><dd><TravelBadge travel={event.travel} />{text?.travel}</dd></>}
+          {(event.travel || text?.travel) && <><dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.travel', { city: home.city })}</dt><dd><TravelBadge travel={event.travel} />{text?.travel}</dd></>}
           {text?.price && <><dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.price')}</dt><dd className="tabular-nums"><Priced text={text.price} country={event.country} /></dd></>}
         </dl>
         {text?.how && (
@@ -311,6 +319,7 @@ export default function RaceDetailPage() {
         )}
       </section>
     </div>
+    </HomeContext.Provider>
     </RatesContext.Provider>
   )
 }
@@ -370,7 +379,7 @@ function useFieldLabel() {
     }
     if (field.startsWith('texts.')) {
       const [, l, f] = field.split('.')
-      const name = isTextField(f) ? t(`textField.${f}`) : f
+      const name = isTextField(f) ? t(`textField.${f}`, { city: '' }).replace(/\s+$/, '') : f
       return `${name} (${isLang(l) ? t(`lang.${l}`) : l})`
     }
     return isKnownField(field) ? t(`field.${field}`) : field

@@ -58,6 +58,7 @@ const PREF_KEY_SECTIONS: Record<string, string> = {
   races_calendar_id: 'races',
   athlete_birth_year: 'races',
   athlete_sex: 'races',
+  races_share: 'races',
 }
 
 function sectionForPrefKey(key: string): string {

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
+import { useHome } from './prices'
 import {
   type Deadline, type DeadlineInput, type DeadlineKind, type DatePrecision, type EntryType, type EventInput,
   type EventText, type Lang, type RaceEvent, type RaceStatus, type Series, type Travel,
@@ -27,6 +28,7 @@ export default function RaceEditor({ event, onCancel, onSaved }: {
   onSaved: (event: RaceEvent) => void
 }) {
   const { t } = useTranslation('races')
+  const home = useHome()
   const [form, setForm] = useState<EventInput>(() => (event ? eventToInput(event) : blankInput()))
   const [lang, setLang] = useState<Lang>('nb')
   const [saving, setSaving] = useState(false)
@@ -106,7 +108,7 @@ export default function RaceEditor({ event, onCancel, onSaved }: {
           </select>
         </div>
         <div>
-          <label className={label} htmlFor="race-travel">{t('facts.travel')}</label>
+          <label className={label} htmlFor="race-travel">{t('facts.travel', { city: home.city })}</label>
           <select id="race-travel" className={input} value={form.travel} onChange={e => set('travel', e.target.value as Travel)}>
             {TRAVELS.map(s => <option key={s || 'unset'} value={s}>{s ? t(`travel.${s}`) : '—'}</option>)}
           </select>
@@ -150,7 +152,7 @@ export default function RaceEditor({ event, onCancel, onSaved }: {
         <div className="grid gap-3">
           {TEXT_FIELDS.map(f => (
             <div key={f}>
-              <label className={label} htmlFor={`race-text-${f}`}>{t(`textField.${f}`)}</label>
+              <label className={label} htmlFor={`race-text-${f}`}>{t(`textField.${f}`, { city: home.city })}</label>
               <textarea
                 id={`race-text-${f}`}
                 rows={f === 'how' ? 3 : 1}

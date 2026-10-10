@@ -296,7 +296,9 @@
     "birthYear": "ปีเกิด",
     "sex": "เพศ",
     "female": "หญิง",
-    "male": "ชาย"
+    "male": "ชาย",
+    "shareTitle": "แสดงแผนงานวิ่งของฉันให้ครอบครัวเห็น",
+    "shareDescription": "ผู้ใช้อื่นใน Hytte นี้จะเห็นงานที่คุณติดตามและสถานะ (ไม่เห็นบันทึกของคุณ)"
   },
   "kioskTokens": {
     "heading": "Kiosk Tokens",

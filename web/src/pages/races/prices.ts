@@ -1,11 +1,19 @@
 import { createContext, useContext } from 'react'
-import { type Lang, type RaceEvent, intlLocale } from './racesApi'
+import { type FamilyWatch, type HomeBase, type Lang, type RaceEvent, intlLocale } from './racesApi'
 
 /** NOK per one unit of each currency ("EUR": 10.72), from the races API. */
 export type Rates = Record<string, number>
 
 export const RatesContext = createContext<Rates>({})
 export const useRates = () => useContext(RatesContext)
+
+/** Where travel texts are written from ("From Bergen"). */
+export const HomeContext = createContext<HomeBase>({ city: 'Bergen', airport: 'BGO' })
+export const useHome = () => useContext(HomeContext)
+
+/** Other family members' statuses per race id. */
+export const FamilyContext = createContext<Record<string, FamilyWatch[]>>({})
+export const useFamily = (eventId: number) => useContext(FamilyContext)[String(eventId)] ?? []
 
 // Currency markers as they appear in race texts.
 const SYMBOLS: Record<string, string> = { '€': 'EUR', '£': 'GBP', '$': 'USD', '¥': 'JPY', '฿': 'THB' }

@@ -30,13 +30,28 @@
   "facts": {
     "participants": "Deltakere",
     "course": "Løype",
-    "travel": "Fra Bergen",
+    "travel": "Fra {{city}}",
     "price": "Pris",
     "organizer": "Arrangørens side"
   },
   "series": {
+    "title": "Serier",
+    "intro": "Løp du fullfører her teller automatisk; legg inn tidligere løp selv.",
     "majors": "World Marathon Majors",
     "emc": "European Marathon Classics",
+    "progress": "{{done}} av {{required}}",
+    "complete": {
+      "majors": "Alle sju Majors — Seven Star Finisher!",
+      "emc": "Fem løp fullført — du har fortjent Finisher-medaljen."
+    },
+    "done": "fullført",
+    "nextEdition": "Neste utgave",
+    "fromCatalog": "fra løpene dine",
+    "addFinish": "Legg til fullført løp",
+    "year": "År",
+    "time": "Tid (valgfritt)",
+    "remove": "Fjern løpet fra {{year}}",
+    "confirmRemove": "Fjerne løpet fra {{year}}?",
     "superhalfs": "SuperHalfs"
   },
   "distance": {
@@ -80,7 +95,7 @@
     "status": "Filtrer på status",
     "more": "Flere filtre",
     "all": "Alle",
-    "directOnly": "Direktefly fra Bergen",
+    "directOnly": "Direktefly fra {{city}}",
     "upcomingOnly": "Bare kommende",
     "empty": "Ingen løp med dette utvalget."
   },
@@ -160,7 +175,7 @@
     "place": "Sted",
     "participants": "Deltakere",
     "course": "Løype",
-    "travel": "Reise fra Bergen",
+    "travel": "Reise fra {{city}}",
     "how": "Slik kommer du med",
     "price": "Pris"
   },
@@ -265,7 +280,10 @@
     "nightlyHint": "0 slår av de nattlige sjekkene (manuelle sjekker virker fortsatt).",
     "dailyBudget": "Daglig tak (USD)",
     "monthlyBudget": "Månedlig tak (USD)",
-    "log": "Siste kjøringer"
+    "log": "Siste kjøringer",
+    "homeCity": "Hjemby",
+    "homeAirport": "Hjemflyplass (IATA)",
+    "homeHint": "Reiseinfo og direktefly-merker skrives for denne flyplassen; eksisterende tekster oppdateres etter hvert som løpene sjekkes på nytt."
   },
   "stride": {
     "add": "Legg til i Stride",
@@ -312,5 +330,25 @@
       "guaranteed_entry": "Garantert plass"
     },
     "disclaimer": "Kravene er hentet fra arrangørene {{date}}. Alderen er beregnet fra fødselsåret og kan bomme med ett år. Sjekk reglene før du søker."
+  },
+  "family": {
+    "title": "Familien",
+    "label": "Familien: {{names}}"
+  },
+  "ledger": {
+    "title": "Trekningslogg",
+    "empty": "Ingen trekninger ennå. Sett et løp til «Med i trekningen» når du søker, og til «Fikk plass» eller «Ikke trukket» når svaret kommer.",
+    "summary": "{{entered}} søkt: {{won}} fikk plass, {{lost}} ikke trukket, {{pending}} venter.",
+    "rate": "Treffrate {{rate}} %.",
+    "streak_one": "{{race}}: ikke trukket {{count}} gang på rad.",
+    "streak_other": "{{race}}: ikke trukket {{count}} ganger på rad.",
+    "race": "Løp",
+    "entered": "Søkt",
+    "result": "Resultat",
+    "outcome": {
+      "won": "Fikk plass",
+      "lost": "Ikke trukket",
+      "pending": "Venter"
+    }
   }
 }

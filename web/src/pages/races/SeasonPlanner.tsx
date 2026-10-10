@@ -7,6 +7,7 @@ import { buildSeason, checkQualifying, formatMargin } from './season'
 import { QUALIFYING_RESEARCHED_AT, QUALIFYING_STANDARDS } from './qualifying'
 import { StatusPill } from './RaceParts'
 import { useRaceFormat } from './useRaceFormat'
+import { LedgerSection, SeriesSection } from './Phase5'
 
 interface Prediction {
   distance_m: number
@@ -173,6 +174,9 @@ export function SeasonPlanner({ events, watches }: { events: RaceEvent[]; watche
         </ul>
         <p className="mt-3 text-xs text-gray-500">{t('qualifying.disclaimer', { date: QUALIFYING_RESEARCHED_AT })}</p>
       </section>
+
+      <SeriesSection />
+      <LedgerSection />
     </div>
   )
 }

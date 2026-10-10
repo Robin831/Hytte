@@ -590,12 +590,20 @@ func SetWatch(ctx context.Context, db *sql.DB, userID, eventID int64, in WatchIn
 		}
 		notes = enc
 	}
+	var oldState string
+	if err := db.QueryRowContext(ctx, `SELECT state FROM race_watch WHERE user_id = ? AND event_id = ?`, userID, eventID).Scan(&oldState); err != nil && err != sql.ErrNoRows {
+		return nil, fmt.Errorf("read race watch: %w", err)
+	}
 	ts := now()
 	if _, err := db.ExecContext(ctx, `INSERT INTO race_watch (user_id, event_id, state, notes, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?)
 		ON CONFLICT(user_id, event_id) DO UPDATE SET state = excluded.state, notes = excluded.notes,
 			updated_at = excluded.updated_at`, userID, eventID, in.State, notes, ts, ts); err != nil {
 		return nil, fmt.Errorf("set race watch: %w", err)
+	}
+	recordWatchChange(ctx, db, userID, eventID, oldState, in.State)
+	if in.State == "completed" && oldState != "completed" {
+		autoFinish(ctx, db, userID, eventID)
 	}
 	return GetWatch(ctx, db, userID, eventID)
 }

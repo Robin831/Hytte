@@ -139,6 +139,53 @@ export interface ResearchSettings {
   daily_budget_usd: number
   monthly_budget_usd: number
   nightly_max_races: number
+  home_city: string
+  home_airport: string
+}
+
+export interface FamilyWatch {
+  user_id: number
+  name: string
+  picture: string
+  state: WatchState
+}
+
+export interface HomeBase {
+  city: string
+  airport: string
+}
+
+export interface LedgerEntry {
+  event_id: number
+  name: string
+  edition_year: number
+  race_date: string
+  entered_at: string
+  outcome: 'won' | 'lost' | 'pending'
+  decided_at: string
+}
+
+export interface Ledger {
+  entries: LedgerEntry[]
+  entered: number
+  won: number
+  lost: number
+  pending: number
+  streaks: { race: string; losses: number }[]
+}
+
+export interface SeriesFinish {
+  race_key: string
+  year: number
+  finish_seconds: number | null
+  source: 'manual' | 'auto'
+}
+
+export interface SeriesProgress {
+  key: 'majors' | 'emc'
+  required: number
+  done: number
+  races: { key: string; name: string; finishes: SeriesFinish[]; next_event_id: number | null }[]
 }
 
 export interface ResearchLog {
@@ -178,11 +225,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export function fetchRaces(signal?: AbortSignal) {
-  return request<{ events: RaceEvent[]; watches: Watch[]; rates?: Record<string, number> }>('/api/races', { signal })
+  return request<{ events: RaceEvent[]; watches: Watch[]; rates?: Record<string, number>; family?: Record<string, FamilyWatch[]>; home?: HomeBase }>('/api/races', { signal })
 }
 
 export function fetchRace(id: number, signal?: AbortSignal) {
-  return request<{ event: RaceEvent; changes: Change[]; watch: Watch | null; rates?: Record<string, number>; research?: ResearchRun | null }>(`/api/races/${id}`, { signal })
+  return request<{ event: RaceEvent; changes: Change[]; watch: Watch | null; rates?: Record<string, number>; research?: ResearchRun | null; family?: FamilyWatch[]; home?: HomeBase }>(`/api/races/${id}`, { signal })
 }
 
 export function startResearch(id: number) {
@@ -234,6 +281,25 @@ export function formatDuration(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60)
   const s = Math.round(seconds % 60)
   return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`
+}
+
+export function fetchLedger(signal?: AbortSignal) {
+  return request<Ledger>('/api/races/ledger', { signal })
+}
+
+export function fetchSeries(signal?: AbortSignal) {
+  return request<{ series: SeriesProgress[] }>('/api/races/series', { signal })
+}
+
+export function saveFinish(raceKey: string, year: number, finishSeconds: number | null) {
+  return request<{ status: string }>('/api/races/series/finishes', {
+    method: 'POST',
+    body: JSON.stringify({ race_key: raceKey, year, finish_seconds: finishSeconds }),
+  })
+}
+
+export function deleteFinish(raceKey: string, year: number) {
+  return request<{ status: string }>(`/api/races/series/finishes?race_key=${encodeURIComponent(raceKey)}&year=${year}`, { method: 'DELETE' })
 }
 
 export function startDiscovery() {

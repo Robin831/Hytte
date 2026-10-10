@@ -2293,6 +2293,32 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY (user_id, item_key)
 	);
 
+	-- Every status change of a user's race watch (races.SetWatch), so the
+	-- lottery ledger can tell entered → got a place / not selected.
+	CREATE TABLE IF NOT EXISTS race_watch_history (
+		id         INTEGER PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		event_id   INTEGER NOT NULL REFERENCES race_events(id) ON DELETE CASCADE,
+		from_state TEXT NOT NULL DEFAULT '',
+		to_state   TEXT NOT NULL,
+		at         TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_race_watch_history_user ON race_watch_history(user_id, event_id, at);
+
+	-- Finished races that count toward series (World Marathon Majors,
+	-- European Marathon Classics), keyed by race (london counts for both)
+	-- and year, so finishes from before the catalog existed can be entered.
+	CREATE TABLE IF NOT EXISTS race_series_finishes (
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		race_key       TEXT NOT NULL,
+		year           INTEGER NOT NULL,
+		finish_seconds INTEGER,
+		source         TEXT NOT NULL DEFAULT 'manual',
+		created_at     TEXT NOT NULL,
+		PRIMARY KEY (user_id, race_key, year)
+	);
+
 	-- App-wide settings for the race catalog (research limits). Shared, so
 	-- not per-user preferences.
 	CREATE TABLE IF NOT EXISTS race_settings (

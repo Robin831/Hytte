@@ -286,6 +286,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			"races_calendar_id":               true,
 			"athlete_birth_year":              true,
 			"athlete_sex":                     true,
+			"races_share":                     true,
 		}
 
 		// Integer range keys: HR/pace, work hours, budget preferences, and other numeric settings.
@@ -489,6 +490,10 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 			}
 			if k == "races_calendar_id" && (len(v) > 255 || strings.ContainsAny(v, "\r\n")) {
 				writeJSON(w, http.StatusBadRequest, map[string]string{"error": "races_calendar_id is not a calendar id"})
+				return
+			}
+			if k == "races_share" && v != "" && v != "true" && v != "false" {
+				writeJSON(w, http.StatusBadRequest, map[string]string{"error": `races_share must be "true" or "false"`})
 				return
 			}
 			// Validate the athlete profile used for qualifying-time checks.

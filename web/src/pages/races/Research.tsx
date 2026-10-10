@@ -277,6 +277,16 @@ function SettingsForm({ settings, models, onSaved }: {
               onChange={e => set('daily_budget_usd', Number(e.target.value))} />
           </div>
           <div>
+            <label className={label} htmlFor="rs-home-city">{t('research.homeCity')}</label>
+            <input id="rs-home-city" className={input} value={form.home_city} maxLength={60} onChange={e => set('home_city', e.target.value)} />
+          </div>
+          <div>
+            <label className={label} htmlFor="rs-home-airport">{t('research.homeAirport')}</label>
+            <input id="rs-home-airport" className={input} value={form.home_airport} maxLength={3}
+              onChange={e => set('home_airport', e.target.value.toUpperCase())} />
+            <p className="mt-1 text-xs text-gray-500">{t('research.homeHint')}</p>
+          </div>
+          <div>
             <label className={label} htmlFor="rs-monthly">{t('research.monthlyBudget')}</label>
             <input id="rs-monthly" type="number" min={0} max={1000} step={1} className={input} value={form.monthly_budget_usd}
               onChange={e => set('monthly_budget_usd', Number(e.target.value))} />

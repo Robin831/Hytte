@@ -4,9 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"regexp"
 	"strconv"
+	"strings"
 	"time"
 )
+
+var airportPattern = regexp.MustCompile(`^[A-Z]{3}$`)
 
 // ResearchSettings are the app-wide limits for automatic research. They live
 // in race_settings (not a user's preferences) because the job is shared.
@@ -17,6 +21,10 @@ type ResearchSettings struct {
 	DailyBudgetUSD   float64 `json:"daily_budget_usd"`
 	MonthlyBudgetUSD float64 `json:"monthly_budget_usd"`
 	NightlyMaxRaces  int     `json:"nightly_max_races"`
+	// HomeCity / HomeAirport: where the family travels from. Travel texts and
+	// the direct-flight badge are written for this airport.
+	HomeCity    string `json:"home_city"`
+	HomeAirport string `json:"home_airport"`
 }
 
 // ResearchModels are the models the settings accept, cheapest first.
@@ -30,6 +38,8 @@ var DefaultResearchSettings = ResearchSettings{
 	DailyBudgetUSD:   defaultDailyBudget,
 	MonthlyBudgetUSD: 60,
 	NightlyMaxRaces:  nightlyMaxRaces,
+	HomeCity:         "Bergen",
+	HomeAirport:      "BGO",
 }
 
 const (
@@ -55,6 +65,10 @@ func (s ResearchSettings) Validate() error {
 		return invalid("monthly budget must be between 0 and %d USD", maxMonthlyBudget)
 	case s.NightlyMaxRaces < 0 || s.NightlyMaxRaces > maxNightlyRaces:
 		return invalid("races per night must be between 0 and %d", maxNightlyRaces)
+	case strings.TrimSpace(s.HomeCity) == "" || len([]rune(s.HomeCity)) > 60:
+		return invalid("home city is required (max 60 characters)")
+	case !airportPattern.MatchString(s.HomeAirport):
+		return invalid("home airport must be a three-letter IATA code")
 	}
 	return nil
 }
@@ -91,6 +105,10 @@ func LoadResearchSettings(ctx context.Context, db *sql.DB) (ResearchSettings, er
 			if n, err := strconv.Atoi(v); err == nil {
 				s.NightlyMaxRaces = n
 			}
+		case "home_city":
+			s.HomeCity = v
+		case "home_airport":
+			s.HomeAirport = v
 		}
 	}
 	return s, rows.Err()
@@ -98,6 +116,8 @@ func LoadResearchSettings(ctx context.Context, db *sql.DB) (ResearchSettings, er
 
 // SaveResearchSettings validates and stores the settings.
 func SaveResearchSettings(ctx context.Context, db *sql.DB, s ResearchSettings, userID int64) error {
+	s.HomeCity = strings.TrimSpace(s.HomeCity)
+	s.HomeAirport = strings.ToUpper(strings.TrimSpace(s.HomeAirport))
 	if err := s.Validate(); err != nil {
 		return err
 	}
@@ -108,6 +128,8 @@ func SaveResearchSettings(ctx context.Context, db *sql.DB, s ResearchSettings, u
 		"daily_budget_usd":   strconv.FormatFloat(s.DailyBudgetUSD, 'f', -1, 64),
 		"monthly_budget_usd": strconv.FormatFloat(s.MonthlyBudgetUSD, 'f', -1, 64),
 		"nightly_max_races":  strconv.Itoa(s.NightlyMaxRaces),
+		"home_city":          s.HomeCity,
+		"home_airport":       s.HomeAirport,
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {

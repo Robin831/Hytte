@@ -84,7 +84,10 @@ vi.mock('recharts', async () => {
   }
 })
 
-const SETTINGS = { enabled: true, discovery_enabled: true, model: 'claude-sonnet-5-5', daily_budget_usd: 5, monthly_budget_usd: 60, nightly_max_races: 12 }
+const SETTINGS = {
+  enabled: true, discovery_enabled: true, model: 'claude-sonnet-5-5', daily_budget_usd: 5, monthly_budget_usd: 60, nightly_max_races: 12,
+  home_city: 'Bergen', home_airport: 'BGO',
+}
 const STATS = {
   today_usd: 1.2, last_7_days_usd: 3.4, month_to_date_usd: 9.5, last_30_days_usd: 12, all_time_usd: 20,
   race_checks_30d: 40, discoveries_30d: 4, avg_race_check_usd: 0.25, changes_30d: 31,
