@@ -401,7 +401,12 @@
     "seriesBadge": {
       "major": "งานในซีรีส์",
       "superhalfs": "SuperHalfs"
-    }
+    },
+    "nominal": "ระยะทางที่ประกาศ (ม.)",
+    "nominalHint": "ใส่เฉพาะเมื่อเส้นทางสั้นหรือยาวกว่ากำหนด",
+    "courseShort": "เส้นทางสั้นไป {{m}} ม.",
+    "courseLong": "เส้นทางยาวไป {{m}} ม.",
+    "projected": "≈ {{time}} สำหรับ {{km}} กม. ที่เพซเดียวกัน"
   },
   "planTrip": "วางแผนทริป"
 }

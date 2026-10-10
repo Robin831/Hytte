@@ -30,27 +30,32 @@ var (
 
 // Result is one run race.
 type Result struct {
-	ID            int64      `json:"id"`
-	PersonName    string     `json:"person_name"` // "" = the user themselves
-	EventID       *int64     `json:"event_id"`
-	RaceName      string     `json:"race_name"`
-	RaceDate      string     `json:"race_date"`
-	DateExact     bool       `json:"date_exact"`
-	DistanceM     int        `json:"distance_m"`
-	City          string     `json:"city"`
-	Country       string     `json:"country"`
-	FinishSeconds *int       `json:"finish_seconds"`
-	TimeSource    string     `json:"time_source"`
-	TimeURL       string     `json:"time_url"`
-	Bib           string     `json:"bib"`
-	Status        string     `json:"status"`
-	Confidence    string     `json:"confidence"`
-	Source        string     `json:"source"`
-	Evidence      []Evidence `json:"evidence"`
-	Notes         string     `json:"notes"`
-	SeriesKey     string     `json:"series_key"`
-	CreatedAt     string     `json:"created_at"`
-	UpdatedAt     string     `json:"updated_at"`
+	ID         int64  `json:"id"`
+	PersonName string `json:"person_name"` // "" = the user themselves
+	EventID    *int64 `json:"event_id"`
+	RaceName   string `json:"race_name"`
+	RaceDate   string `json:"race_date"`
+	DateExact  bool   `json:"date_exact"`
+	DistanceM  int    `json:"distance_m"`
+	// NominalM is the advertised distance when the course measured short or
+	// long (0 = as advertised). ProjectedSeconds scales the finish time to it
+	// at the average pace; it is shown, never counted as a PB.
+	NominalM         int        `json:"nominal_m"`
+	ProjectedSeconds *int       `json:"projected_seconds"`
+	City             string     `json:"city"`
+	Country          string     `json:"country"`
+	FinishSeconds    *int       `json:"finish_seconds"`
+	TimeSource       string     `json:"time_source"`
+	TimeURL          string     `json:"time_url"`
+	Bib              string     `json:"bib"`
+	Status           string     `json:"status"`
+	Confidence       string     `json:"confidence"`
+	Source           string     `json:"source"`
+	Evidence         []Evidence `json:"evidence"`
+	Notes            string     `json:"notes"`
+	SeriesKey        string     `json:"series_key"`
+	CreatedAt        string     `json:"created_at"`
+	UpdatedAt        string     `json:"updated_at"`
 }
 
 // Evidence points at where a result came from (an email thread, a page).
@@ -70,6 +75,7 @@ type ResultInput struct {
 	RaceDate      string     `json:"race_date"`
 	DateExact     *bool      `json:"date_exact"`
 	DistanceM     int        `json:"distance_m"`
+	NominalM      int        `json:"nominal_m"`
 	City          string     `json:"city"`
 	Country       string     `json:"country"`
 	FinishSeconds *int       `json:"finish_seconds"`
@@ -92,6 +98,9 @@ func (in *ResultInput) normalize() error {
 	if in.Status == "" {
 		in.Status = "confirmed"
 	}
+	if in.NominalM == in.DistanceM {
+		in.NominalM = 0
+	}
 	switch {
 	case in.RaceName == "" || len([]rune(in.RaceName)) > maxNameLen:
 		return invalid("race_name is required (max %d characters)", maxNameLen)
@@ -101,6 +110,8 @@ func (in *ResultInput) normalize() error {
 		return invalid("race_date must be YYYY-MM-DD")
 	case in.DistanceM <= 0 || in.DistanceM > 500_000:
 		return invalid("distance_m must be between 1 and 500000")
+	case in.NominalM < 0 || in.NominalM > 500_000:
+		return invalid("nominal_m must be between 0 and 500000")
 	case in.Country != "" && !countryPattern.MatchString(in.Country):
 		return invalid("country must be a two-letter code")
 	case in.FinishSeconds != nil && (*in.FinishSeconds <= 0 || *in.FinishSeconds > 48*3600):
@@ -161,7 +172,7 @@ func resultSeriesKey(slug, city string, distance int) string {
 
 // --- store --------------------------------------------------------------
 
-const resultColumns = `r.id, r.person_name, r.event_id, r.race_name, r.race_date, r.date_exact, r.distance_m, r.city, r.country,
+const resultColumns = `r.id, r.person_name, r.event_id, r.race_name, r.race_date, r.date_exact, r.distance_m, r.nominal_m, r.city, r.country,
 	r.finish_seconds, r.time_source, r.time_url, r.bib, r.status, r.confidence, r.source, r.evidence, r.notes,
 	COALESCE(e.slug, ''), r.created_at, r.updated_at`
 
@@ -170,7 +181,7 @@ func scanResult(row scanner) (Result, error) {
 	var eventID sql.NullInt64
 	var finish sql.NullInt64
 	var evidence, notes, slug string
-	if err := row.Scan(&res.ID, &res.PersonName, &eventID, &res.RaceName, &res.RaceDate, &res.DateExact, &res.DistanceM,
+	if err := row.Scan(&res.ID, &res.PersonName, &eventID, &res.RaceName, &res.RaceDate, &res.DateExact, &res.DistanceM, &res.NominalM,
 		&res.City, &res.Country, &finish, &res.TimeSource, &res.TimeURL, &res.Bib, &res.Status, &res.Confidence, &res.Source,
 		&evidence, &notes, &slug, &res.CreatedAt, &res.UpdatedAt); err != nil {
 		return res, err
@@ -181,6 +192,10 @@ func scanResult(row scanner) (Result, error) {
 	if finish.Valid {
 		f := int(finish.Int64)
 		res.FinishSeconds = &f
+		if res.NominalM > 0 && res.DistanceM > 0 {
+			p := int(math.Round(float64(f) * float64(res.NominalM) / float64(res.DistanceM)))
+			res.ProjectedSeconds = &p
+		}
 	}
 	res.Evidence = []Evidence{}
 	if dec := encryption.DecryptLenient(evidence); dec != "" {
@@ -267,9 +282,9 @@ func SaveResult(ctx context.Context, db *sql.DB, userID, id int64, in ResultInpu
 			return nil, ErrDuplicate
 		}
 		resIns, err := db.ExecContext(ctx, `INSERT INTO race_results (user_id, person_name, event_id, race_name, race_date, date_exact,
-			distance_m, city, country, finish_seconds, time_source, time_url, bib, status, confidence, source, evidence, notes,
-			created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			userID, in.PersonName, in.EventID, in.RaceName, in.RaceDate, exact, in.DistanceM, in.City, in.Country,
+			distance_m, nominal_m, city, country, finish_seconds, time_source, time_url, bib, status, confidence, source, evidence, notes,
+			created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			userID, in.PersonName, in.EventID, in.RaceName, in.RaceDate, exact, in.DistanceM, in.NominalM, in.City, in.Country,
 			in.FinishSeconds, in.TimeSource, in.TimeURL, in.Bib, in.Status, in.Confidence, source, evidence, notes, ts, ts)
 		if err != nil {
 			return nil, fmt.Errorf("insert result: %w", err)
@@ -277,9 +292,9 @@ func SaveResult(ctx context.Context, db *sql.DB, userID, id int64, in ResultInpu
 		id, _ = resIns.LastInsertId()
 	} else {
 		res, err := db.ExecContext(ctx, `UPDATE race_results SET person_name = ?, event_id = ?, race_name = ?, race_date = ?,
-			date_exact = ?, distance_m = ?, city = ?, country = ?, finish_seconds = ?, time_source = ?, time_url = ?, bib = ?,
+			date_exact = ?, distance_m = ?, nominal_m = ?, city = ?, country = ?, finish_seconds = ?, time_source = ?, time_url = ?, bib = ?,
 			status = ?, confidence = ?, evidence = ?, notes = ?, updated_at = ? WHERE id = ? AND user_id = ?`,
-			in.PersonName, in.EventID, in.RaceName, in.RaceDate, exact, in.DistanceM, in.City, in.Country, in.FinishSeconds,
+			in.PersonName, in.EventID, in.RaceName, in.RaceDate, exact, in.DistanceM, in.NominalM, in.City, in.Country, in.FinishSeconds,
 			in.TimeSource, in.TimeURL, in.Bib, in.Status, in.Confidence, evidence, notes, ts, id, userID)
 		if err != nil {
 			return nil, fmt.Errorf("update result: %w", err)

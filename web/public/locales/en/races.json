@@ -412,7 +412,12 @@
     "seriesBadge": {
       "major": "Series race",
       "superhalfs": "SuperHalfs"
-    }
+    },
+    "nominal": "Advertised distance (m)",
+    "nominalHint": "only if the course was short or long",
+    "courseShort": "Course {{m}} m short",
+    "courseLong": "Course {{m}} m long",
+    "projected": "≈ {{time}} for {{km}} km at the same pace"
   },
   "planTrip": "Plan a trip"
 }

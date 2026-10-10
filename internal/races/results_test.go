@@ -240,3 +240,31 @@ func TestTimeLookups(t *testing.T) {
 		t.Fatalf("over budget: %v", err)
 	}
 }
+
+func TestShortCourseProjection(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	finish := 5290 // 1:28:10 on a half that measured 440 m short
+	r, err := SaveResult(ctx, d, 1, 0, ResultInput{RaceName: "Knarvik Maraton", RaceDate: "2024-06-22", DistanceM: 20657,
+		NominalM: 21097, FinishSeconds: &finish}, "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r.ProjectedSeconds == nil || *r.ProjectedSeconds != 5403 { // 1:30:03 at the same average pace
+		t.Fatalf("projected = %v", r.ProjectedSeconds)
+	}
+	if h := Summarize([]Result{*r}); len(h.PBs) != 0 {
+		t.Fatalf("a short course must not be a half PB: %+v", h.PBs)
+	}
+
+	// The advertised distance equal to the run distance means "as advertised".
+	in := ResultInput{RaceName: "Knarvik Maraton", RaceDate: "2024-06-22", DistanceM: 21097, NominalM: 21097, FinishSeconds: &finish}
+	r, err = SaveResult(ctx, d, 1, r.ID, in, "manual")
+	if err != nil || r.NominalM != 0 || r.ProjectedSeconds != nil {
+		t.Fatalf("as advertised = %+v, %v", r, err)
+	}
+	bad := ResultInput{RaceName: "X", RaceDate: "2024-06-22", DistanceM: 21097, NominalM: -1}
+	if _, err := SaveResult(ctx, d, 1, r.ID, bad, "manual"); !errors.Is(err, ErrValidation) {
+		t.Fatalf("negative nominal: %v", err)
+	}
+}

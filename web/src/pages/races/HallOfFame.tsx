@@ -110,6 +110,11 @@ function ResultForm({ initial, onSaved, onCancel }: { initial?: RaceResult; onSa
           </div>
         </div>
         <div>
+          <label className={label} htmlFor="res-nominal">{t('hall.nominal')}</label>
+          <input id="res-nominal" type="number" min={0} className={input} value={form.nominal_m || ''} placeholder={t('hall.nominalHint')}
+            onChange={e => set('nominal_m', Number(e.target.value) || 0)} />
+        </div>
+        <div>
           <label className={label} htmlFor="res-time">{t('hall.time')}</label>
           <input id="res-time" className={`${input} tabular-nums ${timeInvalid ? 'border-red-500' : ''}`} value={time} placeholder="1:45:00"
             aria-invalid={timeInvalid} onChange={e => setTime(e.target.value)} />
@@ -353,6 +358,12 @@ export function HallOfFame() {
                     <span className="block text-xs text-gray-500">
                       {fmtDate(r)} · {flag(r.country)} {r.city} · {t(`hall.distance.${distanceKey(r.distance_m) ?? 'other'}`, { km: (r.distance_m / 1000).toFixed(1) })}
                     </span>
+                    {r.nominal_m > 0 && (
+                      <span className="block text-xs text-amber-300/90">
+                        {t(r.distance_m < r.nominal_m ? 'hall.courseShort' : 'hall.courseLong', { m: Math.abs(r.nominal_m - r.distance_m) })}
+                        {r.projected_seconds && ` · ${t('hall.projected', { time: formatDuration(r.projected_seconds), km: (r.nominal_m / 1000).toFixed(1) })}`}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {r.finish_seconds ? (

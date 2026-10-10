@@ -20,7 +20,7 @@ vi.mock('recharts', async () => {
 
 function result(over: Partial<RaceResult>): RaceResult {
   return {
-    id: 1, person_name: '', event_id: null, race_name: 'Race', race_date: '2020-01-01', date_exact: true, distance_m: 21097,
+    id: 1, person_name: '', event_id: null, race_name: 'Race', race_date: '2020-01-01', date_exact: true, distance_m: 21097, nominal_m: 0, projected_seconds: null,
     city: 'Bergen', country: 'NO', finish_seconds: null, time_source: '', time_url: '', bib: '', status: 'confirmed',
     confidence: 'high', source: 'gmail', evidence: [], notes: '', series_key: '', created_at: '', updated_at: '', ...over,
   }
@@ -33,6 +33,7 @@ const RESULTS: RaceResult[] = [
   result({ id: 4, race_name: 'Cardiff Half', race_date: '2023-10-01', status: 'pending', confidence: 'low', evidence: [{ what: 'registration only' }] }),
   result({ id: 5, race_name: 'Semi de Paris', race_date: '2022-03-06', status: 'pending', confidence: 'high', finish_seconds: 7203 }),
   result({ id: 6, person_name: 'Khatiya', race_name: 'Bergen3000', race_date: '2025-06-10', distance_m: 3000 }),
+  result({ id: 7, race_name: 'Knarvik Maraton', race_date: '2024-06-22', distance_m: 20657, nominal_m: 21097, finish_seconds: 5290, projected_seconds: 5403 }),
 ]
 
 function installFetch() {
@@ -73,6 +74,7 @@ describe('HallOfFame', () => {
     expect(screen.getByText('hall.stats:races=3,since=2016,countries=3')).toBeInTheDocument()
     expect(screen.getAllByText('3:30:01')).toHaveLength(2) // PB tile + the race row
     expect(screen.getByRole('img', { name: /hall.progressionOf:distance=hall.distance.marathon/ })).toBeInTheDocument()
+    expect(screen.getByText(/hall.courseShort:m=440 · hall.projected:time=1:30:03,km=21.1/)).toBeInTheDocument()
     expect(screen.getByText('hall.pb')).toBeInTheDocument()
     // Guests are behind their own filter chip.
     expect(screen.queryByText('Bergen3000')).toBeNull()

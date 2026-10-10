@@ -412,7 +412,12 @@
     "seriesBadge": {
       "major": "Serieløp",
       "superhalfs": "SuperHalfs"
-    }
+    },
+    "nominal": "Oppgitt distanse (m)",
+    "nominalHint": "bare hvis løypa var for kort eller lang",
+    "courseShort": "Løypa {{m}} m for kort",
+    "courseLong": "Løypa {{m}} m for lang",
+    "projected": "≈ {{time}} på {{km}} km i samme tempo"
   },
   "planTrip": "Planlegg reise"
 }

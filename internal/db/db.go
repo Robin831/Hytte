@@ -3561,6 +3561,19 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add nominal_m to race_results: the distance a race was billed as when
+	// the course measured short or long (distance_m is what was actually run).
+	// 0 = the course was the advertised distance.
+	var hasNominal int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('race_results') WHERE name = 'nominal_m'`).Scan(&hasNominal); err != nil {
+		return fmt.Errorf("check race_results nominal_m column: %w", err)
+	}
+	if hasNominal == 0 {
+		if _, err := db.Exec(`ALTER TABLE race_results ADD COLUMN nominal_m INTEGER NOT NULL DEFAULT 0`); err != nil {
+			return fmt.Errorf("add race_results nominal_m column: %w", err)
+		}
+	}
+
 	return nil
 }
 

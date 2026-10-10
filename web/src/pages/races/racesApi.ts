@@ -182,6 +182,10 @@ export interface RaceResult {
   race_date: string
   date_exact: boolean
   distance_m: number
+  /** Advertised distance when the course measured short or long (0 = as advertised). */
+  nominal_m: number
+  /** finish_seconds scaled to nominal_m at the average pace. */
+  projected_seconds: number | null
   city: string
   country: string
   finish_seconds: number | null
@@ -217,7 +221,7 @@ export interface HallSummary {
 }
 
 export type ResultInput = Pick<RaceResult, 'person_name' | 'race_name' | 'race_date' | 'distance_m' | 'city' | 'country' |
-  'finish_seconds' | 'bib' | 'notes'> & Partial<Pick<RaceResult, 'event_id' | 'status' | 'confidence' | 'time_source' | 'time_url' | 'evidence' | 'date_exact'>>
+  'finish_seconds' | 'bib' | 'notes'> & Partial<Pick<RaceResult, 'event_id' | 'status' | 'confidence' | 'time_source' | 'time_url' | 'evidence' | 'date_exact' | 'nominal_m'>>
 
 export interface SeriesFinish {
   race_key: string
@@ -381,6 +385,7 @@ export function resultToInput(r: RaceResult): ResultInput {
     person_name: r.person_name, race_name: r.race_name, race_date: r.race_date, distance_m: r.distance_m, city: r.city,
     country: r.country, finish_seconds: r.finish_seconds, bib: r.bib, notes: r.notes, event_id: r.event_id, status: r.status,
     confidence: r.confidence, time_source: r.time_source, time_url: r.time_url, evidence: r.evidence, date_exact: r.date_exact,
+    nominal_m: r.nominal_m,
   }
 }
 
