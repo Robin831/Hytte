@@ -7,6 +7,7 @@
   "tabs": {
     "mine": "Mine løp",
     "season": "Sesong",
+    "hall": "Æresgalleri",
     "discover": "Utforsk",
     "deadlines": "Frister",
     "research": "Research"
@@ -42,7 +43,8 @@
     "progress": "{{done}} av {{required}}",
     "complete": {
       "majors": "Alle sju Majors — Seven Star Finisher!",
-      "emc": "Fem løp fullført — du har fortjent Finisher-medaljen."
+      "emc": "Fem løp fullført — du har fortjent Finisher-medaljen.",
+      "superhalfs": "Alle seks SuperHalfs — SuperRunner!"
     },
     "done": "fullført",
     "nextEdition": "Neste utgave",
@@ -283,7 +285,8 @@
     "log": "Siste kjøringer",
     "homeCity": "Hjemby",
     "homeAirport": "Hjemflyplass (IATA)",
-    "homeHint": "Reiseinfo og direktefly-merker skrives for denne flyplassen; eksisterende tekster oppdateres etter hvert som løpene sjekkes på nytt."
+    "homeHint": "Reiseinfo og direktefly-merker skrives for denne flyplassen; eksisterende tekster oppdateres etter hvert som løpene sjekkes på nytt.",
+    "timeRun": "Oppslag av sluttid"
   },
   "stride": {
     "add": "Legg til i Stride",
@@ -349,6 +352,66 @@
       "won": "Fikk plass",
       "lost": "Ikke trukket",
       "pending": "Venter"
+    }
+  },
+  "hall": {
+    "title": "Æresgalleri",
+    "stats": "{{races}} løp siden {{since}}, i {{countries}} land.",
+    "reviewTitle_one": "{{count}} løp å gå gjennom",
+    "reviewTitle_other": "{{count}} løp å gå gjennom",
+    "reviewIntro": "Funnet i e-posten din. Bekreft løpene du løp — bare bekreftede løp teller.",
+    "confirmHigh": "Bekreft alle sikre",
+    "confirm": "Bekreft {{race}}",
+    "reject": "Ikke mitt: {{race}}",
+    "confidence": {
+      "high": "Sikker",
+      "medium": "Sannsynlig",
+      "low": "Usikker"
+    },
+    "noTime": "ingen tid ennå",
+    "add": "Legg til løp",
+    "edit": "Rediger løp",
+    "delete": "Slett løp",
+    "confirmDelete": "Slette {{race}} fra æresgalleriet?",
+    "duplicate": "Du har allerede et løp den dagen på den distansen.",
+    "race": "Løp",
+    "time": "Sluttid",
+    "runner": "Løper",
+    "me": "Meg",
+    "city": "By",
+    "pb": "PR",
+    "raceCount_one": "{{count}} løp",
+    "raceCount_other": "{{count}} løp",
+    "progression": "Utvikling",
+    "progressionOf": "Sluttider gjennom årene, {{distance}}",
+    "fasterUp": "Raskere er opp.",
+    "allRaces": "Alle løp",
+    "empty": "Ingen løp ennå.",
+    "findTime": "Finn tid",
+    "findMissing_one": "Finn {{count}} manglende tid",
+    "findMissing_other": "Finn {{count}} manglende tider",
+    "lookupQueued_one": "Leter etter {{count}} tid på resultatsidene — den dukker opp her når den er funnet.",
+    "lookupQueued_other": "Leter etter {{count}} tider på resultatsidene — de dukker opp her etter hvert.",
+    "resultsPage": "Resultatside",
+    "distance": {
+      "3k": "3 km",
+      "5k": "5 km",
+      "10k": "10 km",
+      "half": "Halvmaraton",
+      "marathon": "Maraton",
+      "other": "{{km}} km"
+    },
+    "source": {
+      "email": "Fra en e-post",
+      "strava": "Fra Strava",
+      "workout": "Fra klokka di",
+      "results_site": "Fra resultatsiden",
+      "manual": "Lagt inn for hånd",
+      "catalog": "Fra løpene dine"
+    },
+    "seriesBadge": {
+      "major": "Serieløp",
+      "superhalfs": "SuperHalfs"
     }
   }
 }

@@ -2306,6 +2306,35 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_race_watch_history_user ON race_watch_history(user_id, event_id, at);
 
+	-- Hall of fame (races.SaveResult): races a user — or a family member
+	-- without an account (person_name) — has run. Imports wait as pending
+	-- until confirmed. evidence and notes are encrypted (personal data).
+	CREATE TABLE IF NOT EXISTS race_results (
+		id             INTEGER PRIMARY KEY,
+		user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		person_name    TEXT NOT NULL DEFAULT '',
+		event_id       INTEGER REFERENCES race_events(id) ON DELETE SET NULL,
+		race_name      TEXT NOT NULL,
+		race_date      TEXT NOT NULL,
+		date_exact     INTEGER NOT NULL DEFAULT 1,
+		distance_m     INTEGER NOT NULL,
+		city           TEXT NOT NULL DEFAULT '',
+		country        TEXT NOT NULL DEFAULT '',
+		finish_seconds INTEGER,
+		time_source    TEXT NOT NULL DEFAULT '',
+		time_url       TEXT NOT NULL DEFAULT '',
+		bib            TEXT NOT NULL DEFAULT '',
+		status         TEXT NOT NULL DEFAULT 'confirmed',
+		confidence     TEXT NOT NULL DEFAULT '',
+		source         TEXT NOT NULL DEFAULT 'manual',
+		evidence       TEXT NOT NULL DEFAULT '',
+		notes          TEXT NOT NULL DEFAULT '',
+		created_at     TEXT NOT NULL,
+		updated_at     TEXT NOT NULL
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_race_results_user ON race_results(user_id, race_date);
+
 	-- Finished races that count toward series (World Marathon Majors,
 	-- European Marathon Classics), keyed by race (london counts for both)
 	-- and year, so finishes from before the catalog existed can be entered.

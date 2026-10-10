@@ -7,6 +7,7 @@
   "tabs": {
     "mine": "My races",
     "season": "Season",
+    "hall": "Hall of fame",
     "discover": "Discover",
     "deadlines": "Deadlines",
     "research": "Research"
@@ -42,7 +43,8 @@
     "progress": "{{done}} of {{required}}",
     "complete": {
       "majors": "All seven Majors — Seven Star Finisher!",
-      "emc": "Five races done — you’ve earned the Finisher medal."
+      "emc": "Five races done — you’ve earned the Finisher medal.",
+      "superhalfs": "All six SuperHalfs — SuperRunner!"
     },
     "done": "finished",
     "nextEdition": "Next edition",
@@ -283,7 +285,8 @@
     "log": "Recent runs",
     "homeCity": "Home city",
     "homeAirport": "Home airport (IATA)",
-    "homeHint": "Travel info and direct-flight badges are written for this airport; existing texts update as races are re-checked."
+    "homeHint": "Travel info and direct-flight badges are written for this airport; existing texts update as races are re-checked.",
+    "timeRun": "Finish time lookup"
   },
   "stride": {
     "add": "Add to Stride",
@@ -349,6 +352,66 @@
       "won": "Got a place",
       "lost": "Not selected",
       "pending": "Waiting"
+    }
+  },
+  "hall": {
+    "title": "Hall of fame",
+    "stats": "{{races}} races since {{since}}, in {{countries}} countries.",
+    "reviewTitle_one": "{{count}} race to review",
+    "reviewTitle_other": "{{count}} races to review",
+    "reviewIntro": "Found in your email. Confirm the ones you ran — only confirmed races count.",
+    "confirmHigh": "Confirm all high-confidence",
+    "confirm": "Confirm {{race}}",
+    "reject": "Not mine: {{race}}",
+    "confidence": {
+      "high": "Sure",
+      "medium": "Likely",
+      "low": "Unsure"
+    },
+    "noTime": "no time yet",
+    "add": "Add a race",
+    "edit": "Edit race",
+    "delete": "Delete race",
+    "confirmDelete": "Delete {{race}} from your hall of fame?",
+    "duplicate": "You already have a race that day at that distance.",
+    "race": "Race",
+    "time": "Finish time",
+    "runner": "Runner",
+    "me": "Me",
+    "city": "City",
+    "pb": "PB",
+    "raceCount_one": "{{count}} race",
+    "raceCount_other": "{{count}} races",
+    "progression": "Progression",
+    "progressionOf": "Finish times over the years, {{distance}}",
+    "fasterUp": "Faster is up.",
+    "allRaces": "All races",
+    "empty": "No races yet.",
+    "findTime": "Find time",
+    "findMissing_one": "Find {{count}} missing time",
+    "findMissing_other": "Find {{count}} missing times",
+    "lookupQueued_one": "Looking up {{count}} time on the results sites — it shows up here when found.",
+    "lookupQueued_other": "Looking up {{count}} times on the results sites — they show up here as they’re found.",
+    "resultsPage": "Results page",
+    "distance": {
+      "3k": "3 km",
+      "5k": "5 km",
+      "10k": "10 km",
+      "half": "Half marathon",
+      "marathon": "Marathon",
+      "other": "{{km}} km"
+    },
+    "source": {
+      "email": "From an email",
+      "strava": "From Strava",
+      "workout": "From your watch",
+      "results_site": "From the results site",
+      "manual": "Entered by hand",
+      "catalog": "From your races"
+    },
+    "seriesBadge": {
+      "major": "Series race",
+      "superhalfs": "SuperHalfs"
     }
   }
 }

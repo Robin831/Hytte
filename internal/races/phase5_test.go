@@ -103,7 +103,7 @@ func TestSeriesProgressCountsAutoAndManualFinishes(t *testing.T) {
 	for _, r := range byKey["majors"].Races {
 		switch r.Key {
 		case "london":
-			if len(r.Finishes) != 1 || r.Finishes[0].Source != "auto" || r.Finishes[0].Year != 2027 {
+			if len(r.Finishes) != 1 || r.Finishes[0].Source != "result" || r.Finishes[0].Year != 2027 {
 				t.Fatalf("london finishes = %+v", r.Finishes)
 			}
 		case "berlin":

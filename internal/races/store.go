@@ -603,7 +603,7 @@ func SetWatch(ctx context.Context, db *sql.DB, userID, eventID int64, in WatchIn
 	}
 	recordWatchChange(ctx, db, userID, eventID, oldState, in.State)
 	if in.State == "completed" && oldState != "completed" {
-		autoFinish(ctx, db, userID, eventID)
+		resultFromCompletedWatch(ctx, db, userID, eventID)
 	}
 	return GetWatch(ctx, db, userID, eventID)
 }

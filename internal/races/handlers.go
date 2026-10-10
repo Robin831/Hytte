@@ -550,3 +550,133 @@ func HandleDeleteFinish(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }
+
+// HandleListResults returns the hall of fame: results plus the summary.
+func HandleListResults(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		results, err := ListResults(r.Context(), db, user.ID)
+		if err != nil {
+			log.Printf("races: list results: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to load results")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"results": results, "summary": Summarize(results)})
+	}
+}
+
+func writeResultError(w http.ResponseWriter, err error) {
+	if errors.Is(err, ErrDuplicate) {
+		writeError(w, http.StatusConflict, err.Error())
+		return
+	}
+	writeStoreError(w, err, "result")
+}
+
+// HandleCreateResult adds a result by hand.
+func HandleCreateResult(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		var in ResultInput
+		if !decode(w, r, &in) {
+			return
+		}
+		res, err := SaveResult(r.Context(), db, user.ID, 0, in, "manual")
+		if err != nil {
+			writeResultError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]any{"result": res})
+	}
+}
+
+// HandleUpdateResult edits (or confirms) a result.
+func HandleUpdateResult(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid result ID")
+			return
+		}
+		var in ResultInput
+		if !decode(w, r, &in) {
+			return
+		}
+		res, err := SaveResult(r.Context(), db, user.ID, id, in, "manual")
+		if err != nil {
+			writeResultError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"result": res})
+	}
+}
+
+// HandleDeleteResult removes a result (also how a pending import is rejected).
+func HandleDeleteResult(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid result ID")
+			return
+		}
+		if err := DeleteResult(r.Context(), db, user.ID, id); err != nil {
+			writeResultError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+// HandleConfirmResults confirms pending results: {"ids": [...]} or {"all_high": true}.
+func HandleConfirmResults(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		var in struct {
+			IDs     []int64 `json:"ids"`
+			AllHigh bool    `json:"all_high"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		n, err := ConfirmResults(r.Context(), db, user.ID, in.IDs, in.AllHigh)
+		if err != nil {
+			log.Printf("races: confirm results: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to confirm results")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]int{"confirmed": n})
+	}
+}
+
+// HandleLookupTime looks up one result's time on public results sites.
+func HandleLookupTime(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid result ID")
+			return
+		}
+		run, err := DefaultResearcher(db).StartTimeLookup(r.Context(), user.ID, id)
+		if err != nil {
+			writeResearchError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"run": run})
+	}
+}
+
+// HandleLookupMissingTimes looks up every confirmed result without a time.
+func HandleLookupMissingTimes(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		n, err := DefaultResearcher(db).StartMissingTimeLookups(r.Context(), user.ID)
+		if err != nil {
+			writeResearchError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]int{"queued": n})
+	}
+}

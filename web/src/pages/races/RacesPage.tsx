@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams, Link } from 'react-router'
-import { Flag, Search, CalendarClock, Compass, Plus, Sparkles, Route } from 'lucide-react'
+import { Flag, Search, CalendarClock, Compass, Plus, Sparkles, Route, Trophy } from 'lucide-react'
 import { useAuth } from '../../auth'
 import {
   type Deadline, type FamilyWatch, type HomeBase, type RaceEvent, type RaceStatus, type Watch, type WatchState,
@@ -11,14 +11,15 @@ import { useRaceFormat } from './useRaceFormat'
 import RaceEditor from './RaceEditor'
 import { ResearchLogPanel } from './Research'
 import { SeasonPlanner } from './SeasonPlanner'
+import { HallOfFame } from './HallOfFame'
 import { type Rates, RatesContext, HomeContext, FamilyContext, useHome, matchesQuery, usePriceText } from './prices'
 import { RaceFamilyChips } from './Phase5'
 
-type Tab = 'mine' | 'season' | 'discover' | 'deadlines' | 'research'
-const TAB_ICONS = { mine: Flag, season: Route, discover: Compass, deadlines: CalendarClock, research: Sparkles }
+type Tab = 'mine' | 'season' | 'hall' | 'discover' | 'deadlines' | 'research'
+const TAB_ICONS = { mine: Flag, season: Route, hall: Trophy, discover: Compass, deadlines: CalendarClock, research: Sparkles }
 
 function parseTab(v: string | null, hasWatches: boolean, admin: boolean): Tab {
-  if (v === 'mine' || v === 'season' || v === 'discover' || v === 'deadlines') return v
+  if (v === 'mine' || v === 'season' || v === 'hall' || v === 'discover' || v === 'deadlines') return v
   if (v === 'research' && admin) return v
   return hasWatches ? 'mine' : 'discover'
 }
@@ -73,7 +74,7 @@ export default function RacesPage() {
 
   const watchByEvent = useMemo(() => new Map(watches.map(w => [w.event_id, w])), [watches])
   const admin = !!user?.is_admin
-  const tabs: Tab[] = admin ? ['mine', 'season', 'discover', 'deadlines', 'research'] : ['mine', 'season', 'discover', 'deadlines']
+  const tabs: Tab[] = admin ? ['mine', 'season', 'hall', 'discover', 'deadlines', 'research'] : ['mine', 'season', 'hall', 'discover', 'deadlines']
   const tab = parseTab(searchParams.get('tab'), watches.length > 0, admin)
 
   const changeTab = (next: Tab) => {
@@ -165,6 +166,7 @@ export default function RacesPage() {
             <Discover events={events} watchByEvent={watchByEvent} onToggleWatch={toggleWatch} busyId={busyId} />
           )}
           {tab === 'season' && <SeasonPlanner events={events} watches={watches} />}
+          {tab === 'hall' && <HallOfFame />}
           {tab === 'deadlines' && <Deadlines events={events} watchByEvent={watchByEvent} />}
           {tab === 'research' && admin && <ResearchLogPanel />}
         </div>

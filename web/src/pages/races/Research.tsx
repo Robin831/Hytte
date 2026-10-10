@@ -386,7 +386,7 @@ export function ResearchLogPanel() {
             <li key={run.id} className="border-t border-gray-800 py-2">
               <div className="flex flex-wrap items-baseline justify-between gap-2">
                 <span className="font-medium">
-                  {run.kind === 'discover' ? t('research.discoverRun') : run.event_id ? (
+                  {run.kind === 'discover' ? t('research.discoverRun') : run.kind === 'time' ? t('research.timeRun') : run.event_id ? (
                     <Link to={`/races/${run.event_id}`} className="hover:text-blue-300">{run.event_name}</Link>
                   ) : run.event_name}
                 </span>

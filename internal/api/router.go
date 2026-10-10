@@ -979,6 +979,13 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/races/series", races.HandleSeries(db))
 				r.Post("/races/series/finishes", races.HandleSaveFinish(db))
 				r.Delete("/races/series/finishes", races.HandleDeleteFinish(db))
+				r.Get("/races/results", races.HandleListResults(db))
+				r.Post("/races/results", races.HandleCreateResult(db))
+				r.Post("/races/results/confirm", races.HandleConfirmResults(db))
+				r.Post("/races/results/lookup-missing", races.HandleLookupMissingTimes(db))
+				r.Put("/races/results/{id}", races.HandleUpdateResult(db))
+				r.Delete("/races/results/{id}", races.HandleDeleteResult(db))
+				r.Post("/races/results/{id}/lookup", races.HandleLookupTime(db))
 				r.Delete("/races/{id}/watch", races.HandleDeleteWatch(db))
 				r.Group(func(r chi.Router) {
 					r.Use(auth.RequireAdmin())

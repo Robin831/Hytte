@@ -7,6 +7,7 @@ import (
 	"log"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -197,6 +198,10 @@ var Series = []SeriesDef{
 		{"rome", "Rome"}, {"vienna", "Vienna"}, {"london", "London"}, {"madrid", "Madrid"},
 		{"copenhagen", "Copenhagen"}, {"warsaw", "Warsaw"}, {"lisbon", "Lisbon"}, {"frankfurt", "Frankfurt"},
 	}},
+	{Key: "superhalfs", Required: 6, Races: []SeriesRace{
+		{"lisbon_half", "Lisbon"}, {"prague_half", "Prague"}, {"copenhagen_half", "Copenhagen"},
+		{"cardiff_half", "Cardiff"}, {"berlin_half", "Berlin"}, {"valencia_half", "Valencia"},
+	}},
 }
 
 // seriesSlugKeys maps a catalog slug (without its year) to a series race.
@@ -206,6 +211,9 @@ var seriesSlugKeys = map[string]string{
 	"tcs-new-york-city-marathon": "nyc", "run-rome-the-marathon": "rome", "vienna-city-marathon": "vienna",
 	"zurich-rock-n-roll-madrid-marathon": "madrid", "copenhagen-marathon": "copenhagen", "warsaw-marathon": "warsaw",
 	"edp-lisbon-marathon": "lisbon", "mainova-frankfurt-marathon": "frankfurt",
+	"edp-lisbon-half": "lisbon_half", "generali-prague-half-marathon": "prague_half",
+	"copenhagen-half-marathon": "copenhagen_half", "cardiff-half-marathon": "cardiff_half",
+	"generali-berliner-halbmarathon": "berlin_half", "medio-maraton-valencia": "valencia_half",
 }
 
 var slugYear = regexp.MustCompile(`-(19|20)\d\d(-\d+)?$`)
@@ -272,23 +280,6 @@ func DeleteFinish(ctx context.Context, db *sql.DB, userID int64, raceKey string,
 	return nil
 }
 
-// autoFinish records a series finish when a watch is marked completed.
-func autoFinish(ctx context.Context, db *sql.DB, userID, eventID int64) {
-	var slug string
-	var year int
-	if err := db.QueryRowContext(ctx, `SELECT slug, edition_year FROM race_events WHERE id = ?`, eventID).Scan(&slug, &year); err != nil {
-		return
-	}
-	key := SeriesKeyForSlug(slug)
-	if key == "" {
-		return
-	}
-	if _, err := db.ExecContext(ctx, `INSERT OR IGNORE INTO race_series_finishes (user_id, race_key, year, source, created_at)
-		VALUES (?, ?, ?, 'auto', ?)`, userID, key, year, now()); err != nil {
-		log.Printf("races: auto series finish: %v", err)
-	}
-}
-
 // SeriesRaceProgress is one race's state within a series for a user.
 type SeriesRaceProgress struct {
 	SeriesRace
@@ -327,6 +318,34 @@ func BuildSeriesProgress(ctx context.Context, db *sql.DB, userID int64, today st
 		finishes[f.RaceKey] = append(finishes[f.RaceKey], f)
 	}
 	rows.Close()
+
+	// Confirmed hall-of-fame results count too (one per race and year).
+	results, err := ListResults(ctx, db, userID)
+	if err != nil {
+		return nil, err
+	}
+	for _, res := range results {
+		if res.Status != "confirmed" || res.PersonName != "" || res.SeriesKey == "" {
+			continue
+		}
+		year, _ := strconv.Atoi(res.RaceDate[:4])
+		dup := false
+		for i, f := range finishes[res.SeriesKey] {
+			if f.Year == year {
+				dup = true
+				if f.FinishSeconds == nil && res.FinishSeconds != nil {
+					finishes[res.SeriesKey][i].FinishSeconds = res.FinishSeconds
+				}
+			}
+		}
+		if !dup {
+			finishes[res.SeriesKey] = append(finishes[res.SeriesKey], Finish{RaceKey: res.SeriesKey, Year: year,
+				FinishSeconds: res.FinishSeconds, Source: "result"})
+		}
+	}
+	for k := range finishes {
+		sort.Slice(finishes[k], func(i, j int) bool { return finishes[k][i].Year < finishes[k][j].Year })
+	}
 
 	next := map[string]int64{}
 	erows, err := db.QueryContext(ctx, `SELECT id, slug FROM race_events WHERE race_date >= ? ORDER BY race_date`, today)

@@ -99,7 +99,7 @@ export interface Change {
 
 export interface ResearchRun {
   id: number
-  kind: 'race' | 'discover'
+  kind: 'race' | 'discover' | 'time'
   event_id: number | null
   event_name?: string
   trigger: 'manual' | 'scheduled'
@@ -173,6 +173,51 @@ export interface Ledger {
   pending: number
   streaks: { race: string; losses: number }[]
 }
+
+export interface RaceResult {
+  id: number
+  person_name: string
+  event_id: number | null
+  race_name: string
+  race_date: string
+  date_exact: boolean
+  distance_m: number
+  city: string
+  country: string
+  finish_seconds: number | null
+  time_source: '' | 'email' | 'strava' | 'workout' | 'results_site' | 'manual' | 'catalog'
+  time_url: string
+  bib: string
+  status: 'pending' | 'confirmed'
+  confidence: '' | 'high' | 'medium' | 'low'
+  source: string
+  evidence: { thread_id?: string; url?: string; date?: string; from?: string; what?: string }[]
+  notes: string
+  series_key: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PersonalBest {
+  distance: '3k' | '5k' | '10k' | 'half' | 'marathon'
+  result_id: number
+  finish_seconds: number
+  race_name: string
+  race_date: string
+  count: number
+}
+
+export interface HallSummary {
+  pbs: PersonalBest[]
+  races: number
+  countries: string[]
+  per_year: Record<string, number>
+  first_year: number
+  pending: number
+}
+
+export type ResultInput = Pick<RaceResult, 'person_name' | 'race_name' | 'race_date' | 'distance_m' | 'city' | 'country' |
+  'finish_seconds' | 'bib' | 'notes'> & Partial<Pick<RaceResult, 'event_id' | 'status' | 'confidence' | 'time_source' | 'time_url' | 'evidence' | 'date_exact'>>
 
 export interface SeriesFinish {
   race_key: string
@@ -300,6 +345,43 @@ export function saveFinish(raceKey: string, year: number, finishSeconds: number 
 
 export function deleteFinish(raceKey: string, year: number) {
   return request<{ status: string }>(`/api/races/series/finishes?race_key=${encodeURIComponent(raceKey)}&year=${year}`, { method: 'DELETE' })
+}
+
+export function fetchResults(signal?: AbortSignal) {
+  return request<{ results: RaceResult[]; summary: HallSummary }>('/api/races/results', { signal })
+}
+
+export function createResult(input: ResultInput) {
+  return request<{ result: RaceResult }>('/api/races/results', { method: 'POST', body: JSON.stringify(input) })
+}
+
+export function updateResult(id: number, input: ResultInput) {
+  return request<{ result: RaceResult }>(`/api/races/results/${id}`, { method: 'PUT', body: JSON.stringify(input) })
+}
+
+export function deleteResult(id: number) {
+  return request<{ status: string }>(`/api/races/results/${id}`, { method: 'DELETE' })
+}
+
+export function confirmResults(body: { ids?: number[]; all_high?: boolean }) {
+  return request<{ confirmed: number }>('/api/races/results/confirm', { method: 'POST', body: JSON.stringify(body) })
+}
+
+export function lookupTime(id: number) {
+  return request<{ run: ResearchRun }>(`/api/races/results/${id}/lookup`, { method: 'POST' })
+}
+
+export function lookupMissingTimes() {
+  return request<{ queued: number }>('/api/races/results/lookup-missing', { method: 'POST' })
+}
+
+/** The result as an input, for edits that keep everything else. */
+export function resultToInput(r: RaceResult): ResultInput {
+  return {
+    person_name: r.person_name, race_name: r.race_name, race_date: r.race_date, distance_m: r.distance_m, city: r.city,
+    country: r.country, finish_seconds: r.finish_seconds, bib: r.bib, notes: r.notes, event_id: r.event_id, status: r.status,
+    confidence: r.confidence, time_source: r.time_source, time_url: r.time_url, evidence: r.evidence, date_exact: r.date_exact,
+  }
 }
 
 export function startDiscovery() {
