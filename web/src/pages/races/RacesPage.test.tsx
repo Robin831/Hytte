@@ -29,6 +29,7 @@ function race(over: Partial<RaceEvent>): RaceEvent {
     id: 1, slug: 'x', name: 'Race', edition_year: 2027, race_date: '2027-05-09', date_precision: 'day',
     country: 'NO', distance_m: 21097, status: 'open', entry_type: 'fcfs', travel: 'direct', url: '',
     series: [], texts: { en: { place: 'Bergen, Norway', participants: '', course: '', travel: '', how: 'Open.', price: '' } },
+    scope: 'away', distances: [], place: '', lat: null, lng: null, source: '', source_id: '',
     checked_at: '2026-10-09T12:00:00Z', created_at: '', updated_at: '', deadlines: [], ...over,
   }
 }
@@ -100,6 +101,40 @@ describe('RacesPage', () => {
   afterEach(() => {
     cleanup()
     vi.unstubAllGlobals()
+    EVENTS.splice(4)
+  })
+
+  it('separates local races from trips, with distance chips and kids and distance filters', async () => {
+    EVENTS.push(race({
+      id: 5, name: 'Øygardskarusellen', scope: 'local', source: 'kondis', url: 'https://terminlista.kondis.no/events/x', distance_m: 5000, travel: '', race_date: '2027-03-01',
+      distances: [{ m: 600, label: 'Barneløp', kids: true }, { m: 3000, label: '3 km', kids: false }, { m: 5000, label: '5 km', kids: false }],
+    }))
+    renderAt('/races')
+    await screen.findByText('Øygardskarusellen')
+    const scope = screen.getByRole('group', { name: 'filters.scope' })
+
+    fireEvent.click(within(scope).getByRole('button', { name: 'scope.local' }))
+    expect(screen.getByText('Øygardskarusellen')).toBeInTheDocument()
+    expect(screen.queryByText('Berlin Marathon')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'filters.directOnly' })).toBeNull()
+    const chips = screen.getByRole('list', { name: 'facts.distances' })
+    expect(within(chips).getAllByRole('listitem')).toHaveLength(3)
+    expect(within(chips).getByText(/Barneløp/)).toHaveTextContent('kidsBadge')
+    expect(screen.getByRole('link', { name: /facts.kondis/ })).toBeInTheDocument()
+
+    fireEvent.click(within(scope).getByRole('button', { name: 'scope.away' }))
+    expect(screen.queryByText('Øygardskarusellen')).toBeNull()
+    expect(screen.getByText('Berlin Marathon')).toBeInTheDocument()
+
+    fireEvent.click(within(scope).getByRole('button', { name: 'filters.all' }))
+    fireEvent.click(screen.getByRole('button', { name: 'filters.kids' }))
+    expect(screen.getByText('Øygardskarusellen')).toBeInTheDocument()
+    expect(screen.queryByText('Bergen Half')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: 'filters.kids' }))
+    fireEvent.click(screen.getByRole('button', { name: 'distance.3k' }))
+    expect(screen.getByText('Øygardskarusellen')).toBeInTheDocument()
+    expect(screen.queryByText('Bergen Half')).toBeNull()
   })
 
   it('opens on Discover when nothing is tracked, with live status counts and filters', async () => {

@@ -33,7 +33,9 @@
     "course": "Løype",
     "travel": "Fra {{city}}",
     "price": "Pris",
-    "organizer": "Arrangørens side"
+    "organizer": "Arrangørens side",
+    "kondis": "Se på Kondis",
+    "distances": "Distanser"
   },
   "series": {
     "title": "Serier",
@@ -60,7 +62,10 @@
     "all": "Alle distanser",
     "half": "Halvmaraton",
     "marathon": "Maraton",
-    "other": "Annen"
+    "other": "Annen",
+    "3k": "3 km",
+    "5k": "5 km",
+    "10k": "10 km"
   },
   "precision": {
     "early": "tidlig {{date}}",
@@ -99,7 +104,9 @@
     "all": "Alle",
     "directOnly": "Direktefly fra {{city}}",
     "upcomingOnly": "Bare kommende",
-    "empty": "Ingen løp med dette utvalget."
+    "empty": "Ingen løp med dette utvalget.",
+    "scope": "Lokalt eller reise",
+    "kids": "Passer for barn"
   },
   "watch": {
     "title": "Min status",
@@ -218,7 +225,8 @@
     "time": "Klokkeslett (valgfritt)",
     "tz": "Tidssone",
     "expected": "Forventet, ikke bekreftet",
-    "what": "Beskrivelse"
+    "what": "Beskrivelse",
+    "scope": "Lokalt eller reise"
   },
   "errors": {
     "load": "Kunne ikke laste løp.",
@@ -419,5 +427,25 @@
     "courseLong": "Løypa {{m}} m for lang",
     "projected": "≈ {{time}} på {{km}} km i samme tempo"
   },
-  "planTrip": "Planlegg reise"
+  "planTrip": "Planlegg reise",
+  "scope": {
+    "local": "Lokalt",
+    "away": "Reise"
+  },
+  "kidsBadge": "barn",
+  "local": {
+    "title": "Lokale løp",
+    "about": "Løp i nærheten hentes fra Kondis sin terminliste hver morgen. Motbakkeløp tas ikke med, og passerte løp ingen i familien deltok i ryddes bort.",
+    "enabled": "Hent lokale løp",
+    "parkrun": "Ta med parkrun",
+    "radius": "Radius (km)",
+    "lat": "Breddegrad hjemme",
+    "lng": "Lengdegrad hjemme",
+    "posHint": "Hvor radiusen måles fra. Bergen sentrum er 60.3913, 5.3221.",
+    "sync": "Hent nå",
+    "syncing": "Henter …",
+    "never": "Ikke hentet ennå.",
+    "status": "Sist hentet {{when}}: {{nearby}} løp i nærheten ({{created}} nye, {{updated}} endret, {{removed}} borte). {{pruned}} passerte løp ryddet bort.",
+    "failed": "Siste henting feilet: {{error}}"
+  }
 }

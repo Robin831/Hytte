@@ -377,11 +377,7 @@ type promptDeadline struct {
 	DeadlineInput
 }
 
-func eventToInput(e *Event) EventInput {
-	return EventInput{Name: e.Name, EditionYear: e.EditionYear, RaceDate: e.RaceDate, DatePrecision: e.DatePrecision,
-		Country: e.Country, DistanceM: e.DistanceM, Status: e.Status, EntryType: e.EntryType, Travel: e.Travel,
-		URL: e.URL, Series: e.Series, Texts: e.Texts}
-}
+func eventToInput(e *Event) EventInput { return EventAsInput(e) }
 
 func factRules(home ResearchSettings) string {
 	return strings.NewReplacer("{city}", home.HomeCity, "{airport}", home.HomeAirport).Replace(factRulesTemplate)
@@ -628,7 +624,7 @@ func (r *Researcher) pickNightly(ctx context.Context, now time.Time, limit int) 
 		       EXISTS (SELECT 1 FROM race_watch w WHERE w.event_id = e.id AND w.state NOT IN ('completed', 'skipped')),
 		       EXISTS (SELECT 1 FROM race_deadlines d WHERE d.event_id = e.id AND d.due_date >= ? AND d.due_date <= ?),
 		       COALESCE((SELECT MAX(started_at) FROM race_research_runs x WHERE x.event_id = e.id), '')
-		FROM race_events e WHERE e.race_date >= ?`, today, soonDate, today)
+		FROM race_events e WHERE e.race_date >= ? AND e.source = ''`, today, soonDate, today)
 	if err != nil {
 		return nil, fmt.Errorf("pick races to research: %w", err)
 	}

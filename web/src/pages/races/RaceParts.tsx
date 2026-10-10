@@ -1,7 +1,9 @@
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { Bookmark, BookmarkCheck, ExternalLink, Plane } from 'lucide-react'
-import { type RaceEvent, type RaceStatus, type Travel, type Watch, dateBlock, flag, isNewRace, pickText } from './racesApi'
+import {
+  type RaceEvent, type RaceStatus, type Travel, type Watch, dateBlock, distanceLabel, flag, isNewRace, pickText,
+} from './racesApi'
 import { useRaceFormat } from './useRaceFormat'
 import { usePriceText, useHome } from './prices'
 import { RaceFamilyChips } from './Phase5'
@@ -62,6 +64,21 @@ interface RaceRowProps {
   busy?: boolean
 }
 
+/** The distances a race offers, kids' races marked. */
+export function DistanceChips({ event }: { event: RaceEvent }) {
+  const { t, lang } = useRaceFormat()
+  if (event.distances.length === 0) return null
+  return (
+    <ul className="mt-1.5 flex flex-wrap gap-1.5" aria-label={t('facts.distances')}>
+      {event.distances.map((d, i) => (
+        <li key={i} className={`rounded-full px-2 py-0.5 text-xs ${d.kids ? 'bg-green-900/50 text-green-200' : 'bg-gray-800 text-gray-200'}`}>
+          {distanceLabel(d, lang)}{d.kids && <span className="ml-1 font-semibold">· {t('kidsBadge')}</span>}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 /** One race in a list: date block, name/place, status, facts, how to get in. */
 export function RaceRow({ event, watch, onToggleWatch, busy }: RaceRowProps) {
   const { t, lang, fuzzy } = useRaceFormat()
@@ -81,6 +98,7 @@ export function RaceRow({ event, watch, onToggleWatch, busy }: RaceRowProps) {
               {flag(event.country)} {text?.place} · <span className="sr-only">{t('detail.date')}: </span>
               {fuzzy(event.race_date, event.date_precision)}
             </span>
+            <DistanceChips event={event} />
           </h3>
           <div className="flex items-center gap-2">
             <RaceFamilyChips eventId={event.id} />
@@ -112,7 +130,7 @@ export function RaceRow({ event, watch, onToggleWatch, busy }: RaceRowProps) {
           </>}
           {text?.course && <>
             <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.course')}</dt>
-            <dd className="mb-1 sm:mb-0">{text.course}</dd>
+            <dd className={`mb-1 sm:mb-0 ${event.source ? 'line-clamp-3 whitespace-pre-line' : ''}`}>{text.course}</dd>
           </>}
           {(event.travel || text?.travel) && <>
             <dt className="text-xs font-semibold uppercase tracking-wide text-gray-500 sm:pt-0.5">{t('facts.travel', { city: home.city })}</dt>
@@ -124,7 +142,7 @@ export function RaceRow({ event, watch, onToggleWatch, busy }: RaceRowProps) {
         {text?.price && <p className="mt-1 text-sm tabular-nums"><span className="font-semibold">{t('facts.price')}:</span> {priced(text.price, event)}</p>}
         {event.url && (
           <a href={event.url} target="_blank" rel="noopener noreferrer" className="mt-2 inline-flex items-center gap-1 text-sm font-medium text-blue-400 hover:text-blue-300">
-            {t('facts.organizer')} <ExternalLink size={12} aria-hidden="true" />
+            {event.source === 'kondis' ? t('facts.kondis') : t('facts.organizer')} <ExternalLink size={12} aria-hidden="true" />
           </a>
         )}
       </div>

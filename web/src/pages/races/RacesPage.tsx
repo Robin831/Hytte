@@ -4,7 +4,8 @@ import { Flag, Search, CalendarClock, Compass, Plus, Sparkles, Route, Trophy } f
 import { useAuth } from '../../auth'
 import {
   type Deadline, type FamilyWatch, type HomeBase, type RaceEvent, type RaceStatus, type Watch, type WatchState,
-  WATCH_STATES, deadlineMoment, deleteWatch, distanceKind, fetchRaces, intlLocale, nextDeadline, pickText, setWatch,
+  type DistanceBucket, WATCH_STATES, deadlineMoment, deleteWatch, distanceBucket, distanceKind, eventDistances, fetchRaces,
+  intlLocale, nextDeadline, pickText, setWatch,
 } from './racesApi'
 import { RaceRow, StatusPill } from './RaceParts'
 import { useRaceFormat } from './useRaceFormat'
@@ -25,7 +26,9 @@ function parseTab(v: string | null, hasWatches: boolean, admin: boolean): Tab {
 }
 
 type StatusFilter = 'all' | RaceStatus
-type DistanceFilter = 'all' | 'half' | 'marathon'
+type DistanceFilter = 'all' | DistanceBucket
+type ScopeFilter = 'all' | 'local' | 'away'
+const DISTANCE_FILTERS: DistanceFilter[] = ['all', '3k', '5k', '10k', 'half', 'marathon']
 type SeriesFilter = 'all' | 'majors' | 'emc'
 
 export default function RacesPage() {
@@ -259,6 +262,8 @@ function Discover({ events, watchByEvent, onToggleWatch, busyId }: {
   const [series, setSeries] = useState<SeriesFilter>('all')
   const [directOnly, setDirectOnly] = useState(false)
   const [upcomingOnly, setUpcomingOnly] = useState(true)
+  const [scope, setScope] = useState<ScopeFilter>('all')
+  const [kidsOnly, setKidsOnly] = useState(false)
 
   const today = new Date().toISOString().slice(0, 10)
 
@@ -266,12 +271,15 @@ function Discover({ events, watchByEvent, onToggleWatch, busyId }: {
   const base = useMemo(() => {
     return events.filter(e => {
       if (upcomingOnly && e.race_date < today) return false
-      if (distance !== 'all' && distanceKind(e.distance_m) !== distance) return false
+      if (scope !== 'all' && e.scope !== scope) return false
+      const ds = eventDistances(e)
+      if (distance !== 'all' && !ds.some(d => distanceBucket(d.m) === distance)) return false
+      if (kidsOnly && !ds.some(d => d.kids)) return false
       if (series !== 'all' && !e.series.includes(series)) return false
       if (directOnly && e.travel !== 'direct') return false
       return matchesQuery(e, query, distanceKind(e.distance_m))
     })
-  }, [events, query, distance, series, directOnly, upcomingOnly, today])
+  }, [events, query, distance, series, directOnly, upcomingOnly, scope, kidsOnly, today])
 
   const counts = useMemo(() => {
     const c: Record<StatusFilter, number> = { all: base.length, open: 0, later: 0, closed: 0 }
@@ -315,6 +323,15 @@ function Discover({ events, watchByEvent, onToggleWatch, busyId }: {
         />
       </div>
 
+      <div className="mb-3 inline-flex rounded-lg border border-gray-700 bg-gray-800 p-0.5" role="group" aria-label={t('filters.scope')}>
+        {(['all', 'local', 'away'] as ScopeFilter[]).map(s => (
+          <button key={s} type="button" aria-pressed={scope === s} onClick={() => setScope(s)}
+            className={`rounded-md px-4 py-1.5 text-sm font-medium cursor-pointer ${scope === s ? 'bg-blue-600 text-white' : 'text-gray-300 hover:text-white'}`}>
+            {s === 'all' ? t('filters.all') : t(`scope.${s}`)}
+          </button>
+        ))}
+      </div>
+
       <div className="flex flex-wrap gap-2" role="group" aria-label={t('filters.status')}>
         {(['all', 'open', 'later', 'closed'] as StatusFilter[]).map(s => (
           <button key={s} type="button" aria-pressed={status === s} onClick={() => setStatus(s)} className={chip(status === s)}>
@@ -324,19 +341,24 @@ function Discover({ events, watchByEvent, onToggleWatch, busyId }: {
         ))}
       </div>
       <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label={t('filters.more')}>
-        {(['all', 'half', 'marathon'] as DistanceFilter[]).map(d => (
+        {DISTANCE_FILTERS.map(d => (
           <button key={d} type="button" aria-pressed={distance === d} onClick={() => setDistance(d)} className={chip(distance === d)}>
             {t(`distance.${d}`)}
           </button>
         ))}
+        <button type="button" aria-pressed={kidsOnly} onClick={() => setKidsOnly(v => !v)} className={chip(kidsOnly)}>
+          {t('filters.kids')}
+        </button>
         {(['majors', 'emc'] as const).map(s => (
           <button key={s} type="button" aria-pressed={series === s} onClick={() => setSeries(series === s ? 'all' : s)} className={chip(series === s)}>
             {t(`series.${s}`)}
           </button>
         ))}
-        <button type="button" aria-pressed={directOnly} onClick={() => setDirectOnly(v => !v)} className={chip(directOnly)}>
-          {t('filters.directOnly', { city: home.city })}
-        </button>
+        {scope !== 'local' && (
+          <button type="button" aria-pressed={directOnly} onClick={() => setDirectOnly(v => !v)} className={chip(directOnly)}>
+            {t('filters.directOnly', { city: home.city })}
+          </button>
+        )}
         <button type="button" aria-pressed={upcomingOnly} onClick={() => setUpcomingOnly(v => !v)} className={chip(upcomingOnly)}>
           {t('filters.upcomingOnly')}
         </button>

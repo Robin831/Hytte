@@ -7,6 +7,7 @@ function race(id: number, date: string, distance_m: number): RaceEvent {
   return {
     id, slug: `r${id}`, name: `Race ${id}`, edition_year: 2027, race_date: date, date_precision: 'day', country: 'NO',
     distance_m, status: 'open', entry_type: 'fcfs', travel: '', url: '', series: [], texts: {},
+    scope: 'away', distances: [], place: '', lat: null, lng: null, source: '', source_id: '',
     checked_at: '', created_at: '', updated_at: '', deadlines: [],
   }
 }

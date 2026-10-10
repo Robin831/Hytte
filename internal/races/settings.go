@@ -25,6 +25,14 @@ type ResearchSettings struct {
 	// the direct-flight badge are written for this airport.
 	HomeCity    string `json:"home_city"`
 	HomeAirport string `json:"home_airport"`
+	// Local races: imported daily from Kondis within LocalRadiusKM of home
+	// (HomeLat/HomeLng). Parkrun runs every week, so it is left out unless
+	// IncludeParkrun is on.
+	HomeLat          float64 `json:"home_lat"`
+	HomeLng          float64 `json:"home_lng"`
+	LocalSyncEnabled bool    `json:"local_sync_enabled"`
+	LocalRadiusKM    int     `json:"local_radius_km"`
+	IncludeParkrun   bool    `json:"include_parkrun"`
 }
 
 // ResearchModels are the models the settings accept, cheapest first.
@@ -40,12 +48,18 @@ var DefaultResearchSettings = ResearchSettings{
 	NightlyMaxRaces:  nightlyMaxRaces,
 	HomeCity:         "Bergen",
 	HomeAirport:      "BGO",
+	HomeLat:          60.3913,
+	HomeLng:          5.3221,
+	LocalSyncEnabled: true,
+	LocalRadiusKM:    50,
 }
 
 const (
 	maxDailyBudget   = 100
 	maxMonthlyBudget = 1000
 	maxNightlyRaces  = 60
+	minLocalRadius   = 5
+	maxLocalRadius   = 300
 )
 
 // Validate checks settings sent by the admin.
@@ -69,6 +83,10 @@ func (s ResearchSettings) Validate() error {
 		return invalid("home city is required (max 60 characters)")
 	case !airportPattern.MatchString(s.HomeAirport):
 		return invalid("home airport must be a three-letter IATA code")
+	case s.HomeLat < -90 || s.HomeLat > 90 || s.HomeLng < -180 || s.HomeLng > 180:
+		return invalid("home position must be a valid latitude and longitude")
+	case s.LocalRadiusKM < minLocalRadius || s.LocalRadiusKM > maxLocalRadius:
+		return invalid("local radius must be between %d and %d km", minLocalRadius, maxLocalRadius)
 	}
 	return nil
 }
@@ -109,6 +127,22 @@ func LoadResearchSettings(ctx context.Context, db *sql.DB) (ResearchSettings, er
 			s.HomeCity = v
 		case "home_airport":
 			s.HomeAirport = v
+		case "home_lat":
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				s.HomeLat = f
+			}
+		case "home_lng":
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				s.HomeLng = f
+			}
+		case "local_sync_enabled":
+			s.LocalSyncEnabled = v == "true"
+		case "local_radius_km":
+			if n, err := strconv.Atoi(v); err == nil {
+				s.LocalRadiusKM = n
+			}
+		case "include_parkrun":
+			s.IncludeParkrun = v == "true"
 		}
 	}
 	return s, rows.Err()
@@ -130,6 +164,11 @@ func SaveResearchSettings(ctx context.Context, db *sql.DB, s ResearchSettings, u
 		"nightly_max_races":  strconv.Itoa(s.NightlyMaxRaces),
 		"home_city":          s.HomeCity,
 		"home_airport":       s.HomeAirport,
+		"home_lat":           strconv.FormatFloat(s.HomeLat, 'f', -1, 64),
+		"home_lng":           strconv.FormatFloat(s.HomeLng, 'f', -1, 64),
+		"local_sync_enabled": strconv.FormatBool(s.LocalSyncEnabled),
+		"local_radius_km":    strconv.Itoa(s.LocalRadiusKM),
+		"include_parkrun":    strconv.FormatBool(s.IncludeParkrun),
 	}
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {

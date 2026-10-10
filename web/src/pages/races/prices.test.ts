@@ -50,6 +50,7 @@ function race(name: string, distance_m: number, places: string[], series: RaceEv
     distance_m, status: 'later', entry_type: 'fcfs', travel: 'nearby', url: '', series,
     texts: { nb: { place: places[0], participants: '', course: '', travel: '', how: '', price: '' },
       en: { place: places[1] ?? places[0], participants: '', course: '', travel: '', how: '', price: '' } },
+    scope: 'away', distances: [], place: '', lat: null, lng: null, source: '', source_id: '',
     checked_at: '', created_at: '', updated_at: '', deadlines: [],
   }
 }

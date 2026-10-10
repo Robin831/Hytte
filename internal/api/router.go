@@ -1016,6 +1016,7 @@ func NewRouter(db *sql.DB) http.Handler {
 					r.Get("/races/research/runs", races.HandleResearchLog(db))
 					r.Post("/races/research/discover", races.HandleStartDiscovery(db))
 					r.Put("/races/research/settings", races.HandleSaveResearchSettings(db))
+					r.Post("/races/local/sync", races.HandleLocalSync(db))
 				})
 			})
 

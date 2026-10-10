@@ -18,6 +18,7 @@ function blankInput(): EventInput {
     name: '', edition_year: 0, race_date: '', date_precision: 'day', country: '', distance_m: MARATHON_M,
     status: 'later', entry_type: 'unknown', travel: '', url: '', series: [],
     texts: Object.fromEntries(LANGS.map(l => [l, emptyText()])),
+    scope: 'away', distances: [], place: '',
   }
 }
 
@@ -111,6 +112,13 @@ export default function RaceEditor({ event, onCancel, onSaved }: {
           <label className={label} htmlFor="race-travel">{t('facts.travel', { city: home.city })}</label>
           <select id="race-travel" className={input} value={form.travel} onChange={e => set('travel', e.target.value as Travel)}>
             {TRAVELS.map(s => <option key={s || 'unset'} value={s}>{s ? t(`travel.${s}`) : '—'}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={label} htmlFor="race-scope">{t('admin.scope')}</label>
+          <select id="race-scope" className={input} value={form.scope} onChange={e => set('scope', e.target.value as EventInput['scope'])}>
+            <option value="away">{t('scope.away')}</option>
+            <option value="local">{t('scope.local')}</option>
           </select>
         </div>
         <div>

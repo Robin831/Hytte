@@ -1,0 +1,2 @@
+category: Added
+- **Local races** - Running races within a radius of home are imported daily from the Kondis terminliste (uphill races and, unless switched on, parkrun left out), with every distance an event offers and kids' races marked. The race catalog gets an All / Local / Away switch plus 3k/5k/10k and kid-friendly filters; moved dates and cancellations of watched local races are announced like other changes. Past races nobody in the family took part in are cleaned up after a week.

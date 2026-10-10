@@ -33,7 +33,9 @@
     "course": "Course",
     "travel": "From {{city}}",
     "price": "Price",
-    "organizer": "Organizer's site"
+    "organizer": "Organizer's site",
+    "kondis": "See on Kondis",
+    "distances": "Distances"
   },
   "series": {
     "title": "Series",
@@ -60,7 +62,10 @@
     "all": "All distances",
     "half": "Half marathon",
     "marathon": "Marathon",
-    "other": "Other"
+    "other": "Other",
+    "3k": "3 km",
+    "5k": "5 km",
+    "10k": "10 km"
   },
   "precision": {
     "early": "early {{date}}",
@@ -99,7 +104,9 @@
     "all": "All",
     "directOnly": "Direct flight from {{city}}",
     "upcomingOnly": "Upcoming only",
-    "empty": "No races match these filters."
+    "empty": "No races match these filters.",
+    "scope": "Local or away",
+    "kids": "Kid-friendly"
   },
   "watch": {
     "title": "My status",
@@ -218,7 +225,8 @@
     "time": "Time (optional)",
     "tz": "Time zone",
     "expected": "Expected, not confirmed",
-    "what": "Description"
+    "what": "Description",
+    "scope": "Local or away"
   },
   "errors": {
     "load": "Couldn't load races.",
@@ -419,5 +427,25 @@
     "courseLong": "Course {{m}} m long",
     "projected": "≈ {{time}} for {{km}} km at the same pace"
   },
-  "planTrip": "Plan a trip"
+  "planTrip": "Plan a trip",
+  "scope": {
+    "local": "Local",
+    "away": "Away"
+  },
+  "kidsBadge": "kids",
+  "local": {
+    "title": "Local races",
+    "about": "Running races near home are imported from the Kondis race calendar every morning. Uphill races are left out, and past races nobody in the family took part in are cleaned up.",
+    "enabled": "Import local races",
+    "parkrun": "Include parkrun",
+    "radius": "Radius (km)",
+    "lat": "Home latitude",
+    "lng": "Home longitude",
+    "posHint": "Where the radius is measured from. Bergen centre is 60.3913, 5.3221.",
+    "sync": "Sync now",
+    "syncing": "Syncing…",
+    "never": "Not imported yet.",
+    "status": "Last import {{when}}: {{nearby}} races nearby ({{created}} new, {{updated}} changed, {{removed}} gone). {{pruned}} past races cleaned up.",
+    "failed": "The last import failed: {{error}}"
+  }
 }

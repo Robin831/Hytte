@@ -17,6 +17,20 @@ import (
 // viewer's language and falls back through this order.
 var Languages = []string{"nb", "en", "th"}
 
+// Scope: a local race is within reach of home (no trip needed); an away race
+// is one you travel to.
+const (
+	ScopeLocal = "local"
+	ScopeAway  = "away"
+)
+
+// Distance is one distance an event offers. Kids marks a children's race.
+type Distance struct {
+	M     int    `json:"m"`
+	Label string `json:"label"`
+	Kids  bool   `json:"kids"`
+}
+
 const (
 	StatusOpen   = "open"   // registration or lottery open now
 	StatusLater  = "later"  // opens later, or status unclear
@@ -27,6 +41,7 @@ var (
 	validStatus     = set(StatusOpen, StatusLater, StatusClosed)
 	validEntryType  = set("lottery", "fcfs", "qualifier", "unknown")
 	validTravel     = set("direct", "nearby", "none", "")
+	validScope      = set(ScopeLocal, ScopeAway)
 	validPrecision  = set("day", "approx", "early", "mid", "late", "month")
 	validSeries     = set("majors", "emc", "superhalfs")
 	validWatchState = set("watching", "planning", "lottery_entered", "got_place", "not_selected", "registered", "completed", "skipped")
@@ -78,6 +93,13 @@ type Event struct {
 	URL           string               `json:"url"`
 	Series        []string             `json:"series"`
 	Texts         map[string]EventText `json:"texts"`
+	Scope         string               `json:"scope"`
+	Distances     []Distance           `json:"distances"`
+	Place         string               `json:"place"`
+	Lat           *float64             `json:"lat"`
+	Lng           *float64             `json:"lng"`
+	Source        string               `json:"source"` // "" (manual/seed/research) or "kondis"
+	SourceID      string               `json:"source_id"`
 	CheckedAt     string               `json:"checked_at"`
 	CreatedAt     string               `json:"created_at"`
 	UpdatedAt     string               `json:"updated_at"`
@@ -135,6 +157,9 @@ type EventInput struct {
 	URL           string               `json:"url"`
 	Series        []string             `json:"series"`
 	Texts         map[string]EventText `json:"texts"`
+	Scope         string               `json:"scope"`
+	Distances     []Distance           `json:"distances"`
+	Place         string               `json:"place"`
 }
 
 // DeadlineInput is the editable part of a deadline.
@@ -158,6 +183,9 @@ const (
 	maxNameLen  = 200
 	maxTextLen  = 4000
 	maxNotesLen = 4000
+	// maxDistances caps an event's distance list (local races list kids'
+	// age classes separately).
+	maxDistances = 20
 )
 
 // ErrValidation wraps every input validation failure so handlers can map it
@@ -188,6 +216,9 @@ func (in *EventInput) Normalize() error {
 	if in.EntryType == "" {
 		in.EntryType = "unknown"
 	}
+	// Scope and place may be left empty: a new race is then away, and an
+	// update keeps what is stored (research replies don't carry them).
+	in.Place = strings.TrimSpace(in.Place)
 
 	switch {
 	case in.Name == "" || len([]rune(in.Name)) > maxNameLen:
@@ -206,7 +237,25 @@ func (in *EventInput) Normalize() error {
 		return invalid("unknown entry_type %q", in.EntryType)
 	case !validTravel[in.Travel]:
 		return invalid("unknown travel %q", in.Travel)
+	case in.Scope != "" && !validScope[in.Scope]:
+		return invalid("unknown scope %q", in.Scope)
+	case len([]rune(in.Place)) > 120:
+		return invalid("place too long (max 120 characters)")
+	case len(in.Distances) > maxDistances:
+		return invalid("too many distances (max %d)", maxDistances)
 	}
+	distances := make([]Distance, 0, len(in.Distances))
+	for _, d := range in.Distances {
+		d.Label = strings.TrimSpace(d.Label)
+		if d.M <= 0 || d.M > 1_000_000 {
+			return invalid("distance must be between 1 and 1000000 m")
+		}
+		if len([]rune(d.Label)) > 60 {
+			return invalid("distance label too long (max 60 characters)")
+		}
+		distances = append(distances, d)
+	}
+	in.Distances = distances
 	if in.EditionYear == 0 {
 		in.EditionYear, _ = strconv.Atoi(in.RaceDate[:4])
 	}

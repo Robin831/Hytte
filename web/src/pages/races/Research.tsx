@@ -3,8 +3,8 @@ import { Link } from 'react-router'
 import { Loader2, RefreshCw, Sparkles } from 'lucide-react'
 import { Bar, BarChart, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import {
-  type ResearchLog, type ResearchRun, type ResearchSettings, type SpendStats,
-  fetchRace, fetchResearchLog, intlLocale, saveResearchSettings, startDiscovery, startResearch,
+  type LocalSyncStatus, type ResearchLog, type ResearchRun, type ResearchSettings, type SpendStats,
+  fetchRace, fetchResearchLog, intlLocale, saveResearchSettings, startDiscovery, startResearch, syncLocalRaces,
 } from './racesApi'
 import { useRaceFormat } from './useRaceFormat'
 
@@ -292,6 +292,37 @@ function SettingsForm({ settings, models, onSaved }: {
               onChange={e => set('monthly_budget_usd', Number(e.target.value))} />
           </div>
         </div>
+        <fieldset className="border-t border-gray-800 pt-4">
+          <legend className="text-sm font-semibold">{t('local.title')}</legend>
+          <div className="mt-2 flex flex-wrap gap-6">
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={form.local_sync_enabled} onChange={e => set('local_sync_enabled', e.target.checked)} />
+              {t('local.enabled')}
+            </label>
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input type="checkbox" checked={form.include_parkrun} onChange={e => set('include_parkrun', e.target.checked)} />
+              {t('local.parkrun')}
+            </label>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div>
+              <label className={label} htmlFor="rs-radius">{t('local.radius')}</label>
+              <input id="rs-radius" type="number" min={5} max={300} className={input} value={form.local_radius_km}
+                onChange={e => set('local_radius_km', Number(e.target.value))} />
+            </div>
+            <div>
+              <label className={label} htmlFor="rs-lat">{t('local.lat')}</label>
+              <input id="rs-lat" type="number" step={0.0001} min={-90} max={90} className={input} value={form.home_lat}
+                onChange={e => set('home_lat', Number(e.target.value))} />
+            </div>
+            <div>
+              <label className={label} htmlFor="rs-lng">{t('local.lng')}</label>
+              <input id="rs-lng" type="number" step={0.0001} min={-180} max={180} className={input} value={form.home_lng}
+                onChange={e => set('home_lng', Number(e.target.value))} />
+            </div>
+          </div>
+          <p className="mt-1 text-xs text-gray-500">{t('local.posHint')}</p>
+        </fieldset>
         <div className="flex items-center gap-3">
           <button type="submit" disabled={saving} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium hover:bg-blue-500 disabled:opacity-50 cursor-pointer">
             {t('admin.save')}
@@ -300,6 +331,49 @@ function SettingsForm({ settings, models, onSaved }: {
           {status === 'error' && <span role="alert" className="text-sm text-red-300">{error || t('errors.save')}</span>}
         </div>
       </form>
+    </section>
+  )
+}
+
+/** The daily Kondis import: last outcome and a "sync now" button. */
+function LocalSyncPanel({ status, onSynced }: { status?: LocalSyncStatus; onSynced: (s: LocalSyncStatus) => void }) {
+  const { t } = useRaceFormat()
+  const when = useWhen()
+  const [syncing, setSyncing] = useState(false)
+  const [error, setError] = useState('')
+
+  const sync = async () => {
+    setSyncing(true)
+    setError('')
+    try {
+      const res = await syncLocalRaces()
+      onSynced(res.local_sync)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('errors.save'))
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  return (
+    <section aria-labelledby="local-sync" className="mt-8">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="text-sm">
+          <h2 id="local-sync" className="text-lg font-bold">{t('local.title')}</h2>
+          <p className="mt-1 text-gray-300">{t('local.about')}</p>
+          <p className="mt-1 text-gray-400" aria-live="polite">
+            {!status?.at ? t('local.never') : status.error ? t('local.failed', { error: status.error }) : t('local.status', {
+              when: when(status.at), nearby: status.nearby, created: status.created, updated: status.updated,
+              removed: status.removed + status.closed, pruned: status.pruned,
+            })}
+          </p>
+        </div>
+        <button type="button" onClick={sync} disabled={syncing}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-gray-700 px-3 py-2 text-sm font-medium hover:bg-gray-600 disabled:opacity-50 cursor-pointer">
+          <RefreshCw size={14} aria-hidden="true" className={syncing ? 'animate-spin' : ''} /> {syncing ? t('local.syncing') : t('local.sync')}
+        </button>
+      </div>
+      {error && <p role="alert" className="mt-2 text-sm text-red-300">{error}</p>}
     </section>
   )
 }
@@ -377,6 +451,7 @@ export function ResearchLogPanel() {
           onSaved={s => setLog(l => (l ? { ...l, settings: s } : l))}
         />
       )}
+      {log && <LocalSyncPanel status={log.local_sync} onSynced={s => setLog(l => (l ? { ...l, local_sync: s } : l))} />}
 
       <h2 className="mt-8 text-lg font-bold">{t('research.log')}</h2>
       {log && log.runs.length === 0 && <p className="mt-2 text-sm text-gray-500">{t('research.noRuns')}</p>}

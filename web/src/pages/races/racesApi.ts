@@ -57,6 +57,16 @@ export interface Deadline {
   texts: Partial<Record<Lang, DeadlineText>>
 }
 
+/** local = near home, no trip needed; away = a race you travel to. */
+export type Scope = 'local' | 'away'
+
+/** One distance an event offers; kids marks a children's race. */
+export interface RaceDistance {
+  m: number
+  label: string
+  kids: boolean
+}
+
 export interface RaceEvent {
   id: number
   slug: string
@@ -72,6 +82,14 @@ export interface RaceEvent {
   url: string
   series: Series[]
   texts: Partial<Record<Lang, EventText>>
+  scope: Scope
+  distances: RaceDistance[]
+  place: string
+  lat: number | null
+  lng: number | null
+  /** '' for seeded/researched races, 'kondis' for the local import. */
+  source: string
+  source_id: string
   checked_at: string
   created_at: string
   updated_at: string
@@ -141,6 +159,23 @@ export interface ResearchSettings {
   nightly_max_races: number
   home_city: string
   home_airport: string
+  home_lat: number
+  home_lng: number
+  local_sync_enabled: boolean
+  local_radius_km: number
+  include_parkrun: boolean
+}
+
+export interface LocalSyncStatus {
+  at: string
+  fetched: number
+  nearby: number
+  created: number
+  updated: number
+  removed: number
+  closed: number
+  pruned: number
+  error?: string
 }
 
 export interface FamilyWatch {
@@ -243,6 +278,7 @@ export interface ResearchLog {
   settings: ResearchSettings
   models: string[]
   config_error?: string
+  local_sync?: LocalSyncStatus
 }
 
 export interface StrideRace {
@@ -254,7 +290,8 @@ export interface StrideRace {
   priority: 'A' | 'B' | 'C'
 }
 
-export type EventInput = Omit<RaceEvent, 'id' | 'slug' | 'checked_at' | 'created_at' | 'updated_at' | 'deadlines'>
+export type EventInput = Omit<RaceEvent, 'id' | 'slug' | 'checked_at' | 'created_at' | 'updated_at' | 'deadlines' |
+  'lat' | 'lng' | 'source' | 'source_id'>
 export type DeadlineInput = Omit<Deadline, 'id' | 'event_id' | 'due_at'>
 
 export const HALF_M = 21097
@@ -287,6 +324,10 @@ export function startResearch(id: number) {
 
 export function fetchResearchLog(signal?: AbortSignal) {
   return request<ResearchLog>('/api/races/research/runs', { signal })
+}
+
+export function syncLocalRaces() {
+  return request<{ local_sync: LocalSyncStatus }>('/api/races/local/sync', { method: 'POST' })
 }
 
 export function saveResearchSettings(settings: ResearchSettings) {
@@ -546,6 +587,28 @@ export function distanceKind(m: number): 'half' | 'marathon' | 'other' {
   return 'other'
 }
 
+export type DistanceBucket = '3k' | '5k' | '10k' | 'half' | 'marathon'
+
+/** The standard distance a length counts as, if any. */
+export function distanceBucket(m: number): DistanceBucket | null {
+  if (Math.abs(m - 3000) <= 200) return '3k'
+  if (Math.abs(m - 5000) <= 300) return '5k'
+  if (Math.abs(m - 10000) <= 300) return '10k'
+  const kind = distanceKind(m)
+  return kind === 'other' ? null : kind
+}
+
+/** Every distance an event offers (older races list only their one distance). */
+export function eventDistances(e: Pick<RaceEvent, 'distances' | 'distance_m'>): RaceDistance[] {
+  return e.distances.length > 0 ? e.distances : [{ m: e.distance_m, label: '', kids: false }]
+}
+
+/** "5 km", "0,6 km" in the viewer's locale, for distances without a label. */
+export function distanceLabel(d: RaceDistance, lang: Lang): string {
+  if (d.label) return d.label
+  return `${new Intl.NumberFormat(intlLocale(lang), { maximumFractionDigits: 2 }).format(d.m / 1000)} km`
+}
+
 export function emptyText(): EventText {
   return { place: '', participants: '', course: '', travel: '', how: '', price: '' }
 }
@@ -564,5 +627,8 @@ export function eventToInput(e: RaceEvent): EventInput {
     url: e.url,
     series: [...e.series],
     texts: Object.fromEntries(LANGS.map(l => [l, { ...emptyText(), ...e.texts[l] }])),
+    scope: e.scope,
+    distances: e.distances.map(d => ({ ...d })),
+    place: e.place,
   }
 }

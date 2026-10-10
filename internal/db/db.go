@@ -3561,6 +3561,43 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Local races (Kondis terminliste import): race_events gets a scope
+	// (local = within reach of home, away = a trip), the distances an event
+	// offers (a local race usually has several, incl. kids' races), where it
+	// starts, and where it was imported from. Existing races are trips,
+	// except the home city's own (Bergen City Marathon).
+	raceEventCols := []struct {
+		name string
+		ddl  string
+	}{
+		{"scope", `ALTER TABLE race_events ADD COLUMN scope TEXT NOT NULL DEFAULT 'away'`},
+		{"distances", `ALTER TABLE race_events ADD COLUMN distances TEXT NOT NULL DEFAULT '[]'`},
+		{"place", `ALTER TABLE race_events ADD COLUMN place TEXT NOT NULL DEFAULT ''`},
+		{"lat", `ALTER TABLE race_events ADD COLUMN lat REAL`},
+		{"lng", `ALTER TABLE race_events ADD COLUMN lng REAL`},
+		{"source", `ALTER TABLE race_events ADD COLUMN source TEXT NOT NULL DEFAULT ''`},
+		{"source_id", `ALTER TABLE race_events ADD COLUMN source_id TEXT NOT NULL DEFAULT ''`},
+	}
+	for _, col := range raceEventCols {
+		var present int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('race_events') WHERE name = ?`, col.name).Scan(&present); err != nil {
+			return fmt.Errorf("check race_events %s column: %w", col.name, err)
+		}
+		if present == 0 {
+			if _, err := db.Exec(col.ddl); err != nil {
+				return fmt.Errorf("add race_events %s column: %w", col.name, err)
+			}
+			if col.name == "scope" {
+				if _, err := db.Exec(`UPDATE race_events SET scope = 'local' WHERE name LIKE 'Bergen City%'`); err != nil {
+					return fmt.Errorf("backfill race_events scope: %w", err)
+				}
+			}
+		}
+	}
+	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_race_events_source ON race_events(source, source_id) WHERE source != ''`); err != nil {
+		return fmt.Errorf("create race_events source index: %w", err)
+	}
+
 	// Add nominal_m to race_results: the distance a race was billed as when
 	// the course measured short or long (distance_m is what was actually run).
 	// 0 = the course was the advertised distance.

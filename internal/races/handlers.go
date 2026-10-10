@@ -355,6 +355,24 @@ func HandleStartDiscovery(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// HandleLocalSync runs the local race import now. Admin-only. It takes a few
+// seconds (three pages from Kondis), well inside the proxy's time limit.
+func HandleLocalSync(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		st, err := NewLocalSyncer(db).Sync(r.Context())
+		if errors.Is(err, ErrLocalSyncDisabled) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		if err != nil {
+			log.Printf("races: local sync: %v", err)
+			writeJSON(w, http.StatusBadGateway, map[string]any{"error": "the import from Kondis failed", "local_sync": st})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"local_sync": st})
+	}
+}
+
 // HandleResearchLog returns recent research runs and today's spend against
 // the budget. Admin-only.
 func HandleResearchLog(db *sql.DB) http.HandlerFunc {
@@ -374,7 +392,8 @@ func HandleResearchLog(db *sql.DB) http.HandlerFunc {
 		if err != nil {
 			log.Printf("races: research settings: %v", err)
 		}
-		resp := map[string]any{"runs": runs, "stats": stats, "settings": settings, "models": ResearchModels}
+		resp := map[string]any{"runs": runs, "stats": stats, "settings": settings, "models": ResearchModels,
+			"local_sync": LoadLocalSyncStatus(r.Context(), db)}
 		if _, _, err := res.Config(r.Context(), db); err != nil {
 			resp["config_error"] = err.Error()
 		}

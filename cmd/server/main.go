@@ -403,6 +403,8 @@ func main() {
 	go races.RunResearchLoop(notifCtx, database)
 	// Tracked races' deadlines and race days into Google Calendar (opt-in).
 	go races.RunCalendarLoop(notifCtx, database, races.CalendarSyncInterval)
+	// Local races from Kondis at 05:30 Oslo, and pruning of past races nobody was in.
+	go races.RunLocalSyncLoop(notifCtx, database)
 
 	// Daily grocery-offer sync from the Tjek API at 06:30 Europe/Oslo
 	// (Hytte-offr). Warm-runs at startup only when stored offers are stale

@@ -114,9 +114,7 @@ func applyFix(ctx context.Context, db *sql.DB, key, slug string, fix func(*Event
 		if err != nil {
 			return fmt.Errorf("race fix %s: %w", key, err)
 		}
-		in := EventInput{Name: e.Name, EditionYear: e.EditionYear, RaceDate: e.RaceDate, DatePrecision: e.DatePrecision,
-			Country: e.Country, DistanceM: e.DistanceM, Status: e.Status, EntryType: e.EntryType, Travel: e.Travel,
-			URL: e.URL, Series: e.Series, Texts: e.Texts}
+		in := EventAsInput(e)
 		fix(&in)
 		if _, _, err := UpdateEvent(ctx, db, id, in, "seed", 0); err != nil {
 			return fmt.Errorf("race fix %s: %w", key, err)

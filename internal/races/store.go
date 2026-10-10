@@ -25,15 +25,18 @@ type querier interface {
 func now() string { return time.Now().UTC().Format(time.RFC3339) }
 
 const eventColumns = `id, slug, name, edition_year, race_date, date_precision, country, distance_m,
-	status, entry_type, travel, url, series, texts, checked_at, created_at, updated_at`
+	status, entry_type, travel, url, series, texts, scope, distances, place, lat, lng, source, source_id,
+	checked_at, created_at, updated_at`
 
 type scanner interface{ Scan(dest ...any) error }
 
 func scanEvent(row scanner) (Event, error) {
 	var e Event
-	var series, texts string
+	var series, texts, distances string
+	var lat, lng sql.NullFloat64
 	err := row.Scan(&e.ID, &e.Slug, &e.Name, &e.EditionYear, &e.RaceDate, &e.DatePrecision, &e.Country,
 		&e.DistanceM, &e.Status, &e.EntryType, &e.Travel, &e.URL, &series, &texts,
+		&e.Scope, &distances, &e.Place, &lat, &lng, &e.Source, &e.SourceID,
 		&e.CheckedAt, &e.CreatedAt, &e.UpdatedAt)
 	if err != nil {
 		return e, err
@@ -42,6 +45,13 @@ func scanEvent(row scanner) (Event, error) {
 	e.Texts = map[string]EventText{}
 	if err := json.Unmarshal([]byte(texts), &e.Texts); err != nil {
 		return e, fmt.Errorf("decode texts for race %d: %w", e.ID, err)
+	}
+	e.Distances = []Distance{}
+	if err := json.Unmarshal([]byte(distances), &e.Distances); err != nil {
+		return e, fmt.Errorf("decode distances for race %d: %w", e.ID, err)
+	}
+	if lat.Valid && lng.Valid {
+		e.Lat, e.Lng = &lat.Float64, &lng.Float64
 	}
 	e.Deadlines = []Deadline{}
 	return e, nil
@@ -143,6 +153,14 @@ func getEvent(ctx context.Context, q querier, id int64) (*Event, error) {
 	return &e, rows.Err()
 }
 
+// EventAsInput is an event's editable part, for edits that start from what
+// is stored.
+func EventAsInput(e *Event) EventInput {
+	return EventInput{Name: e.Name, EditionYear: e.EditionYear, RaceDate: e.RaceDate, DatePrecision: e.DatePrecision,
+		Country: e.Country, DistanceM: e.DistanceM, Status: e.Status, EntryType: e.EntryType, Travel: e.Travel,
+		URL: e.URL, Series: e.Series, Texts: e.Texts, Scope: e.Scope, Distances: e.Distances, Place: e.Place}
+}
+
 func marshalTexts(v any) (string, error) {
 	b, err := json.Marshal(v)
 	if err != nil {
@@ -219,6 +237,9 @@ func CreateEvent(ctx context.Context, db *sql.DB, in EventInput, checkedAt, sour
 	}
 	defer tx.Rollback() //nolint:errcheck
 
+	if in.Scope == "" {
+		in.Scope = ScopeAway
+	}
 	slug, err := uniqueSlug(ctx, tx, in.Name, in.EditionYear)
 	if err != nil {
 		return nil, err
@@ -242,15 +263,21 @@ func insertEvent(ctx context.Context, q querier, slug string, in EventInput, che
 	if err != nil {
 		return 0, err
 	}
+	distances, err := marshalTexts(in.Distances)
+	if err != nil {
+		return 0, err
+	}
 	ts := now()
 	if checkedAt == "" {
 		checkedAt = ts
 	}
 	res, err := q.ExecContext(ctx, `INSERT INTO race_events (slug, name, edition_year, race_date, date_precision,
-		country, distance_m, status, entry_type, travel, url, series, texts, checked_at, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		country, distance_m, status, entry_type, travel, url, series, texts, scope, distances, place,
+		checked_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		slug, in.Name, in.EditionYear, in.RaceDate, in.DatePrecision, in.Country, in.DistanceM, in.Status,
-		in.EntryType, in.Travel, in.URL, strings.Join(in.Series, ","), texts, checkedAt, ts, ts)
+		in.EntryType, in.Travel, in.URL, strings.Join(in.Series, ","), texts, in.Scope, distances, in.Place,
+		checkedAt, ts, ts)
 	if err != nil {
 		return 0, fmt.Errorf("insert race event: %w", err)
 	}
@@ -278,6 +305,9 @@ func diffEvent(old *Event, in EventInput) []fieldDiff {
 	add("travel", old.Travel, in.Travel)
 	add("url", old.URL, in.URL)
 	add("series", strings.Join(old.Series, ","), strings.Join(in.Series, ","))
+	add("scope", old.Scope, in.Scope)
+	add("place", old.Place, in.Place)
+	add("distances", describeDistances(old.Distances), describeDistances(in.Distances))
 	for _, lang := range Languages {
 		o, n := old.Texts[lang], in.Texts[lang]
 		add("texts."+lang+".place", o.Place, n.Place)
@@ -314,17 +344,32 @@ func UpdateEvent(ctx context.Context, db *sql.DB, id int64, in EventInput, sourc
 			in.Texts[lang] = t
 		}
 	}
+	// An editor that doesn't send distances, scope or place keeps them.
+	if in.Distances == nil {
+		in.Distances = old.Distances
+	}
+	if in.Scope == "" {
+		in.Scope = old.Scope
+	}
+	if in.Place == "" {
+		in.Place = old.Place
+	}
 	diffs := diffEvent(old, in)
 	texts, err := marshalTexts(in.Texts)
+	if err != nil {
+		return nil, nil, err
+	}
+	distances, err := marshalTexts(in.Distances)
 	if err != nil {
 		return nil, nil, err
 	}
 	ts := now()
 	if _, err := tx.ExecContext(ctx, `UPDATE race_events SET name = ?, edition_year = ?, race_date = ?,
 		date_precision = ?, country = ?, distance_m = ?, status = ?, entry_type = ?, travel = ?, url = ?,
-		series = ?, texts = ?, checked_at = ?, updated_at = ? WHERE id = ?`,
+		series = ?, texts = ?, scope = ?, distances = ?, place = ?, checked_at = ?, updated_at = ? WHERE id = ?`,
 		in.Name, in.EditionYear, in.RaceDate, in.DatePrecision, in.Country, in.DistanceM, in.Status,
-		in.EntryType, in.Travel, in.URL, strings.Join(in.Series, ","), texts, ts, ts, id); err != nil {
+		in.EntryType, in.Travel, in.URL, strings.Join(in.Series, ","), texts, in.Scope, distances, in.Place,
+		ts, ts, id); err != nil {
 		return nil, nil, fmt.Errorf("update race event %d: %w", id, err)
 	}
 	for _, d := range diffs {
@@ -343,6 +388,22 @@ func UpdateEvent(ctx context.Context, db *sql.DB, id int64, in EventInput, sourc
 		syncStrideDates(ctx, db, id, old.RaceDate, in.RaceDate)
 	}
 	return e, diffs, nil
+}
+
+// describeDistances is how a distance list appears in the change log.
+func describeDistances(ds []Distance) string {
+	parts := make([]string, 0, len(ds))
+	for _, d := range ds {
+		label := d.Label
+		if label == "" {
+			label = strconv.Itoa(d.M) + " m"
+		}
+		if d.Kids {
+			label += " (kids)"
+		}
+		parts = append(parts, label)
+	}
+	return strings.Join(parts, ", ")
 }
 
 // DeleteEvent removes a race and (by cascade) its deadlines, changes and watches.
