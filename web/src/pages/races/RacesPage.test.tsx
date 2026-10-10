@@ -170,10 +170,12 @@ describe('RacesPage', () => {
     renderAt('/races')
     await screen.findByText('Bergen Half')
     expect(screen.queryByRole('button', { name: /admin.newRace/ })).toBeNull()
+    expect(screen.queryByRole('tab', { name: /tabs.research/ })).toBeNull()
     cleanup()
     authState.user = { id: 1, is_admin: true }
     renderAt('/races')
     expect(await screen.findByRole('button', { name: /admin.newRace/ })).toBeInTheDocument()
+    expect(screen.getByRole('tab', { name: /tabs.research/ })).toBeInTheDocument()
   })
 })
 

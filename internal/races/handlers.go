@@ -122,7 +122,12 @@ func HandleGet(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusInternalServerError, "failed to load race")
 			return
 		}
-		writeJSON(w, http.StatusOK, map[string]any{"event": event, "changes": changes, "watch": watch, "rates": nokRates(r, db)})
+		research, err := LatestRunForEvent(r.Context(), db, id)
+		if err != nil {
+			log.Printf("races: latest research run: %v", err)
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"event": event, "changes": changes, "watch": watch,
+			"rates": nokRates(r, db), "research": research})
 	}
 }
 
@@ -278,5 +283,80 @@ func HandleDeleteDeadline(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+// writeResearchError maps research start errors to responses.
+func writeResearchError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, ErrNotFound):
+		writeError(w, http.StatusNotFound, "race not found")
+	case errors.Is(err, ErrResearchBusy):
+		writeError(w, http.StatusConflict, err.Error())
+	case errors.Is(err, ErrResearchCooldown), errors.Is(err, ErrResearchBudget):
+		writeError(w, http.StatusTooManyRequests, err.Error())
+	case errors.Is(err, ErrResearchNoClaude):
+		writeError(w, http.StatusServiceUnavailable, err.Error())
+	default:
+		log.Printf("races: start research: %v", err)
+		writeError(w, http.StatusInternalServerError, "failed to start research")
+	}
+}
+
+// HandleStartResearch queues an automatic check of one race. Anyone with
+// the feature may ask; non-admins are limited per race (see manualCooldown).
+func HandleStartResearch(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid race ID")
+			return
+		}
+		run, err := DefaultResearcher(db).StartEventResearch(r.Context(), id, user.ID, user.IsAdmin)
+		if err != nil {
+			writeResearchError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"run": run})
+	}
+}
+
+// HandleStartDiscovery queues a search for missing races. Admin-only.
+func HandleStartDiscovery(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		run, err := DefaultResearcher(db).StartDiscovery(r.Context(), user.ID)
+		if err != nil {
+			writeResearchError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"run": run})
+	}
+}
+
+// HandleResearchLog returns recent research runs and today's spend against
+// the budget. Admin-only.
+func HandleResearchLog(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		runs, err := ListRuns(r.Context(), db, 50)
+		if err != nil {
+			log.Printf("races: research log: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to load research log")
+			return
+		}
+		res := DefaultResearcher(db)
+		spent, err := res.SpentToday(r.Context())
+		if err != nil {
+			log.Printf("races: research spend: %v", err)
+		}
+		resp := map[string]any{"runs": runs, "spent_today_usd": spent}
+		if cfg, budget, err := res.Config(r.Context(), db); err == nil {
+			resp["budget_usd"] = budget
+			resp["model"] = cfg.Model
+		} else {
+			resp["config_error"] = err.Error()
+		}
+		writeJSON(w, http.StatusOK, resp)
 	}
 }

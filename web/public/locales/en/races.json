@@ -7,7 +7,8 @@
   "tabs": {
     "mine": "My races",
     "discover": "Discover",
-    "deadlines": "Deadlines"
+    "deadlines": "Deadlines",
+    "research": "Research"
   },
   "status": {
     "open": "Open now",
@@ -205,5 +206,38 @@
     "load": "Couldn't load races.",
     "save": "Couldn't save. Try again.",
     "notFound": "Race not found."
+  },
+  "newBadge": "New",
+  "research": {
+    "check": "Check for updates",
+    "running": "Checking the organizer’s pages… this can take a few minutes.",
+    "never": "Not checked automatically yet.",
+    "updated_one": "Checked automatically {{date}}: {{count}} change.",
+    "updated_other": "Checked automatically {{date}}: {{count}} changes.",
+    "noChanges": "Checked automatically {{date}}: no changes.",
+    "unsure": "Automatic check {{date}} couldn’t confirm anything, so nothing changed.",
+    "failed": "Automatic check {{date}} failed.",
+    "cooldown": "This race was checked recently. Try again later.",
+    "budget": "Today’s research budget is used up. The next check runs tonight.",
+    "busy": "A check is already running.",
+    "noClaude": "Automatic research needs Claude enabled for an admin under Settings → Integrations.",
+    "failedStart": "Couldn’t start the check.",
+    "about": "Every night at 03:30, Claude re-checks tracked races with deadlines coming up daily and the rest of the upcoming catalog every two weeks, and looks for missing races weekly. Changes are applied automatically and logged.",
+    "spend": "Spent today: {{spent}} of {{budget}}",
+    "discover": "Find new races",
+    "discoverRun": "Search for new races",
+    "noRuns": "No research has run yet.",
+    "changes_one": "{{count}} change",
+    "changes_other": "{{count}} changes",
+    "status": {
+      "running": "Running",
+      "done": "Done",
+      "failed": "Failed",
+      "skipped": "Not confident, nothing applied"
+    },
+    "trigger": {
+      "manual": "manual",
+      "scheduled": "nightly"
+    }
   }
 }

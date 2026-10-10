@@ -7,7 +7,8 @@
   "tabs": {
     "mine": "Mine løp",
     "discover": "Utforsk",
-    "deadlines": "Frister"
+    "deadlines": "Frister",
+    "research": "Research"
   },
   "status": {
     "open": "Åpen nå",
@@ -205,5 +206,38 @@
     "load": "Kunne ikke laste løp.",
     "save": "Kunne ikke lagre. Prøv igjen.",
     "notFound": "Fant ikke løpet."
+  },
+  "newBadge": "Ny",
+  "research": {
+    "check": "Se etter oppdateringer",
+    "running": "Sjekker arrangørens sider … dette kan ta noen minutter.",
+    "never": "Ikke sjekket automatisk ennå.",
+    "updated_one": "Sjekket automatisk {{date}}: {{count}} endring.",
+    "updated_other": "Sjekket automatisk {{date}}: {{count}} endringer.",
+    "noChanges": "Sjekket automatisk {{date}}: ingen endringer.",
+    "unsure": "Den automatiske sjekken {{date}} kunne ikke bekrefte noe, så ingenting ble endret.",
+    "failed": "Den automatiske sjekken {{date}} mislyktes.",
+    "cooldown": "Dette løpet ble sjekket nylig. Prøv igjen senere.",
+    "budget": "Dagens budsjett for research er brukt opp. Neste sjekk går i natt.",
+    "busy": "En sjekk kjører allerede.",
+    "noClaude": "Automatisk research krever at Claude er slått på for en administrator under Innstillinger → Integrasjoner.",
+    "failedStart": "Kunne ikke starte sjekken.",
+    "about": "Hver natt kl. 03.30 sjekker Claude fulgte løp med frister som nærmer seg daglig og resten av de kommende løpene annenhver uke, og leter etter manglende løp ukentlig. Endringer legges inn automatisk og logges.",
+    "spend": "Brukt i dag: {{spent}} av {{budget}}",
+    "discover": "Finn nye løp",
+    "discoverRun": "Søk etter nye løp",
+    "noRuns": "Ingen research har kjørt ennå.",
+    "changes_one": "{{count}} endring",
+    "changes_other": "{{count}} endringer",
+    "status": {
+      "running": "Kjører",
+      "done": "Ferdig",
+      "failed": "Mislyktes",
+      "skipped": "Usikker, ingenting lagt inn"
+    },
+    "trigger": {
+      "manual": "manuell",
+      "scheduled": "nattlig"
+    }
   }
 }

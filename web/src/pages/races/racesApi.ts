@@ -97,6 +97,30 @@ export interface Change {
   created_at: string
 }
 
+export interface ResearchRun {
+  id: number
+  kind: 'race' | 'discover'
+  event_id: number | null
+  event_name?: string
+  trigger: 'manual' | 'scheduled'
+  status: 'running' | 'done' | 'failed' | 'skipped'
+  started_at: string
+  finished_at: string
+  cost_usd: number
+  changes: number
+  summary: string
+  sources: string[]
+  error: string
+}
+
+export interface ResearchLog {
+  runs: ResearchRun[]
+  spent_today_usd: number
+  budget_usd?: number
+  model?: string
+  config_error?: string
+}
+
 export type EventInput = Omit<RaceEvent, 'id' | 'slug' | 'checked_at' | 'created_at' | 'updated_at' | 'deadlines'>
 export type DeadlineInput = Omit<Deadline, 'id' | 'event_id' | 'due_at'>
 
@@ -121,7 +145,25 @@ export function fetchRaces(signal?: AbortSignal) {
 }
 
 export function fetchRace(id: number, signal?: AbortSignal) {
-  return request<{ event: RaceEvent; changes: Change[]; watch: Watch | null; rates?: Record<string, number> }>(`/api/races/${id}`, { signal })
+  return request<{ event: RaceEvent; changes: Change[]; watch: Watch | null; rates?: Record<string, number>; research?: ResearchRun | null }>(`/api/races/${id}`, { signal })
+}
+
+export function startResearch(id: number) {
+  return request<{ run: ResearchRun }>(`/api/races/${id}/research`, { method: 'POST' })
+}
+
+export function fetchResearchLog(signal?: AbortSignal) {
+  return request<ResearchLog>('/api/races/research/runs', { signal })
+}
+
+export function startDiscovery() {
+  return request<{ run: ResearchRun }>('/api/races/research/discover', { method: 'POST' })
+}
+
+/** Races added to the catalog in the last two weeks get a "new" badge. */
+export function isNewRace(e: Pick<RaceEvent, 'created_at'>, now = Date.now()): boolean {
+  const t = Date.parse(e.created_at)
+  return Number.isFinite(t) && now - t < 14 * 86_400_000
 }
 
 export function setWatch(id: number, state: WatchState, notes: string) {

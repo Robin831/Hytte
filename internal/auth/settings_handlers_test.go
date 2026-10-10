@@ -2614,6 +2614,8 @@ func TestPreferencesPutHandler_RacesNotifyAndLanguage(t *testing.T) {
 		`{"preferences":{"races_notify_changes":"true"}}`,
 		`{"preferences":{"ui_language":"th"}}`,
 		`{"preferences":{"ui_language":"nb"}}`,
+		`{"preferences":{"races_research_model":"claude-sonnet-5-5"}}`,
+		`{"preferences":{"races_research_daily_usd":"2.5"}}`,
 	} {
 		if code := put(body); code != http.StatusOK {
 			t.Errorf("%s: expected 200, got %d", body, code)
@@ -2632,6 +2634,10 @@ func TestPreferencesPutHandler_RacesNotifyAndLanguage(t *testing.T) {
 		`{"preferences":{"races_notify_changes":"1"}}`,
 		`{"preferences":{"ui_language":"de"}}`,
 		`{"preferences":{"ui_language":"nb-NO"}}`,
+		`{"preferences":{"races_research_model":"gpt-5"}}`,
+		`{"preferences":{"races_research_model":"claude-x; rm -rf /"}}`,
+		`{"preferences":{"races_research_daily_usd":"lots"}}`,
+		`{"preferences":{"races_research_daily_usd":"500"}}`,
 	} {
 		if code := put(body); code != http.StatusBadRequest {
 			t.Errorf("%s: expected 400, got %d", body, code)

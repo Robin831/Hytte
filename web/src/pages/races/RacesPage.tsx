@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useSearchParams, Link } from 'react-router'
-import { Flag, Search, CalendarClock, Compass, Plus } from 'lucide-react'
+import { Flag, Search, CalendarClock, Compass, Plus, Sparkles } from 'lucide-react'
 import { useAuth } from '../../auth'
 import {
   type Deadline, type RaceEvent, type RaceStatus, type Watch, type WatchState,
@@ -9,14 +9,15 @@ import {
 import { RaceRow, StatusPill } from './RaceParts'
 import { useRaceFormat } from './useRaceFormat'
 import RaceEditor from './RaceEditor'
+import { ResearchLogPanel } from './Research'
 import { type Rates, RatesContext, matchesQuery, usePriceText } from './prices'
 
-type Tab = 'mine' | 'discover' | 'deadlines'
-const TABS: Tab[] = ['mine', 'discover', 'deadlines']
-const TAB_ICONS = { mine: Flag, discover: Compass, deadlines: CalendarClock }
+type Tab = 'mine' | 'discover' | 'deadlines' | 'research'
+const TAB_ICONS = { mine: Flag, discover: Compass, deadlines: CalendarClock, research: Sparkles }
 
-function parseTab(v: string | null, hasWatches: boolean): Tab {
+function parseTab(v: string | null, hasWatches: boolean, admin: boolean): Tab {
   if (v === 'mine' || v === 'discover' || v === 'deadlines') return v
+  if (v === 'research' && admin) return v
   return hasWatches ? 'mine' : 'discover'
 }
 
@@ -65,7 +66,9 @@ export default function RacesPage() {
   }, [load, t])
 
   const watchByEvent = useMemo(() => new Map(watches.map(w => [w.event_id, w])), [watches])
-  const tab = parseTab(searchParams.get('tab'), watches.length > 0)
+  const admin = !!user?.is_admin
+  const tabs: Tab[] = admin ? ['mine', 'discover', 'deadlines', 'research'] : ['mine', 'discover', 'deadlines']
+  const tab = parseTab(searchParams.get('tab'), watches.length > 0, admin)
 
   const changeTab = (next: Tab) => {
     setSearchParams(prev => {
@@ -119,7 +122,7 @@ export default function RacesPage() {
       )}
 
       <div role="tablist" aria-label={t('title')} className="sticky top-14 md:top-0 z-20 -mx-4 flex gap-1 overflow-x-auto border-b border-gray-800 bg-gray-900/95 px-4 backdrop-blur-sm md:-mx-8 md:px-8">
-        {TABS.map(k => {
+        {tabs.map(k => {
           const Icon = TAB_ICONS[k]
           return (
             <button
@@ -154,6 +157,7 @@ export default function RacesPage() {
             <Discover events={events} watchByEvent={watchByEvent} onToggleWatch={toggleWatch} busyId={busyId} />
           )}
           {tab === 'deadlines' && <Deadlines events={events} watchByEvent={watchByEvent} />}
+          {tab === 'research' && admin && <ResearchLogPanel />}
         </div>
       )}
       <p className="mt-8 text-xs text-gray-500">{t('disclaimer')} {t('nokNote')}</p>

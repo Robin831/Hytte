@@ -3,13 +3,14 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { ArrowLeft, ExternalLink, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '../../auth'
 import {
-  type Change, type Deadline, type DeadlineKind, type Lang, type RaceEvent, type RaceStatus, type Watch, type WatchState,
+  type Change, type Deadline, type ResearchRun, type DeadlineKind, type Lang, type RaceEvent, type RaceStatus, type Watch, type WatchState,
   DEADLINE_KINDS, LANGS, STATUSES, WATCH_STATES, deadlineMoment, deleteDeadline, deleteRace, deleteWatch, fetchRace, flag, intlLocale,
   pickText, setWatch,
 } from './racesApi'
 import { StatusPill, TravelBadge } from './RaceParts'
 import { useRaceFormat } from './useRaceFormat'
 import RaceEditor, { DeadlineEditor } from './RaceEditor'
+import { ResearchStatus } from './Research'
 import { type Rates, RatesContext, usePriceText } from './prices'
 
 export default function RaceDetailPage() {
@@ -23,6 +24,7 @@ export default function RaceDetailPage() {
   const [changes, setChanges] = useState<Change[]>([])
   const [watch, setWatchState] = useState<Watch | null>(null)
   const [rates, setRates] = useState<Rates>({})
+  const [research, setResearch] = useState<ResearchRun | null>(null)
   const [notes, setNotes] = useState('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -43,6 +45,7 @@ export default function RaceDetailPage() {
     setWatchState(data.watch)
     setNotes(data.watch?.notes ?? '')
     setRates(data.rates ?? {})
+    setResearch(data.research ?? null)
     setError('')
   }, [raceId])
 
@@ -249,6 +252,7 @@ export default function RaceDetailPage() {
           )}
           {checked && <span className="text-gray-500">{t('detail.lastChecked', { date: checked })}</span>}
         </div>
+        <ResearchStatus key={research?.id ?? 0} eventId={event.id} run={research} onFinished={reload} />
       </section>
 
       {/* Deadlines */}

@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { Bookmark, BookmarkCheck, ExternalLink, Plane } from 'lucide-react'
-import { type RaceEvent, type RaceStatus, type Travel, type Watch, dateBlock, flag, pickText } from './racesApi'
+import { type RaceEvent, type RaceStatus, type Travel, type Watch, dateBlock, flag, isNewRace, pickText } from './racesApi'
 import { useRaceFormat } from './useRaceFormat'
 import { usePriceText } from './prices'
 
@@ -81,6 +81,7 @@ export function RaceRow({ event, watch, onToggleWatch, busy }: RaceRowProps) {
             </span>
           </h3>
           <div className="flex items-center gap-2">
+            {isNewRace(event) && <span className="rounded-full bg-purple-900/50 px-2 py-0.5 text-xs font-semibold text-purple-200">{t('newBadge')}</span>}
             {watch && <span className="rounded-full bg-blue-900/50 px-2 py-0.5 text-xs text-blue-200">{t(`watchState.${watch.state}`)}</span>}
             <StatusPill status={event.status} />
             {onToggleWatch && (

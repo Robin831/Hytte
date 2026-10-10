@@ -211,6 +211,38 @@ func runPromptCLIWithCost(ctx context.Context, cfg *ClaudeConfig, prompt string)
 	return parseClaudeCostEnvelope(stdout.Bytes())
 }
 
+// runPromptWithWebToolsFunc is the seam used by RunPromptWithWebTools.
+var runPromptWithWebToolsFunc = runPromptCLIWithWebTools
+
+// RunPromptWithWebTools runs a prompt with the CLI's WebSearch and WebFetch
+// tools allowed — and nothing else, so the model can read the web but not the
+// server's filesystem or shell — and returns the text plus cost in USD. Used
+// by background research jobs; callers set their own (long) deadline.
+func RunPromptWithWebTools(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, float64, error) {
+	return runPromptWithWebToolsFunc(ctx, cfg, prompt)
+}
+
+func runPromptCLIWithWebTools(ctx context.Context, cfg *ClaudeConfig, prompt string) (string, float64, error) {
+	if !cfg.Enabled {
+		return "", 0, fmt.Errorf("claude is not enabled")
+	}
+	if _, ok := ctx.Deadline(); !ok {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, DefaultCLITimeout)
+		defer cancel()
+	}
+	cmd := exec.CommandContext(ctx, cfg.CLIPath, "--model", cfg.Model, "-p", "-", "--output-format", "json",
+		"--allowedTools", "WebSearch,WebFetch")
+	cmd.Stdin = strings.NewReader(prompt)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return "", 0, classifyCLIError(ctx, err, stderr.String())
+	}
+	return parseClaudeCostEnvelope(stdout.Bytes())
+}
+
 // SessionResult holds the response text and session ID from a Claude CLI call.
 type SessionResult struct {
 	Response  string

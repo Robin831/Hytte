@@ -399,6 +399,8 @@ func main() {
 	}
 	// Deadline reminders and change pushes for tracked races.
 	go races.RunNotifyLoop(notifCtx, database, races.NotifyInterval)
+	// Nightly research at 03:30 Oslo keeps the catalog current.
+	go races.RunResearchLoop(notifCtx, database)
 
 	// Daily grocery-offer sync from the Tjek API at 06:30 Europe/Oslo
 	// (Hytte-offr). Warm-runs at startup only when stored offers are stale

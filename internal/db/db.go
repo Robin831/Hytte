@@ -2280,6 +2280,29 @@ func createSchema(db *sql.DB) error {
 		PRIMARY KEY (user_id, deadline_id, slot, due_key)
 	);
 
+	-- Automatic research (races.Researcher): one row per Claude call that
+	-- checked a race (kind 'race', event_id set) or looked for missing races
+	-- (kind 'discover'). Drives the research log, the daily cost cap and the
+	-- "last checked automatically" line on a race.
+	CREATE TABLE IF NOT EXISTS race_research_runs (
+		id          INTEGER PRIMARY KEY,
+		kind        TEXT NOT NULL,
+		event_id    INTEGER REFERENCES race_events(id) ON DELETE CASCADE,
+		trigger     TEXT NOT NULL,
+		user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		status      TEXT NOT NULL,
+		started_at  TEXT NOT NULL,
+		finished_at TEXT NOT NULL DEFAULT '',
+		cost_usd    REAL NOT NULL DEFAULT 0,
+		changes     INTEGER NOT NULL DEFAULT 0,
+		summary     TEXT NOT NULL DEFAULT '',
+		sources     TEXT NOT NULL DEFAULT '[]',
+		error       TEXT NOT NULL DEFAULT ''
+	);
+
+	CREATE INDEX IF NOT EXISTS idx_race_research_runs_event ON race_research_runs(event_id, started_at);
+	CREATE INDEX IF NOT EXISTS idx_race_research_runs_started ON race_research_runs(started_at);
+
 	-- Catalog changes already pushed to a watcher, so each change is announced
 	-- to each user once (a quiet-hours hold just delays it to a later pass).
 	CREATE TABLE IF NOT EXISTS race_change_deliveries (
