@@ -165,8 +165,11 @@ type ChecklistOp struct {
 
 // chatChange is the fenced block at the end of a reply that changes the trip.
 type chatChange struct {
-	Update    *TripInput    `json:"update"`
-	Checklist []ChecklistOp `json:"checklist"`
+	Update       *TripInput    `json:"update"`
+	Checklist    []ChecklistOp `json:"checklist"`
+	SearchPrices *struct {
+		Dates []DatePair `json:"dates"`
+	} `json:"search_prices"`
 }
 
 type chatChecklist struct {
@@ -197,6 +200,9 @@ Checklists (change them only through "checklist" operations):
 The family (people who can travel; use person_id when adding a traveller):
 %s
 
+Prices found so far (Google Flights/Hotels, NOK, totals for all travellers; flights are round trips from %s):
+%s
+
 Conversation so far:
 %s
 
@@ -208,6 +214,8 @@ How to answer:
 - To change the trip, put "update" in the block: the COMPLETE trip in the same shape as above (kind, start_date, end_date, home_tz, dest_tz, share_family, race_event_id, result_id, doc). Copy everything you don't change exactly. Change only what was asked, and say in the reply what you changed. Otherwise leave "update" null.
 - Every text in the doc is an object {"nb": ..., "en": ..., "th": ...}: write all three languages for anything you add or change. Keep names, codes, flight numbers, addresses, phone numbers and prices as written.
 - Dates are YYYY-MM-DD; local times are YYYY-MM-DDTHH:MM with their IANA time zone in the matching tz field. Route stops are airport codes or short place names. A tentative trip has doc.flex; don't change dates of a tentative trip unless asked.
+- doc.destination {"city", "airports": [IATA codes], "hotel_area"} is what price searches use; doc.costs is a list of {"category": flights|stay|transport|tickets|food|other, "label": {...}, "amount", "currency": "NOK"/"EUR"/..., "status": estimate|booked|paid}. When they book something, record it as a cost (status booked) and fill in the flight or stay.
+- To check prices, add "search_prices": {"dates": [{"start","end"}, ...]} to the block (empty dates = the trip's own dates, or a tentative trip's candidates). Each date pair costs two of the month's limited searches, so only search when asked or clearly useful, and reuse prices already found. Results show up on the trip page within a minute.
 - Checklist operations: {"op":"add_item","list_id":N,"title":{...},"detail":{...},"urgent":false} (or "list_title" instead of list_id to add to a new list), {"op":"add_list","list_title":{...}}, {"op":"set_done","item_id":N,"done":true}, {"op":"delete_item","item_id":N}.
 - %s
 
@@ -317,8 +325,9 @@ func (c *Chat) answer(ctx context.Context, tripID, userID int64, lang string) (s
 		rights = "can change this trip"
 		rule = "If a request is unclear or would remove bookings, ask before changing anything."
 	}
+	pricesText, home := c.pricesContext(ctx, tripID, userID)
 	prompt := fmt.Sprintf(chatPrompt, c.Now().In(oslo).Format("Monday 2 January 2006 15:04"), viewer, langNames[lang], rights,
-		tripJSON, listsJSON, peopleJSON, pastText, viewer, question, rule)
+		tripJSON, listsJSON, peopleJSON, home, pricesText, pastText, viewer, question, rule)
 
 	callCtx, cancel := context.WithTimeout(ctx, chatTimeout)
 	defer cancel()
@@ -337,6 +346,19 @@ func (c *Chat) answer(ctx context.Context, tripID, userID int64, lang string) (s
 	if saveErr == nil && change != nil && trip.CanEdit && (change.Update != nil || len(change.Checklist) > 0) {
 		changes, saveErr = c.apply(ctx, tripID, userID, snapshot, *change)
 	}
+	if saveErr == nil && change != nil && change.SearchPrices != nil && trip.CanEdit {
+		n, err := NewSearcher(c.DB).Start(ctx, tripID, userID, change.SearchPrices.Dates)
+		switch {
+		case err != nil:
+			content += "\n\n" + map[string]string{"nb": "⚠️ Prissøket startet ikke: ", "en": "⚠️ The price search didn't start: ",
+				"th": "⚠️ การค้นหาราคาไม่ได้เริ่ม: "}[lang] + err.Error()
+		case n > 0:
+			changes++
+			content += "\n\n" + map[string]string{"nb": "🔎 Prissøk startet – resultatene dukker opp under Priser om et minutt.",
+				"en": "🔎 Price search started – results appear under Prices in a minute.",
+				"th": "🔎 เริ่มค้นหาราคาแล้ว – ผลจะแสดงในส่วนราคาภายในหนึ่งนาที"}[lang]
+		}
+	}
 	if saveErr != nil {
 		content += "\n\n" + map[string]string{
 			"nb": "⚠️ Endringen ble ikke lagret: ",
@@ -346,6 +368,42 @@ func (c *Chat) answer(ctx context.Context, tripID, userID int64, lang string) (s
 	}
 	races.LogBackgroundRun(ctx, c.DB, "trip_chat", userID, cost, changes, "trip chat", "")
 	return content, changes > 0, "done"
+}
+
+// pricesContext is the latest prices, compact, for the prompt.
+func (c *Chat) pricesContext(ctx context.Context, tripID, userID int64) (string, string) {
+	v, err := NewSearcher(c.DB).Prices(ctx, tripID, userID)
+	if err != nil {
+		return "(none)", "BGO"
+	}
+	type brief struct {
+		Kind        string          `json:"kind"`
+		Start       string          `json:"start"`
+		End         string          `json:"end"`
+		Status      string          `json:"status"`
+		Searched    string          `json:"searched_at"`
+		Cheapest    *float64        `json:"cheapest,omitempty"`
+		Level       string          `json:"google_price_level,omitempty"`
+		TypicalLow  *float64        `json:"typical_low,omitempty"`
+		TypicalHigh *float64        `json:"typical_high,omitempty"`
+		Top         json.RawMessage `json:"top_options,omitempty"`
+	}
+	var out []brief
+	for _, q := range v.Quotes {
+		var opts []json.RawMessage
+		_ = json.Unmarshal(q.Options, &opts)
+		if len(opts) > 3 {
+			opts = opts[:3]
+		}
+		top, _ := json.Marshal(opts)
+		out = append(out, brief{q.Kind, q.Start, q.End, q.Status, q.SearchedAt, q.Cheapest, q.PriceLevel, q.TypicalLow, q.TypicalHigh, top})
+	}
+	if len(out) == 0 {
+		return fmt.Sprintf("(none yet; %d of %d searches used this month)", v.Quota.Used, v.Quota.Limit), v.Home
+	}
+	b, _ := json.Marshal(map[string]any{"quotes": out, "passengers": v.Passengers,
+		"searches_used_this_month": v.Quota.Used, "monthly_limit": v.Quota.Limit})
+	return string(b), v.Home
 }
 
 // apply saves Claude's changes; the trip must not have changed meanwhile.

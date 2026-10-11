@@ -2378,6 +2378,29 @@ func createSchema(db *sql.DB) error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_trip_chat_trip ON trip_chat_messages(trip_id, id);
 
+	-- Trip price searches (Google Flights / Hotels via SerpApi): one row per
+	-- search, kept as price history. options holds the top offers as JSON.
+	CREATE TABLE IF NOT EXISTS trip_price_quotes (
+		id           INTEGER PRIMARY KEY,
+		trip_id      INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+		kind         TEXT NOT NULL,
+		start_date   TEXT NOT NULL,
+		end_date     TEXT NOT NULL,
+		params_hash  TEXT NOT NULL DEFAULT '',
+		status       TEXT NOT NULL DEFAULT 'pending',
+		searched_at  TEXT NOT NULL,
+		cheapest     REAL,
+		currency     TEXT NOT NULL DEFAULT 'NOK',
+		price_level  TEXT NOT NULL DEFAULT '',
+		typical_low  REAL,
+		typical_high REAL,
+		options      TEXT NOT NULL DEFAULT '[]',
+		link         TEXT NOT NULL DEFAULT '',
+		error        TEXT NOT NULL DEFAULT ''
+	);
+	CREATE INDEX IF NOT EXISTS idx_trip_price_quotes ON trip_price_quotes(trip_id, kind, start_date, end_date, id);
+	CREATE INDEX IF NOT EXISTS idx_trip_price_quotes_month ON trip_price_quotes(searched_at);
+
 	CREATE TABLE IF NOT EXISTS trips (
 		id            INTEGER PRIMARY KEY,
 		owner_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

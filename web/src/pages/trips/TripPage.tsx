@@ -9,8 +9,9 @@ import {
 } from './tripsApi'
 import { DateCandidates, ReopenDates } from './DateCandidates'
 import { TripChat } from './TripChat'
+import { TripCosts, TripPrices } from './TripPrices'
 
-type SectionKey = 'checklists' | 'days' | 'flights' | 'stays' | 'transport' | 'contacts' | 'documents' | 'notes' | 'followups'
+type SectionKey = 'prices' | 'costs' | 'checklists' | 'days' | 'flights' | 'stays' | 'transport' | 'contacts' | 'documents' | 'notes' | 'followups'
 
 function useMinuteClock() {
   const [now, setNow] = useState(() => new Date())
@@ -159,6 +160,8 @@ export default function TripPage() {
     if (!trip) return []
     const d = trip.doc
     return ([
+      ['prices', !!d.destination?.airports?.length],
+      ['costs', (d.costs?.length ?? 0) > 0],
       ['checklists', trip.checklists.length > 0],
       ['days', d.days.length > 0],
       ['flights', d.flights.length > 0],
@@ -237,6 +240,18 @@ export default function TripPage() {
       </nav>
 
       <div className="mt-6 space-y-8">
+        {sections.includes('prices') && (
+          <Section id="trip-prices" title={t('section.prices')}>
+            <TripPrices trip={trip} />
+          </Section>
+        )}
+
+        {sections.includes('costs') && (
+          <Section id="trip-costs" title={t('section.costs')}>
+            <TripCosts trip={trip} />
+          </Section>
+        )}
+
         {sections.includes('checklists') && (
           <Section id="trip-checklists" title={t('section.checklists')}>
             <div className="grid gap-3 sm:grid-cols-2">

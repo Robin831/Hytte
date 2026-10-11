@@ -70,7 +70,9 @@
     "contacts": "ติดต่อและรหัสอ้างอิง",
     "documents": "เอกสาร",
     "notes": "บันทึก",
-    "followups": "หลังทริป"
+    "followups": "หลังทริป",
+    "prices": "ราคา",
+    "costs": "ค่าใช้จ่าย"
   },
   "option": {
     "phone": "โทรศัพท์",
@@ -189,5 +191,57 @@
       "weather": "อากาศจะเป็นอย่างไร?"
     },
     "emptyTrip": "ยังไม่มีข้อมูล เปิด \"ถาม Claude\" แล้วเล่าเรื่องทริป หรือวางอีเมลยืนยันการจอง แล้ว Claude จะกรอกเที่ยวบิน โรงแรม และแผนให้"
+  },
+  "prices": {
+    "noDestination": "บอก Claude ว่าจะไปที่ไหน (เมืองและสนามบิน เช่น \"ปารีส CDG และ ORY\") เพื่อเปรียบเทียบราคาเที่ยวบินและโรงแรม",
+    "check": "ตรวจราคา",
+    "searching": "กำลังค้นหา…",
+    "failed": "ล้มเหลว",
+    "none": "ยังไม่มีราคา",
+    "quota": "ใช้การค้นหาราคาไป {{used}} จาก {{limit}} ครั้งในเดือนนี้",
+    "cheapest": "ถูกที่สุด",
+    "flights": "เที่ยวบิน",
+    "hotel": "โรงแรม",
+    "total": "รวม",
+    "flightOptions": "เที่ยวบิน",
+    "hotelOptions": "โรงแรม",
+    "direct": "บินตรง",
+    "stops_one": "แวะ {{count}} ครั้ง",
+    "stops_other": "แวะ {{count}} ครั้ง",
+    "openFlights": "เปิดใน Google Flights",
+    "openHotels": "โรงแรมทั้งหมดบน Google",
+    "flightNote": "ราคาไป-กลับสำหรับทุกคน แสดงขาไป – เลือกขากลับใน Google",
+    "perNight": "{{price}}/คืน",
+    "checkedAt": "ตรวจเมื่อ {{when}}",
+    "typicalRange": "ปกติ {{low}} – {{high}}",
+    "adults_one": "ผู้ใหญ่ {{count}}",
+    "adults_other": "ผู้ใหญ่ {{count}}",
+    "children": "เด็กอายุ {{ages}} ปี",
+    "infants_one": "ทารก {{count}}",
+    "infants_other": "ทารก {{count}}",
+    "level": {
+      "low": "ต่ำ",
+      "typical": "ปกติ",
+      "high": "สูง"
+    }
+  },
+  "costs": {
+    "total": "รวม",
+    "perPerson": "ต่อคน",
+    "booked": "จองแล้ว",
+    "unconverted": "ไม่ได้นับ (ไม่มีอัตราแลกเปลี่ยน): {{list}}",
+    "category": {
+      "flights": "เที่ยวบิน",
+      "stay": "ที่พัก",
+      "transport": "การเดินทาง",
+      "tickets": "ตั๋ว",
+      "food": "อาหาร",
+      "other": "อื่น ๆ"
+    },
+    "status": {
+      "estimate": "ประมาณการ",
+      "booked": "จองแล้ว",
+      "paid": "จ่ายแล้ว"
+    }
   }
 }

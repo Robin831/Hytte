@@ -70,7 +70,9 @@
     "contacts": "Kontakter og referanser",
     "documents": "Dokumenter",
     "notes": "Notater",
-    "followups": "Etter turen"
+    "followups": "Etter turen",
+    "prices": "Priser",
+    "costs": "Kostnader"
   },
   "option": {
     "phone": "Telefon",
@@ -189,5 +191,57 @@
       "weather": "Hvordan blir været?"
     },
     "emptyTrip": "Ingenting her ennå. Åpne «Spør Claude» og fortell om turen – eller lim inn en bookingbekreftelse, så fyller den inn fly, hotell og plan."
+  },
+  "prices": {
+    "noDestination": "Fortell Claude hvor dere skal (by og flyplasser, f.eks. «Paris, CDG og ORY») for å sammenligne fly- og hotellpriser.",
+    "check": "Sjekk priser",
+    "searching": "Søker …",
+    "failed": "feilet",
+    "none": "Ingen priser ennå.",
+    "quota": "{{used}} av {{limit}} prissøk brukt denne måneden",
+    "cheapest": "Billigst",
+    "flights": "Fly",
+    "hotel": "Hotell",
+    "total": "totalt",
+    "flightOptions": "Fly",
+    "hotelOptions": "Hoteller",
+    "direct": "direkte",
+    "stops_one": "{{count}} mellomlanding",
+    "stops_other": "{{count}} mellomlandinger",
+    "openFlights": "Åpne i Google Flights",
+    "openHotels": "Alle hoteller på Google",
+    "flightNote": "Tur–retur-pris for alle; utreisen vises – velg hjemreisen hos Google.",
+    "perNight": "{{price}}/natt",
+    "checkedAt": "Sjekket {{when}}",
+    "typicalRange": "Vanligvis {{low}} – {{high}}",
+    "adults_one": "{{count}} voksen",
+    "adults_other": "{{count}} voksne",
+    "children": "barn på {{ages}} år",
+    "infants_one": "{{count}} spedbarn",
+    "infants_other": "{{count}} spedbarn",
+    "level": {
+      "low": "lav",
+      "typical": "vanlig",
+      "high": "høy"
+    }
+  },
+  "costs": {
+    "total": "Totalt",
+    "perPerson": "Per person",
+    "booked": "Bestilt",
+    "unconverted": "Ikke regnet med (ingen valutakurs): {{list}}",
+    "category": {
+      "flights": "Fly",
+      "stay": "Overnatting",
+      "transport": "Transport",
+      "tickets": "Billetter",
+      "food": "Mat",
+      "other": "Annet"
+    },
+    "status": {
+      "estimate": "anslag",
+      "booked": "bestilt",
+      "paid": "betalt"
+    }
   }
 }

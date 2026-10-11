@@ -1,0 +1,2 @@
+category: Added
+- **Trip prices and costs** - Trips with a destination get flight and hotel prices from Google Flights and Google Hotels (via SerpApi) for each candidate weekend or the trip's dates, priced for the whole family, with Google's low/typical/high verdict, the cheapest option highlighted and booking links. Searches are cached for half a day and capped per month. A trip's costs (any currency) are totalled in NOK, per person and booked vs estimated. Both are driven from the trip chat: Claude sees the prices, can start a search and records bookings and costs.

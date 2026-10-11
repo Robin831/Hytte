@@ -7,6 +7,7 @@ import TripsPage from './TripsPage'
 import TripPage from './TripPage'
 import { FamilyPicker } from './Family'
 import { TripChat } from './TripChat'
+import { TripCosts, TripPrices } from './TripPrices'
 import type { Candidate, Person, Traveller } from './tripsApi'
 
 function mockT(key: string, opts?: Record<string, unknown>): string {
@@ -51,7 +52,7 @@ describe('trip helpers', () => {
 
 const SURIN: Trip = {
   id: 7, owner_id: 1, kind: 'family', start_date: '2026-10-06', end_date: '2026-10-16', home_tz: 'Europe/Oslo', dest_tz: 'Asia/Bangkok',
-  share_family: false, race_event_id: null, result_id: null, can_edit: true, created_at: '', updated_at: '2026-10-10T08:00:00Z',
+  share_family: false, race_event_id: null, result_id: null, can_edit: true, cost_summary: { total_nok: 0, per_person_nok: 0, by_category: {}, booked_nok: 0 }, created_at: '', updated_at: '2026-10-10T08:00:00Z',
   doc: {
     title: { en: 'Khatiya and Olivia to Surin' }, summary: {}, route: ['BGO', 'AMS', 'BKK', 'Surin'],
     travellers: [{ name: 'Khatiya', child: false }, { name: 'Olivia', child: true }], race: null,
@@ -206,5 +207,59 @@ describe('TripChat', () => {
     expect(await screen.findByText('Done – ticked.')).toBeInTheDocument()
     expect(screen.getByText('chat.changed')).toBeInTheDocument()
     expect(onChanged).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('TripPrices and TripCosts', () => {
+  const quote = (kind: 'flights' | 'hotels', start: string, end: string, cheapest: number, extra: object = {}) => ({
+    id: Math.random(), kind, start, end, status: 'done', searched_at: '2026-10-11T08:00:00Z', cheapest, currency: 'NOK', options: [], ...extra,
+  })
+
+  it('compares the dates, marks the cheapest and searches on request', async () => {
+    const trip: Trip = { ...PARIS, doc: { ...PARIS.doc, destination: { city: 'Paris', airports: ['CDG', 'ORY'] } } }
+    const calls: { url: string; method: string }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method ?? 'GET' })
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as Response
+      if (init?.method === 'POST') return ok({ queued: 8 })
+      return ok({
+        home: 'BGO', quota: { used: 8, limit: 200, ready: true }, passengers: { adults: 1, child_ages: [9], infants: 0 },
+        quotes: [
+          quote('flights', '2026-11-06', '2026-11-08', 4822, { price_level: 'low', typical_low: 4300, typical_high: 6400,
+            options: [{ price: 4822, minutes: 180, stops: 0, airlines: ['Norwegian'], legs: [{ airline: 'Norwegian', flight_no: 'DY 1', from: 'BGO', to: 'ORY', dep: '2026-11-06 06:00', arr: '2026-11-06 09:00' }] }],
+            link: 'https://www.google.com/travel/flights?x' }),
+          quote('hotels', '2026-11-06', '2026-11-08', 3000, { options: [{ name: 'Hôtel Crayon Rouge', rating: 4.6, total: 3000, per_night: 1500 }] }),
+          quote('flights', '2026-11-13', '2026-11-15', 6100),
+          quote('hotels', '2026-11-13', '2026-11-15', 3500),
+        ],
+      })
+    }))
+    render(<MemoryRouter><TripPrices trip={trip} /></MemoryRouter>)
+    const cheapest = await screen.findByText('prices.cheapest')
+    const row = cheapest.closest('li')!
+    expect(within(row).getByText(/7[,.\s\u00a0]?822/)).toBeInTheDocument()
+    expect(within(row).getByText('prices.level.low')).toBeInTheDocument()
+    expect(screen.getByText('prices.quota:used=8,limit=200')).toBeInTheDocument()
+    fireEvent.click(within(row).getByRole('button'))
+    expect(within(row).getByText('Hôtel Crayon Rouge')).toBeInTheDocument()
+    expect(within(row).getByRole('link', { name: /prices.openFlights/ })).toHaveAttribute('href', 'https://www.google.com/travel/flights?x')
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /prices.check/ })) })
+    expect(calls.find(c => c.method === 'POST')?.url).toBe('/api/trips/9/prices/search')
+  })
+
+  it('asks for a destination first', () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ quotes: [], quota: { used: 0, limit: 200, ready: true } }) }) as Response))
+    render(<MemoryRouter><TripPrices trip={PARIS} /></MemoryRouter>)
+    expect(screen.getByText('prices.noDestination')).toBeInTheDocument()
+  })
+
+  it('totals the costs', () => {
+    const trip: Trip = { ...SURIN, cost_summary: { total_nok: 7474, per_person_nok: 3737, by_category: { flights: 5174, stay: 2300 }, booked_nok: 5174 },
+      doc: { ...SURIN.doc, costs: [{ category: 'flights', label: { en: 'KLM' }, amount: 5174, currency: 'NOK', status: 'booked' },
+        { category: 'stay', label: { en: 'Hotel' }, amount: 200, currency: 'EUR', status: 'estimate' }] } }
+    render(<MemoryRouter><TripCosts trip={trip} /></MemoryRouter>)
+    expect(screen.getByText(/7[,.\s\u00a0]?474/)).toBeInTheDocument()
+    expect(screen.getByText(/3[,.\s\u00a0]?737/)).toBeInTheDocument()
+    expect(screen.getByText('KLM')).toBeInTheDocument()
   })
 })

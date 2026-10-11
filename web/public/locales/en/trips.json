@@ -70,7 +70,9 @@
     "contacts": "Contacts & references",
     "documents": "Documents",
     "notes": "Notes",
-    "followups": "After the trip"
+    "followups": "After the trip",
+    "prices": "Prices",
+    "costs": "Costs"
   },
   "option": {
     "phone": "Phone",
@@ -189,5 +191,57 @@
       "weather": "What will the weather be like?"
     },
     "emptyTrip": "Nothing here yet. Open \"Ask Claude\" and tell it about the trip — or paste in a booking confirmation, and it fills in flights, hotel and plan."
+  },
+  "prices": {
+    "noDestination": "Tell Claude where you are going (city and airports, e.g. \"Paris, CDG and ORY\") to compare flight and hotel prices.",
+    "check": "Check prices",
+    "searching": "Searching…",
+    "failed": "failed",
+    "none": "No prices yet.",
+    "quota": "{{used}} of {{limit}} price searches used this month",
+    "cheapest": "Cheapest",
+    "flights": "Flights",
+    "hotel": "Hotel",
+    "total": "total",
+    "flightOptions": "Flights",
+    "hotelOptions": "Hotels",
+    "direct": "direct",
+    "stops_one": "{{count}} stop",
+    "stops_other": "{{count}} stops",
+    "openFlights": "Open in Google Flights",
+    "openHotels": "All hotels on Google",
+    "flightNote": "Round-trip price for everyone; outbound shown – pick the return on Google.",
+    "perNight": "{{price}}/night",
+    "checkedAt": "Checked {{when}}",
+    "typicalRange": "Usually {{low}} – {{high}}",
+    "adults_one": "{{count}} adult",
+    "adults_other": "{{count}} adults",
+    "children": "children aged {{ages}}",
+    "infants_one": "{{count}} infant",
+    "infants_other": "{{count}} infants",
+    "level": {
+      "low": "low",
+      "typical": "typical",
+      "high": "high"
+    }
+  },
+  "costs": {
+    "total": "Total",
+    "perPerson": "Per person",
+    "booked": "Booked",
+    "unconverted": "Not counted (no exchange rate): {{list}}",
+    "category": {
+      "flights": "Flights",
+      "stay": "Stay",
+      "transport": "Transport",
+      "tickets": "Tickets",
+      "food": "Food",
+      "other": "Other"
+    },
+    "status": {
+      "estimate": "estimate",
+      "booked": "booked",
+      "paid": "paid"
+    }
   }
 }

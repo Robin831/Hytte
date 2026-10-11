@@ -429,3 +429,50 @@ func HandleClearChat(db *sql.DB) http.HandlerFunc {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }
+
+// HandlePrices returns a trip's latest flight and hotel prices.
+func HandlePrices(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid trip ID")
+			return
+		}
+		v, err := NewSearcher(db).Prices(r.Context(), id, user.ID)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, v)
+	}
+}
+
+// HandleSearchPrices starts flight and hotel searches for a trip (editors).
+func HandleSearchPrices(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid trip ID")
+			return
+		}
+		var in struct {
+			Dates []DatePair `json:"dates"`
+		}
+		if r.ContentLength > 0 && !decode(w, r, &in) {
+			return
+		}
+		n, err := NewSearcher(db).Start(r.Context(), id, user.ID, in.Dates)
+		switch {
+		case errors.Is(err, ErrNoSerpAPI):
+			writeError(w, http.StatusServiceUnavailable, err.Error())
+		case errors.Is(err, ErrNoDestination), errors.Is(err, ErrSearchQuota):
+			writeError(w, http.StatusConflict, err.Error())
+		case err != nil:
+			writeStoreError(w, err)
+		default:
+			writeJSON(w, http.StatusAccepted, map[string]int{"queued": n})
+		}
+	}
+}

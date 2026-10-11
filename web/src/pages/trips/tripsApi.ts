@@ -11,6 +11,25 @@ export interface Traveller { name: string; person_id?: number | null; user_id?: 
 /** A tentative date window; chosen = a candidate was picked and start/end hold it. */
 export interface Flex { from: string; to: string; nights: number; depart_days: number[]; chosen: boolean }
 
+/** Where a trip goes, for flight and hotel searches. */
+export interface Destination { city: string; airports: string[]; hotel_area?: string }
+export type CostCategory = 'flights' | 'stay' | 'transport' | 'tickets' | 'food' | 'other'
+export interface Cost { category: CostCategory; label: I18n; amount: number; currency: string; status: 'estimate' | 'booked' | 'paid' }
+export interface CostSummary { total_nok: number; per_person_nok: number; by_category: Record<string, number>; booked_nok: number; unconverted?: string[] }
+
+export interface FlightLeg { airline: string; flight_no: string; from: string; to: string; dep: string; arr: string }
+export interface FlightOption { price: number; minutes: number; stops: number; airlines: string[]; legs: FlightLeg[] }
+export interface HotelOption { name: string; class?: string; rating: number; reviews?: number; total: number; per_night: number; link?: string }
+export interface Quote {
+  id: number; kind: 'flights' | 'hotels'; start: string; end: string; status: 'pending' | 'done' | 'failed'; searched_at: string
+  cheapest: number | null; currency: string; price_level?: string; typical_low?: number; typical_high?: number
+  options: unknown[]; link?: string; error?: string
+}
+export interface PriceView {
+  quotes: Quote[]; quota: { used: number; limit: number; ready: boolean }
+  passengers: { adults: number; child_ages: number[] | null; infants: number }; home: string
+}
+
 export interface Clash {
   kind: 'calendar' | 'race' | 'trip'
   title?: string
@@ -43,7 +62,7 @@ export interface Followup { title: I18n; detail: I18n; done: boolean }
 export interface TripRace { name: string; date: string; bib: string; result: string }
 
 export interface TripDoc {
-  title: I18n; summary: I18n; route: string[]; travellers: Traveller[]; race?: TripRace | null; flex?: Flex | null; phases: Phase[]
+  title: I18n; summary: I18n; route: string[]; travellers: Traveller[]; race?: TripRace | null; flex?: Flex | null; destination?: Destination | null; costs?: Cost[]; phases: Phase[]
   flights: Flight[]; stays: Stay[]; transport: Transport[]; days: Day[]; contacts: Contact[]; documents: DocumentItem[]
   notes: Note[]; followups: Followup[]
 }
@@ -54,7 +73,7 @@ export interface Checklist { id: number; phase: string; title: I18n; position: n
 export interface Trip {
   id: number; owner_id: number; kind: TripKind; start_date: string; end_date: string; home_tz: string; dest_tz: string
   share_family: boolean; race_event_id: number | null; result_id: number | null; doc: TripDoc; checklists: Checklist[]
-  can_edit: boolean; created_at: string; updated_at: string
+  can_edit: boolean; cost_summary: CostSummary; created_at: string; updated_at: string
 }
 
 export interface TripSummary {
@@ -93,6 +112,10 @@ export const fetchTripChat = (id: number, signal?: AbortSignal) => request<{ mes
 export const askTripChat = (id: number, message: string, lang: Lang) =>
   request<{ messages: ChatMessage[] }>(`/api/trips/${id}/chat`, { method: 'POST', body: JSON.stringify({ message, lang }) })
 export const clearTripChat = (id: number) => request<{ status: string }>(`/api/trips/${id}/chat`, { method: 'DELETE' })
+
+export const fetchPrices = (id: number, signal?: AbortSignal) => request<PriceView>(`/api/trips/${id}/prices`, { signal })
+export const searchPrices = (id: number, dates?: { start: string; end: string }[]) =>
+  request<{ queued: number }>(`/api/trips/${id}/prices/search`, { method: 'POST', body: JSON.stringify({ dates: dates ?? [] }) })
 
 export const fetchCandidates = (id: number, signal?: AbortSignal) => request<{ candidates: Candidate[] }>(`/api/trips/${id}/candidates`, { signal })
 

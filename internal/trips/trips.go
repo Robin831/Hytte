@@ -49,16 +49,46 @@ type Doc struct {
 	Travellers []Traveller `json:"travellers"`
 	Race       *Race       `json:"race,omitempty"`
 	Flex       *Flex       `json:"flex,omitempty"` // tentative dates
-	Phases     []Phase     `json:"phases"`
-	Flights    []Flight    `json:"flights"`
-	Stays      []Stay      `json:"stays"`
-	Transport  []Transport `json:"transport"`
-	Days       []Day       `json:"days"`
-	Contacts   []Contact   `json:"contacts"`
-	Documents  []Document  `json:"documents"`
-	Notes      []Note      `json:"notes"`
-	Followups  []Followup  `json:"followups"`
+	// Destination is what price searches look for; Costs are the trip's
+	// money, booked or estimated, in any currency (totalled in NOK).
+	Destination *Destination `json:"destination,omitempty"`
+	Costs       []Cost       `json:"costs"`
+	Phases      []Phase      `json:"phases"`
+	Flights     []Flight     `json:"flights"`
+	Stays       []Stay       `json:"stays"`
+	Transport   []Transport  `json:"transport"`
+	Days        []Day        `json:"days"`
+	Contacts    []Contact    `json:"contacts"`
+	Documents   []Document   `json:"documents"`
+	Notes       []Note       `json:"notes"`
+	Followups   []Followup   `json:"followups"`
 }
+
+// Destination is where a trip goes, for flight and hotel searches.
+type Destination struct {
+	City      string   `json:"city"`                 // for hotels, e.g. "Paris"
+	Airports  []string `json:"airports"`             // IATA, e.g. ["CDG", "ORY"]
+	HotelArea string   `json:"hotel_area,omitempty"` // e.g. "Le Marais" or "near Ullevaal"
+}
+
+func (d Destination) key() string {
+	return strings.Join(d.Airports, ",") + "|" + d.City + "|" + d.HotelArea
+}
+
+// Cost is one expense on a trip.
+type Cost struct {
+	Category string  `json:"category"` // flights, stay, transport, tickets, food, other
+	Label    I18n    `json:"label"`
+	Amount   float64 `json:"amount"`
+	Currency string  `json:"currency"` // ISO 4217, e.g. NOK, EUR
+	Status   string  `json:"status"`   // estimate, booked, paid
+}
+
+var (
+	validCostCategories = map[string]bool{"flights": true, "stay": true, "transport": true, "tickets": true, "food": true, "other": true}
+	validCostStatus     = map[string]bool{"estimate": true, "booked": true, "paid": true}
+	currencyPat         = regexp.MustCompile(`^[A-Z]{3}$`)
+)
 
 type Traveller struct {
 	Name     string `json:"name"`
@@ -178,6 +208,7 @@ type Trip struct {
 	Doc         Doc         `json:"doc"`
 	Checklists  []Checklist `json:"checklists"`
 	CanEdit     bool        `json:"can_edit"`
+	CostSummary CostSummary `json:"cost_summary"`
 	CreatedAt   string      `json:"created_at"`
 	UpdatedAt   string      `json:"updated_at"`
 }
@@ -317,6 +348,33 @@ func (in *TripInput) Normalize() error {
 	for _, t := range d.Travellers {
 		if strings.TrimSpace(t.Name) == "" && t.PersonID == nil {
 			return invalid("travellers need a name")
+		}
+	}
+	if dest := d.Destination; dest != nil {
+		dest.City = strings.TrimSpace(dest.City)
+		dest.HotelArea = strings.TrimSpace(dest.HotelArea)
+		for i, a := range dest.Airports {
+			a = strings.ToUpper(strings.TrimSpace(a))
+			if !iataPat.MatchString(a) {
+				return invalid("destination airports must be IATA codes like CDG")
+			}
+			dest.Airports[i] = a
+		}
+		if len(dest.Airports) > 4 || len([]rune(dest.City)) > 60 || len([]rune(dest.HotelArea)) > 80 {
+			return invalid("destination: at most 4 airports, short city and area names")
+		}
+	}
+	for i := range d.Costs {
+		c := &d.Costs[i]
+		c.Currency = strings.ToUpper(strings.TrimSpace(c.Currency))
+		if c.Currency == "" {
+			c.Currency = "NOK"
+		}
+		if c.Status == "" {
+			c.Status = "estimate"
+		}
+		if !validCostCategories[c.Category] || !validCostStatus[c.Status] || !currencyPat.MatchString(c.Currency) || c.Amount < 0 || c.Amount > 10_000_000 {
+			return invalid("costs need a category, a status, a currency code and an amount")
 		}
 	}
 	if d.Flex != nil {
@@ -471,6 +529,7 @@ func GetTrip(ctx context.Context, db *sql.DB, tripID, userID int64) (*Trip, erro
 		return nil, err
 	}
 	t.CanEdit = canEdit
+	t.CostSummary = SummarizeCosts(ctx, db, t.Doc)
 	if t.Checklists, err = listChecklists(ctx, db, tripID); err != nil {
 		return nil, err
 	}
