@@ -3,32 +3,10 @@ import { Clock, LogIn, LogOut } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import Widget from '../Widget'
 import WidgetLink from './WidgetLink'
-import { getJSON, useWidgetData } from './useWidgetData'
+import { useWidgetData } from './useWidgetData'
+import { workHoursSource } from './sources'
 import { useCurrentTime } from '../../hooks/useCurrentTime'
 import { toLocalDateString } from '../../utils/formatDate'
-
-interface OpenSession {
-  date: string
-  start_time: string
-}
-
-interface DaySummary {
-  net_minutes: number
-  standard_minutes: number
-}
-
-interface WorkHours {
-  session: OpenSession | null
-  summary: DaySummary | null
-}
-
-async function loadWorkHours(signal: AbortSignal): Promise<WorkHours> {
-  const [punch, day] = await Promise.all([
-    getJSON<{ session: OpenSession | null }>('/api/workhours/punch-session', signal),
-    getJSON<{ summary: DaySummary | null }>(`/api/workhours/day?date=${toLocalDateString()}`, signal),
-  ])
-  return { session: punch.session ?? null, summary: day.summary ?? null }
-}
 
 const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
 const toMinutes = (t: string) => {
@@ -51,7 +29,7 @@ async function post(url: string, body: unknown): Promise<boolean> {
 export default function WorkHoursWidget() {
   const { t } = useTranslation('dashboard')
   const now = useCurrentTime()
-  const { data, loaded, failed, reload } = useWidgetData(loadWorkHours)
+  const { data, loaded, failed, reload } = useWidgetData(workHoursSource)
   const [busy, setBusy] = useState(false)
   const [punchFailed, setPunchFailed] = useState(false)
 

@@ -2,17 +2,8 @@ import { Gamepad2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import Widget from '../Widget'
 import WidgetLink from './WidgetLink'
-import { getJSON, useWidgetData } from './useWidgetData'
-
-interface Game {
-  id: number
-  opponent: string
-  scores: [number, number]
-  is_my_turn: boolean
-}
-
-const loadGames = (signal: AbortSignal) =>
-  getJSON<{ games: Game[] | null }>('/api/wordfeud/games', signal).then((d) => d.games ?? [])
+import { useWidgetData } from './useWidgetData'
+import { wordfeudSource } from './sources'
 
 /**
  * Games waiting on you. The endpoint asks Wordfeud's servers live, so a slow
@@ -20,7 +11,7 @@ const loadGames = (signal: AbortSignal) =>
  */
 export default function WordfeudWidget() {
   const { t } = useTranslation('dashboard')
-  const { data: games, loaded } = useWidgetData(loadGames)
+  const { data: games, loaded } = useWidgetData(wordfeudSource)
   if (!loaded || !games || games.length === 0) return null
 
   const mine = games.filter((g) => g.is_my_turn)

@@ -225,6 +225,18 @@
       "waiting_one": "รอคู่แข่ง {{count}} คน",
       "waiting_other": "รอคู่แข่ง {{count}} คน",
       "open": "เปิด Wordfeud →"
+    },
+    "nextUp": {
+      "title": "ถัดไป",
+      "notPunchedIn": "ยังไม่ได้บันทึกเวลาเข้า",
+      "event": "{{time}} · {{title}}",
+      "session": "วันนี้: {{session}}",
+      "tripDay": "{{trip}} — วันที่ {{day}} จาก {{total}}",
+      "tripTomorrow": "{{trip}} — ออกเดินทางพรุ่งนี้",
+      "tripLeaving_one": "{{trip}} — ออกเดินทางในอีก {{count}} วัน",
+      "tripLeaving_other": "{{trip}} — ออกเดินทางในอีก {{count}} วัน",
+      "deadline": "{{what}} · {{race}} — {{when}}",
+      "race": "{{race}} — {{when}}"
     }
   },
   "layout": {

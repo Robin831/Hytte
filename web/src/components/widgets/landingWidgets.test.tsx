@@ -10,6 +10,8 @@ import FamilyChatWidget from './FamilyChatWidget'
 import StarsWidget from './StarsWidget'
 import ChoresWidget from './ChoresWidget'
 import WorkHoursWidget from './WorkHoursWidget'
+import NextUpWidget from './NextUpWidget'
+import { resetSources } from './useWidgetData'
 
 function mockT(key: string, opts?: Record<string, unknown>): string {
   if (!opts) return key
@@ -23,6 +25,8 @@ vi.mock('react-i18next', () => ({
 const authState = {
   user: { id: 1, name: 'Robin' },
   familyStatus: null as { is_parent: boolean; is_child: boolean } | null,
+  features: null as string[] | null, // null = every feature
+  hasFeature: (key: string): boolean => authState.features === null || authState.features.includes(key),
 }
 vi.mock('../../auth', () => ({ useAuth: () => authState }))
 
@@ -61,7 +65,9 @@ const show = (ui: React.ReactElement) => render(<MemoryRouter>{ui}</MemoryRouter
 afterEach(() => {
   cleanup()
   vi.unstubAllGlobals()
+  resetSources()
   authState.familyStatus = null
+  authState.features = null
 })
 
 describe('TripsWidget', () => {
@@ -317,5 +323,115 @@ describe('WorkHoursWidget', () => {
     const punchIn = await screen.findByRole('button', { name: 'widgets.workHours.punchIn' })
     await act(async () => { fireEvent.click(punchIn) })
     expect(await screen.findByRole('alert')).toHaveTextContent('widgets.workHours.error')
+  })
+})
+
+describe('NextUpWidget', () => {
+  const event = (over: Record<string, unknown>) => ({
+    id: 1, name: 'Race', race_date: localDay(30), date_precision: 'day', deadlines: [], ...over,
+  })
+  const texts = () => screen.getAllByRole('listitem').map((li) => li.textContent)
+
+  it('ranks what is due now ahead of what is coming, across features', async () => {
+    authState.familyStatus = { is_parent: true, is_child: false }
+    installFetch({
+      '/api/workhours/punch-session': { session: { date: localDay(0), start_time: '00:00' } },
+      '/api/workhours/day': { summary: { net_minutes: 0, standard_minutes: 450 } },
+      '/api/calendar/events': { events: [] },
+      '/api/allowance/pending': { pending: [{ id: 1 }, { id: 2 }] },
+      '/api/stride/plans/current': { plan: { id: 1, week_start: localDay(0), week_end: localDay(6), phase: 'base',
+        plan: [{ date: localDay(0), rest_day: false, session: { description: '8 km easy', target_hr_cap: 0 } }] } },
+      '/api/trips': { trips: [
+        { id: 1, title: { en: 'Surin' }, start_date: utcDay(-2), end_date: utcDay(3), dest_tz: 'UTC', route: [], tentative: false, open: 0, total: 0 },
+        { id: 2, title: { en: 'Valencia' }, start_date: utcDay(4), end_date: utcDay(7), dest_tz: 'UTC', route: [], tentative: false, open: 0, total: 0 },
+        { id: 3, title: { en: 'Far away' }, start_date: utcDay(40), end_date: utcDay(47), dest_tz: 'UTC', route: [], tentative: false, open: 0, total: 0 },
+        { id: 4, title: { en: 'Maybe' }, start_date: utcDay(2), end_date: utcDay(5), dest_tz: 'UTC', route: [], tentative: true, open: 0, total: 0 },
+      ] },
+      '/api/wordfeud/games': { games: [{ id: 1, opponent: 'kari', scores: [1, 2], is_my_turn: true }] },
+      '/api/familychat/conversations': { conversations: [{ id: 1, name: 'Family', unread_count: 4, last_message_preview: '', last_message_at: '' }] },
+      '/api/races': {
+        events: [
+          event({ id: 5, name: 'Valencia Half', race_date: localDay(6), deadlines: [
+            { id: 9, event_id: 5, kind: 'payment_due', due_date: localDay(1), date_precision: 'day' },
+            { id: 10, event_id: 5, kind: 'price_increase', due_date: localDay(40), date_precision: 'day' } ] }),
+          event({ id: 6, name: 'Only watching', race_date: localDay(3) }),
+        ],
+        watches: [{ event_id: 5, state: 'registered' }, { event_id: 6, state: 'watching' }],
+      },
+    })
+    show(<NextUpWidget />)
+    await screen.findByText('widgets.nextUp.deadline:what=kind.payment_due,race=Valencia Half,when=when.tomorrow')
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(6))
+    expect(texts()).toEqual([
+      'widgets.nextUp.deadline:what=kind.payment_due,race=Valencia Half,when=when.tomorrow',
+      'widgets.chores.toApprove:count=2',
+      'widgets.nextUp.session:session=8 km easy',
+      'widgets.nextUp.tripDay:trip=Surin,day=3,total=6',
+      'widgets.wordfeud.yourTurn:count=1',
+      'widgets.familyChat.unread:count=4',
+    ])
+    // The cut-off keeps only the six most pressing: the trip in four days and the race in six wait.
+    expect(screen.getByRole('link', { name: /Surin/ })).toHaveAttribute('href', '/trips/1')
+  })
+
+  it('shows dated things once nothing more pressing crowds them out, and skips far-off or tentative ones', async () => {
+    authState.features = ['trips', 'races']
+    const calls = installFetch({
+      '/api/trips': { trips: [
+        { id: 2, title: { en: 'Valencia' }, start_date: utcDay(4), end_date: utcDay(7), dest_tz: 'UTC', route: [], tentative: false, open: 0, total: 0 },
+        { id: 3, title: { en: 'Far away' }, start_date: utcDay(40), end_date: utcDay(47), dest_tz: 'UTC', route: [], tentative: false, open: 0, total: 0 },
+        { id: 4, title: { en: 'Maybe' }, start_date: utcDay(2), end_date: utcDay(5), dest_tz: 'UTC', route: [], tentative: true, open: 0, total: 0 },
+      ] },
+      '/api/races': {
+        events: [event({ id: 5, name: 'Valencia Half', race_date: localDay(6) }), event({ id: 6, name: 'Only watching', race_date: localDay(3) })],
+        watches: [{ event_id: 5, state: 'registered' }, { event_id: 6, state: 'watching' }],
+      },
+    })
+    show(<NextUpWidget />)
+    await waitFor(() => expect(screen.getAllByRole('listitem')).toHaveLength(2))
+    expect(texts()).toEqual([
+      'widgets.nextUp.tripLeaving:trip=Valencia,count=4',
+      'widgets.nextUp.race:race=Valencia Half,when=when.inDays:count=6',
+    ])
+    // Features the user lacks are never asked for.
+    expect(calls.map((c) => c.url).sort()).toEqual(['/api/races', '/api/trips'])
+  })
+
+  it("counts a child's chores and stays hidden when nothing needs attention", async () => {
+    authState.features = ['kids_allowance']
+    authState.familyStatus = { is_parent: false, is_child: true }
+    installFetch({ '/api/allowance/my/chores': { chores: [{ id: 1, name: 'Dishes' }, { id: 2, name: 'Bins', completion_status: 'approved' }] } })
+    const first = show(<NextUpWidget />)
+    expect(await screen.findByText('widgets.chores.left:count=1')).toBeInTheDocument()
+    first.unmount()
+    resetSources()
+
+    const calls = installFetch({ '/api/allowance/my/chores': { chores: [{ id: 2, name: 'Bins', completion_status: 'approved' }] } })
+    const { container } = show(<NextUpWidget />)
+    await waitFor(() => expect(calls).toHaveLength(1))
+    await act(async () => {})
+    expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('shared sources', () => {
+  it('fetch once for two widgets showing the same data, and both refresh after a punch', async () => {
+    authState.features = ['work_hours']
+    let session: { date: string; start_time: string } | null = null
+    const calls = installFetch({
+      '/api/workhours/punch-session': () => ({ session }),
+      '/api/workhours/day': { summary: null },
+      '/api/workhours/punch-in': () => {
+        session = { date: localDay(0), start_time: '00:00' }
+        return { session }
+      },
+    })
+    show(<><NextUpWidget /><WorkHoursWidget /></>)
+    const punchIn = await screen.findByRole('button', { name: 'widgets.workHours.punchIn' })
+    expect(calls.filter((c) => c.url === '/api/workhours/punch-session')).toHaveLength(1)
+
+    await act(async () => { fireEvent.click(punchIn) })
+    expect(await screen.findByRole('button', { name: 'widgets.workHours.punchOut' })).toBeInTheDocument()
+    expect(calls.filter((c) => c.url === '/api/workhours/punch-session')).toHaveLength(2)
   })
 })

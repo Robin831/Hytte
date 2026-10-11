@@ -3,22 +3,12 @@ import { MessageCircle } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import Widget from '../Widget'
 import WidgetLink from './WidgetLink'
-import { getJSON, useWidgetData } from './useWidgetData'
-
-interface Conversation {
-  id: number
-  name: string
-  last_message_at: string
-  unread_count: number
-  last_message_preview: string
-}
-
-const loadConversations = (signal: AbortSignal) =>
-  getJSON<{ conversations: Conversation[] | null }>('/api/familychat/conversations', signal).then((d) => d.conversations ?? [])
+import { useWidgetData } from './useWidgetData'
+import { conversationsSource } from './sources'
 
 export default function FamilyChatWidget() {
   const { t } = useTranslation('dashboard')
-  const { data, loaded } = useWidgetData(loadConversations)
+  const { data, loaded } = useWidgetData(conversationsSource)
   if (!loaded || !data || data.length === 0) return null
 
   const unread = data.reduce((sum, c) => sum + c.unread_count, 0)

@@ -1,0 +1,2 @@
+category: Added
+- **"Next up" on the home page** - A short list under the greeting with the things that matter most right now, drawn from every feature you have: a race deadline due today or tomorrow, not punched in on a weekday morning, your next calendar event, chores to do or approve, today's Stride session, the trip you are on, Wordfeud turns, unread family chat, and trips, races and deadlines within the coming days. At most six, most pressing first; it hides itself when there is nothing. Widgets showing the same data now share one request.

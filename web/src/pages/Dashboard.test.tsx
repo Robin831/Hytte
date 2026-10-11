@@ -60,6 +60,7 @@ vi.mock('../components/widgets/InfraStatusWidget', () => stub('infra'))
 vi.mock('../components/widgets/GitHubStatusWidget', () => stub('github'))
 vi.mock('../components/widgets/NorwegianFunWidget', () => stub('norwegian_word'))
 vi.mock('../components/widgets/QuickLinksWidget', () => stub('quick_links'))
+vi.mock('../components/widgets/NextUpWidget', () => stub('next_up'))
 vi.mock('../components/widgets/WorkHoursWidget', () => stub('work_hours'))
 vi.mock('../components/widgets/TripsWidget', () => stub('trips'))
 vi.mock('../components/widgets/RacesWidget', () => stub('races'))
@@ -123,10 +124,19 @@ function mockPreferences(stored?: unknown, putOk = true) {
   return fetchMock
 }
 
-function renderedOrder(): string[] {
+/** Every rendered widget, in DOM order. */
+function everyWidget(): string[] {
   return Array.from(document.querySelectorAll('[data-widget]')).map(
     (el) => el.getAttribute('data-widget') ?? '',
   )
+}
+
+/**
+ * The rendered order without the "next up" list, which every user has and
+ * whose own position is covered by a test of its own.
+ */
+function renderedOrder(): string[] {
+  return everyWidget().filter((id) => id !== 'next_up')
 }
 
 async function renderDashboard() {
@@ -154,6 +164,11 @@ describe('Dashboard – layout resolution', () => {
   it('renders the default order when no preference is stored', async () => {
     await renderDashboard()
     await waitFor(() => expect(renderedOrder()).toEqual(DEFAULT_ORDER))
+  })
+
+  it('puts the "next up" list right under the greeting', async () => {
+    await renderDashboard()
+    await waitFor(() => expect(everyWidget().slice(0, 3)).toEqual(['greeting', 'next_up', 'weather']))
   })
 
   it('applies a stored order', async () => {

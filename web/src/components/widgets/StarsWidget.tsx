@@ -2,27 +2,13 @@ import { Flame, Star } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import Widget from '../Widget'
 import WidgetLink from './WidgetLink'
-import { getJSON, useWidgetData } from './useWidgetData'
-
-interface Stars {
-  balance: number
-  title: string
-  streak: number
-}
-
-async function loadStars(signal: AbortSignal): Promise<Stars> {
-  const [balance, streaks] = await Promise.all([
-    getJSON<{ current_balance: number; title: string }>('/api/stars/balance', signal),
-    // The streak is a bonus line: the balance still shows without it.
-    getJSON<{ daily_workout?: { current_count: number } }>('/api/stars/streaks', signal).catch(() => null),
-  ])
-  return { balance: balance.current_balance, title: balance.title, streak: streaks?.daily_workout?.current_count ?? 0 }
-}
+import { useWidgetData } from './useWidgetData'
+import { starsSource } from './sources'
 
 /** A child's star balance, level title and workout streak. */
 export default function StarsWidget() {
   const { t } = useTranslation('dashboard')
-  const { data, loaded } = useWidgetData(loadStars)
+  const { data, loaded } = useWidgetData(starsSource)
   if (!loaded || !data) return null
 
   return (

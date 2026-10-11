@@ -225,6 +225,18 @@
       "waiting_one": "Venter på {{count}} motstander",
       "waiting_other": "Venter på {{count}} motstandere",
       "open": "Åpne Wordfeud →"
+    },
+    "nextUp": {
+      "title": "Det neste",
+      "notPunchedIn": "Ikke stemplet inn ennå",
+      "event": "{{time}} · {{title}}",
+      "session": "I dag: {{session}}",
+      "tripDay": "{{trip}} – dag {{day}} av {{total}}",
+      "tripTomorrow": "{{trip}} – avreise i morgen",
+      "tripLeaving_one": "{{trip}} – avreise om {{count}} dag",
+      "tripLeaving_other": "{{trip}} – avreise om {{count}} dager",
+      "deadline": "{{what}} · {{race}} – {{when}}",
+      "race": "{{race}} – {{when}}"
     }
   },
   "layout": {

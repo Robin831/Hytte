@@ -2,45 +2,28 @@ import { useTranslation } from 'react-i18next'
 import Widget from '../Widget'
 import WidgetLink from './WidgetLink'
 import { useWidgetData } from './useWidgetData'
+import { strideSource, todaysSession } from './sources'
 import { toLocalDateString } from '../../utils/formatDate'
-import type { DayPlan } from '../../types/stride'
-
-interface StridePlan {
-  id: number
-  week_start: string
-  week_end: string
-  phase: string
-  plan: DayPlan[] | null
-}
-
-/** A week without a plan answers 404, which is "nothing to show", not a failure. */
-async function loadPlan(signal: AbortSignal): Promise<StridePlan | null> {
-  const res = await fetch('/api/stride/plans/current', { credentials: 'include', signal })
-  if (res.status === 404) return null
-  if (!res.ok) throw new Error(`stride plan: ${res.status}`)
-  const data = (await res.json()) as { plan: StridePlan | null }
-  return data.plan
-}
 
 export default function StrideWidget() {
   const { t } = useTranslation('dashboard')
   const { t: tStride } = useTranslation('stride')
-  const { data: plan, loaded } = useWidgetData(loadPlan)
+  const { data: plan, loaded } = useWidgetData(strideSource)
   if (!loaded || !plan) return null
 
   const today = toLocalDateString()
   const days = plan.plan ?? []
-  const todayPlan = days.find((d) => d.date === today)
+  const session = todaysSession(plan)
 
   return (
     <Widget title={t('widgets.stride.title')}>
       <p className="text-xs uppercase tracking-wide text-gray-500">{t('widgets.stride.today')}</p>
-      {todayPlan?.session && !todayPlan.rest_day ? (
+      {session ? (
         <>
-          <p className="mt-1 text-sm text-gray-200">{todayPlan.session.description}</p>
-          {todayPlan.session.target_hr_cap > 0 && (
+          <p className="mt-1 text-sm text-gray-200">{session.description}</p>
+          {session.target_hr_cap > 0 && (
             <p className="mt-0.5 text-xs text-gray-500">
-              {tStride('plan.targetHR')}: {tStride('plan.bpm', { value: todayPlan.session.target_hr_cap })}
+              {tStride('plan.targetHR')}: {tStride('plan.bpm', { value: session.target_hr_cap })}
             </p>
           )}
         </>

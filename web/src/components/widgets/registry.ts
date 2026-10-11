@@ -9,6 +9,7 @@ import FitnessWidget from './FitnessWidget'
 import LactateSummaryWidget from './LactateSummaryWidget'
 import ActivityFeedWidget from './ActivityFeedWidget'
 import CalendarWidget from './CalendarWidget'
+import NextUpWidget from './NextUpWidget'
 import StarsWidget from './StarsWidget'
 import ChoresWidget from './ChoresWidget'
 import HomeworkWidget from './HomeworkWidget'
@@ -63,6 +64,7 @@ export const WIDGET_REGISTRY: WidgetDef[] = [
     colSpanClass: 'col-span-full',
     alwaysVisible: true,
   },
+  { id: 'next_up', component: NextUpWidget, titleKey: 'widgets.nextUp.title', colSpanClass: 'col-span-full' },
   { id: 'work_hours', component: WorkHoursWidget, titleKey: 'widgets.workHours.title', feature: 'work_hours' },
   { id: 'trips', component: TripsWidget, titleKey: 'widgets.trips.title', feature: 'trips', lazy: true },
   { id: 'races', component: RacesWidget, titleKey: 'widgets.races.title', feature: 'races', lazy: true },
@@ -86,7 +88,7 @@ export const WIDGET_REGISTRY: WidgetDef[] = [
 ]
 
 /** What a child sees first, ahead of everything in the default order. */
-const CHILD_FIRST = ['greeting', 'stars', 'chores', 'homework', 'races', 'family_chat']
+const CHILD_FIRST = ['greeting', 'next_up', 'stars', 'chores', 'homework', 'races', 'family_chat']
 
 /**
  * The registry in the default order for a family role. Children get their own

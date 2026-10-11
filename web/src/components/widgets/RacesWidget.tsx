@@ -4,39 +4,19 @@ import { useTranslation } from 'react-i18next'
 import Widget from '../Widget'
 import WidgetLink from './WidgetLink'
 import { useWidgetData } from './useWidgetData'
-import { type Deadline, type RaceEvent, type WatchState, daysUntil, fetchRaces } from '../../pages/races/racesApi'
+import { racesSource, watchedRaces } from './sources'
 import { useRaceFormat } from '../../pages/races/useRaceFormat'
-
-const loadRaces = (signal: AbortSignal) => fetchRaces(signal)
-
-/** Watch states that mean the race is still ahead of you. */
-const ACTIVE: WatchState[] = ['registered', 'got_place', 'lottery_entered', 'planning', 'watching']
-const RUNNING: WatchState[] = ['registered', 'got_place']
-
-interface Watched {
-  event: RaceEvent
-  state: WatchState
-}
 
 export default function RacesWidget() {
   const { t } = useTranslation('dashboard')
   const { t: tRaces, fuzzy, daysLeft } = useRaceFormat()
-  const { data, loaded } = useWidgetData(loadRaces)
+  const { data, loaded } = useWidgetData(racesSource)
   if (!loaded || !data) return null
 
-  const stateOf = new Map((data.watches ?? []).map((w) => [w.event_id, w.state]))
-  const watched: Watched[] = (data.events ?? [])
-    .filter((e) => ACTIVE.includes(stateOf.get(e.id) as WatchState) && daysUntil(e.race_date) >= 0)
-    .map((e) => ({ event: e, state: stateOf.get(e.id) as WatchState }))
-    .sort((a, b) => a.event.race_date.localeCompare(b.event.race_date))
-
+  const { races, deadlines: allDeadlines } = watchedRaces(data)
   // The race you are actually running outranks one you are only watching.
-  const next = watched.find((w) => RUNNING.includes(w.state)) ?? watched[0]
-  const deadlines: { event: RaceEvent; deadline: Deadline }[] = watched
-    .flatMap((w) => (w.event.deadlines ?? []).map((deadline) => ({ event: w.event, deadline })))
-    .filter((d) => daysUntil(d.deadline.due_date) >= 0)
-    .sort((a, b) => a.deadline.due_date.localeCompare(b.deadline.due_date))
-    .slice(0, 2)
+  const next = races.find((r) => r.running) ?? races[0]
+  const deadlines = allDeadlines.slice(0, 2)
 
   return (
     <Widget title={t('widgets.races.title')}>

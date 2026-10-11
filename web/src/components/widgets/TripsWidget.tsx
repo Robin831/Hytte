@@ -4,20 +4,12 @@ import { useTranslation } from 'react-i18next'
 import Widget from '../Widget'
 import WidgetLink from './WidgetLink'
 import { daysBetween, useWidgetData } from './useWidgetData'
-import { type TripSummary, dateIn, fetchTrips, toLang, tripState, txt } from '../../pages/trips/tripsApi'
-
-const loadTrips = (signal: AbortSignal) => fetchTrips(signal).then((d) => d.trips ?? [])
-
-/** Ongoing trips first, then upcoming ones by start date; past trips are dropped. */
-function upcomingTrips(trips: TripSummary[], now: Date): TripSummary[] {
-  return trips
-    .filter((t) => tripState(t, now) !== 'after')
-    .sort((a, b) => a.start_date.localeCompare(b.start_date))
-}
+import { tripsSource, upcomingTrips } from './sources'
+import { type TripSummary, dateIn, toLang, tripState, txt } from '../../pages/trips/tripsApi'
 
 export default function TripsWidget() {
   const { t, i18n } = useTranslation('dashboard')
-  const { data, loaded } = useWidgetData(loadTrips)
+  const { data, loaded } = useWidgetData(tripsSource)
   if (!loaded || !data) return null
 
   const now = new Date()

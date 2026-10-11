@@ -225,6 +225,18 @@
       "waiting_one": "Waiting for {{count}} opponent",
       "waiting_other": "Waiting for {{count}} opponents",
       "open": "Open Wordfeud →"
+    },
+    "nextUp": {
+      "title": "Next up",
+      "notPunchedIn": "Not punched in yet",
+      "event": "{{time}} · {{title}}",
+      "session": "Today: {{session}}",
+      "tripDay": "{{trip}} — day {{day}} of {{total}}",
+      "tripTomorrow": "{{trip}} — leaving tomorrow",
+      "tripLeaving_one": "{{trip}} — leaving in {{count}} day",
+      "tripLeaving_other": "{{trip}} — leaving in {{count}} days",
+      "deadline": "{{what}} · {{race}} — {{when}}",
+      "race": "{{race}} — {{when}}"
     }
   },
   "layout": {
