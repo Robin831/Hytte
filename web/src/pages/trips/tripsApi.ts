@@ -21,7 +21,7 @@ export interface FlightLeg { airline: string; flight_no: string; from: string; t
 export interface FlightOption { price: number; minutes: number; stops: number; airlines: string[]; legs: FlightLeg[] }
 export interface HotelOption { name: string; class?: string; rating: number; reviews?: number; total: number; per_night: number; link?: string }
 export interface Quote {
-  id: number; kind: 'flights' | 'hotels'; start: string; end: string; status: 'pending' | 'done' | 'failed'; searched_at: string
+  id: number; kind: 'flights' | 'hotels'; label?: string; start: string; end: string; status: 'pending' | 'done' | 'failed'; searched_at: string
   cheapest: number | null; currency: string; price_level?: string; typical_low?: number; typical_high?: number
   options: unknown[]; link?: string; error?: string
 }
@@ -73,7 +73,7 @@ export interface Checklist { id: number; phase: string; title: I18n; position: n
 export interface Trip {
   id: number; owner_id: number; kind: TripKind; start_date: string; end_date: string; home_tz: string; dest_tz: string
   share_family: boolean; race_event_id: number | null; result_id: number | null; doc: TripDoc; checklists: Checklist[]
-  can_edit: boolean; cost_summary: CostSummary; created_at: string; updated_at: string
+  can_edit: boolean; cost_summary: CostSummary; has_prices?: boolean; created_at: string; updated_at: string
 }
 
 export interface TripSummary {
@@ -106,11 +106,18 @@ export const setItemDone = (id: number, done: boolean) =>
   request<{ status: string }>(`/api/trips/items/${id}/done`, { method: 'POST', body: JSON.stringify({ done }) })
 export const deleteItem = (id: number) => request<{ status: string }>(`/api/trips/items/${id}`, { method: 'DELETE' })
 export interface ChatMessage {
-  id: number; role: 'user' | 'assistant'; user_name?: string; content: string; status: 'pending' | 'done' | 'failed'; changed: boolean; created_at: string
+  id: number; role: 'user' | 'assistant'; user_name?: string; content: string; status: 'pending' | 'done' | 'failed'; changed: boolean
+  images?: number[]; created_at: string
 }
+/** A lasting fact the trip assistant remembers about the family. */
+export interface AssistantNote { id: number; text: string; created_at: string }
 export const fetchTripChat = (id: number, signal?: AbortSignal) => request<{ messages: ChatMessage[] }>(`/api/trips/${id}/chat`, { signal })
-export const askTripChat = (id: number, message: string, lang: Lang) =>
-  request<{ messages: ChatMessage[] }>(`/api/trips/${id}/chat`, { method: 'POST', body: JSON.stringify({ message, lang }) })
+export const askTripChat = (id: number, message: string, lang: Lang, pictures: string[] = []) =>
+  request<{ messages: ChatMessage[] }>(`/api/trips/${id}/chat`, {
+    method: 'POST', body: JSON.stringify({ message, lang, images: pictures.map(data => ({ data })) }),
+  })
+export const fetchAssistantNotes = (signal?: AbortSignal) => request<{ notes: AssistantNote[] }>('/api/trips/assistant/notes', { signal })
+export const deleteAssistantNote = (id: number) => request<{ status: string }>(`/api/trips/assistant/notes/${id}`, { method: 'DELETE' })
 export const clearTripChat = (id: number) => request<{ status: string }>(`/api/trips/${id}/chat`, { method: 'DELETE' })
 
 export const fetchPrices = (id: number, signal?: AbortSignal) => request<PriceView>(`/api/trips/${id}/prices`, { signal })

@@ -183,14 +183,25 @@
     "changed": "✓ Trip updated",
     "placeholder": "Ask about the trip, or ask for a change…",
     "send": "Send",
-    "introEdit": "Ask anything about the trip, or tell me what to change — flights, the plan, checklists. Everyone on the trip sees this conversation; it is deleted a month after the trip.",
+    "introEdit": "Ask anything about the trip, or tell me what to change — flights, the plan, checklists. You can send pictures too (drag them in, paste, or use the picture button): a booking confirmation, a hotel listing, a sign. Everyone on the trip sees this conversation; it is deleted a month after the trip.",
     "introView": "Ask anything about the trip. Only travellers can have it changed. The conversation is deleted a month after the trip.",
     "suggest": {
       "left": "What is left to do before we go?",
       "leave": "When should we leave for the airport?",
       "weather": "What will the weather be like?"
     },
-    "emptyTrip": "Nothing here yet. Open \"Ask Claude\" and tell it about the trip — or paste in a booking confirmation, and it fills in flights, hotel and plan."
+    "emptyTrip": "Nothing here yet. Open \"Ask Claude\" and tell it about the trip — or paste in a booking confirmation, and it fills in flights, hotel and plan.",
+    "memory": "What Claude remembers",
+    "memoryAbout": "Lasting things Claude has noted about your family, used on every trip. Remove anything that is wrong.",
+    "memoryEmpty": "Nothing yet. Tell Claude what to remember, e.g. \"remember that we prefer direct flights\".",
+    "forget": "Forget: {{text}}",
+    "addPicture": "Add pictures",
+    "removePicture": "Remove picture",
+    "picture": "Attached picture",
+    "attached": "Pictures to send",
+    "dropHere": "Drop pictures here",
+    "tooManyPictures": "At most {{max}} pictures per message.",
+    "pictureFailed": "That picture could not be read."
   },
   "prices": {
     "noDestination": "Tell Claude where you are going (city and airports, e.g. \"Paris, CDG and ORY\") to compare flight and hotel prices.",

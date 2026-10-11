@@ -201,12 +201,61 @@ describe('TripChat', () => {
     expect(await screen.findByText('chat.introEdit')).toBeInTheDocument()
     fireEvent.change(screen.getByRole('textbox', { name: 'chat.placeholder' }), { target: { value: 'Tick the SIM card' } })
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'chat.send' })) })
-    expect(calls.find(c => c.method === 'POST')?.body).toEqual({ message: 'Tick the SIM card', lang: 'en' })
+    expect(calls.find(c => c.method === 'POST')?.body).toEqual({ message: 'Tick the SIM card', lang: 'en', images: [] })
     expect(screen.getByText('chat.thinking')).toBeInTheDocument()
     await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
     expect(await screen.findByText('Done – ticked.')).toBeInTheDocument()
     expect(screen.getByText('chat.changed')).toBeInTheDocument()
     expect(onChanged).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('TripChat pictures and memory', () => {
+  const PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='
+
+  it('attaches pictures, sends them without text and shows them in the conversation', async () => {
+    const calls: { url: string; method: string; body?: { message: string; images: { data: string }[] } }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET'
+      calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as Response
+      if (method === 'POST') {
+        return ok({ messages: [
+          { id: 1, role: 'user', user_name: 'Robin', content: '📷', status: 'done', changed: false, images: [41], created_at: '' },
+          { id: 2, role: 'assistant', content: 'That is GO Hotel.', status: 'done', changed: false, images: [], created_at: '' },
+        ] })
+      }
+      if (url === '/api/trips/assistant/notes') return ok({ notes: [{ id: 3, text: 'Khatiya is also called Tan', created_at: '' }] })
+      return ok({ messages: [], status: 'ok' })
+    }))
+    render(<MemoryRouter><TripChat trip={SURIN} onTripChanged={() => {}} /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: /chat.open/ }))
+    await screen.findByText('chat.introEdit')
+
+    // Nothing to send yet.
+    expect(screen.getByRole('button', { name: 'chat.send' })).toBeDisabled()
+    const file = new File([Uint8Array.from(atob(PNG.split(',')[1]), c => c.charCodeAt(0))], 'hotel.png', { type: 'image/png' })
+    await act(async () => { fireEvent.change(screen.getByTestId('chat-pictures'), { target: { files: [file] } }) })
+    const attached = await screen.findByRole('list', { name: 'chat.attached' })
+    expect(within(attached).getAllByRole('img')).toHaveLength(1)
+
+    // A picture alone can be sent.
+    expect(screen.getByRole('button', { name: 'chat.send' })).toBeEnabled()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'chat.send' })) })
+    const post = calls.find(c => c.method === 'POST')!
+    expect(post.body!.message).toBe('')
+    expect(post.body!.images).toHaveLength(1)
+    expect(post.body!.images[0].data.startsWith('data:image/png;base64,')).toBe(true)
+    expect(screen.queryByRole('list', { name: 'chat.attached' })).toBeNull()
+    const shown = await screen.findByRole('img', { name: 'chat.picture' })
+    expect(shown).toHaveAttribute('src', '/api/trips/7/chat/images/41')
+
+    // What Claude remembers, with a way to forget.
+    fireEvent.click(screen.getByRole('button', { name: 'chat.memory' }))
+    expect(await screen.findByText('Khatiya is also called Tan')).toBeInTheDocument()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /chat.forget/ })) })
+    expect(calls.find(c => c.method === 'DELETE')?.url).toBe('/api/trips/assistant/notes/3')
+    expect(screen.queryByText('Khatiya is also called Tan')).toBeNull()
   })
 })
 

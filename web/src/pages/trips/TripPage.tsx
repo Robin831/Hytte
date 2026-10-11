@@ -160,7 +160,7 @@ export default function TripPage() {
     if (!trip) return []
     const d = trip.doc
     return ([
-      ['prices', !!d.destination?.airports?.length],
+      ['prices', !!d.destination?.airports?.length || trip.has_prices],
       ['costs', (d.costs?.length ?? 0) > 0],
       ['checklists', trip.checklists.length > 0],
       ['days', d.days.length > 0],

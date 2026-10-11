@@ -43,11 +43,11 @@ func TestTripChatAnswersAndChangesTheTrip(t *testing.T) {
 			"checklist": [{"op":"set_done","item_id":` + itoa(item) + `,"done":true},
 			              {"op":"add_item","list_id":` + itoa(gid) + `,"title":{"nb":"Lader","en":"Charger","th":"ที่ชาร์จ"}}]}` + "\n```"
 	})
-	answer, err := chat.Ask(ctx, id, 1, "Add a note that kick-off is 18:00 and tick the passport")
+	answer, err := chat.Ask(ctx, id, 1, "Add a note that kick-off is 18:00 and tick the passport", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := chat.Ask(ctx, id, 1, "again"); !errors.Is(err, ErrChatBusy) {
+	if _, err := chat.Ask(ctx, id, 1, "again", nil); !errors.Is(err, ErrChatBusy) {
 		t.Fatalf("second question while answering: %v", err)
 	}
 	chat.Answer(ctx, id, 1, answer, "en")
@@ -83,7 +83,7 @@ func TestTripChatViewerCannotChange(t *testing.T) {
 	chat, prompt := stubChat(d, func(string) string {
 		return "ok\n```json\n" + `{"update":{"kind":"other","start_date":"2026-10-02","end_date":"2026-10-05","doc":{"title":{"en":"Hacked"}}},"checklist":[]}` + "\n```"
 	})
-	answer, err := chat.Ask(ctx, id, 3, "rename it") // user 3 can view (shared) but not edit
+	answer, err := chat.Ask(ctx, id, 3, "rename it", nil) // user 3 can view (shared) but not edit
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestTripChatViewerCannotChange(t *testing.T) {
 	if err := ClearChat(ctx, d, id, 3); !errors.Is(err, ErrForbidden) {
 		t.Fatalf("viewer clearing chat: %v", err)
 	}
-	if _, err := chat.Ask(ctx, id, 2, "hi"); err != nil {
+	if _, err := chat.Ask(ctx, id, 2, "hi", nil); err != nil {
 		t.Fatalf("shared trip, user 2 can ask: %v", err)
 	}
 }
@@ -115,7 +115,7 @@ func TestTripChatRefusesStaleChanges(t *testing.T) {
 		_, _ = d.Exec(`UPDATE trips SET updated_at = 'later' WHERE id = ?`, id)
 		return "Renamed.\n```json\n" + `{"update":{"kind":"race","start_date":"2026-10-02","end_date":"2026-10-05","doc":{"title":{"en":"New"}}},"checklist":[]}` + "\n```"
 	})
-	answer, _ := chat.Ask(ctx, id, 1, "rename")
+	answer, _ := chat.Ask(ctx, id, 1, "rename", nil)
 	chat.Answer(ctx, id, 1, answer, "en")
 	msgs, _ := ListChat(ctx, d, id, 1)
 	if !strings.Contains(msgs[1].Content, "wasn't saved") || msgs[1].Changed {

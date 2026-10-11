@@ -93,7 +93,7 @@ func TestPriceSearchForCandidates(t *testing.T) {
 	srv := fake.server(t)
 	s := &Searcher{DB: d, HTTP: srv.Client(), Base: srv.URL, Key: "k", Limit: 20, Now: func() time.Time { return time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC) }}
 
-	n, err := s.Start(ctx, id, 1, nil)
+	n, err := s.Start(ctx, id, 1, SearchOptions{})
 	if err != nil || n != 8 { // 4 Fridays × flights + hotels
 		t.Fatalf("queued %d, %v", n, err)
 	}
@@ -127,12 +127,12 @@ func TestPriceSearchForCandidates(t *testing.T) {
 	}
 
 	// The same search within half a day is reused, not repeated.
-	if n, err := s.Start(ctx, id, 1, nil); err != nil || n != 0 {
+	if n, err := s.Start(ctx, id, 1, SearchOptions{}); err != nil || n != 0 {
 		t.Fatalf("cached search queued %d, %v", n, err)
 	}
 	// Specific dates; over the monthly limit is refused.
 	s.Limit = 9
-	if _, err := s.Start(ctx, id, 1, []DatePair{{"2026-12-04", "2026-12-06"}}); !errors.Is(err, ErrSearchQuota) {
+	if _, err := s.Start(ctx, id, 1, SearchOptions{Dates: []DatePair{{"2026-12-04", "2026-12-06"}}}); !errors.Is(err, ErrSearchQuota) {
 		t.Fatalf("quota: %v", err)
 	}
 }
@@ -144,14 +144,14 @@ func TestPriceSearchNeedsSetup(t *testing.T) {
 	in.Doc.Destination = nil
 	id, _ := CreateTrip(ctx, d, 1, in)
 	s := &Searcher{DB: d, Key: "", Limit: 20, Now: time.Now}
-	if _, err := s.Start(ctx, id, 1, nil); !errors.Is(err, ErrNoSerpAPI) {
+	if _, err := s.Start(ctx, id, 1, SearchOptions{}); !errors.Is(err, ErrNoSerpAPI) {
 		t.Fatalf("no key: %v", err)
 	}
 	s.Key = "k"
-	if _, err := s.Start(ctx, id, 1, nil); !errors.Is(err, ErrNoDestination) {
+	if _, err := s.Start(ctx, id, 1, SearchOptions{}); !errors.Is(err, ErrNoDestination) {
 		t.Fatalf("no destination: %v", err)
 	}
-	if _, err := s.Start(ctx, id, 3, nil); !errors.Is(err, ErrNotFound) && !errors.Is(err, ErrForbidden) {
+	if _, err := s.Start(ctx, id, 3, SearchOptions{}); !errors.Is(err, ErrNotFound) && !errors.Is(err, ErrForbidden) {
 		t.Fatalf("outsider: %v", err)
 	}
 	bad := parisTrip(t, ctx, d)

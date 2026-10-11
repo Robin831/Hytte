@@ -106,7 +106,8 @@ func (p Passengers) flightCounts() (adults, children, infants int) {
 // Quote is one stored search.
 type Quote struct {
 	ID          int64           `json:"id"`
-	Kind        string          `json:"kind"` // flights or hotels
+	Kind        string          `json:"kind"`            // flights or hotels
+	Label       string          `json:"label,omitempty"` // hotels-only search: the hotel or area asked for
 	Start       string          `json:"start"`
 	End         string          `json:"end"`
 	Status      string          `json:"status"` // pending, done, failed
@@ -243,11 +244,21 @@ type searchJob struct {
 	id    int64
 	kind  string
 	dates DatePair
+	label string
+}
+
+// SearchOptions narrows a price search.
+type SearchOptions struct {
+	Dates []DatePair `json:"dates"` // empty = the trip's dates or candidates
+	Kinds []string   `json:"kinds"` // "flights", "hotels"; empty = both
+	// HotelQuery prices one named hotel, or hotels in an area, instead of
+	// the destination city ("GO Hotel Bangkok Suvarnabhumi Airport").
+	HotelQuery string `json:"hotel_query"`
 }
 
 // Start queues searches for a trip and runs them in the background. It
 // returns how many searches were queued (cached ones are reused).
-func (s *Searcher) Start(ctx context.Context, tripID, userID int64, want []DatePair) (int, error) {
+func (s *Searcher) Start(ctx context.Context, tripID, userID int64, opts SearchOptions) (int, error) {
 	if s.Key == "" {
 		return 0, ErrNoSerpAPI
 	}
@@ -259,10 +270,31 @@ func (s *Searcher) Start(ctx context.Context, tripID, userID int64, want []DateP
 		return 0, err
 	}
 	dest := t.Doc.Destination
-	if dest == nil || len(dest.Airports) == 0 {
+	if dest == nil {
+		dest = &Destination{}
+	}
+	hotelQuery := strings.Join(strings.Fields(opts.HotelQuery), " ")
+	if len([]rune(hotelQuery)) > 120 {
+		return 0, invalid("the hotel search text is too long")
+	}
+	wantKind := map[string]bool{}
+	for _, k := range opts.Kinds {
+		if k != "flights" && k != "hotels" {
+			return 0, invalid("unknown search kind %q", k)
+		}
+		wantKind[k] = true
+	}
+	if len(wantKind) == 0 {
+		// A named hotel means hotels only, unless flights were asked for too.
+		wantKind["hotels"] = true
+		wantKind["flights"] = hotelQuery == ""
+	}
+	flights := wantKind["flights"] && len(dest.Airports) > 0
+	hotels := wantKind["hotels"] && (hotelQuery != "" || dest.City != "")
+	if !flights && !hotels {
 		return 0, ErrNoDestination
 	}
-	dates, err := s.searchDates(ctx, t, userID, want)
+	dates, err := s.searchDates(ctx, t, userID, opts.Dates)
 	if err != nil {
 		return 0, err
 	}
@@ -279,17 +311,21 @@ func (s *Searcher) Start(ctx context.Context, tripID, userID int64, want []DateP
 	var jobs []searchJob
 	for _, d := range dates {
 		for _, kind := range []string{"flights", "hotels"} {
-			if kind == "hotels" && (dest.City == "" || d.End == d.Start) {
+			if (kind == "flights" && !flights) || (kind == "hotels" && (!hotels || d.End == d.Start)) {
 				continue
 			}
-			hash := paramsHash(kind, d.Start, d.End, dest.key(), px)
+			label := ""
+			if kind == "hotels" {
+				label = hotelQuery
+			}
+			hash := paramsHash(kind, d.Start, d.End, dest.key()+"|"+label, px)
 			var cached int
 			_ = s.DB.QueryRowContext(ctx, `SELECT COUNT(*) FROM trip_price_quotes WHERE trip_id = ? AND params_hash = ?
 				AND status = 'done' AND searched_at >= ?`, tripID, hash, fresh).Scan(&cached)
 			if cached > 0 {
 				continue
 			}
-			jobs = append(jobs, searchJob{kind: kind, dates: d})
+			jobs = append(jobs, searchJob{kind: kind, dates: d, label: label})
 		}
 	}
 	if len(jobs) == 0 {
@@ -300,10 +336,10 @@ func (s *Searcher) Start(ctx context.Context, tripID, userID int64, want []DateP
 	}
 	ts := s.Now().UTC().Format(time.RFC3339)
 	for i := range jobs {
-		hash := paramsHash(jobs[i].kind, jobs[i].dates.Start, jobs[i].dates.End, dest.key(), px)
+		hash := paramsHash(jobs[i].kind, jobs[i].dates.Start, jobs[i].dates.End, dest.key()+"|"+jobs[i].label, px)
 		res, err := s.DB.ExecContext(ctx, `INSERT INTO trip_price_quotes (trip_id, kind, start_date, end_date, params_hash, status,
-			searched_at, currency, options) VALUES (?, ?, ?, ?, ?, 'pending', ?, 'NOK', '[]')`,
-			tripID, jobs[i].kind, jobs[i].dates.Start, jobs[i].dates.End, hash, ts)
+			searched_at, currency, options, label) VALUES (?, ?, ?, ?, ?, 'pending', ?, 'NOK', '[]', ?)`,
+			tripID, jobs[i].kind, jobs[i].dates.Start, jobs[i].dates.End, hash, ts, jobs[i].label)
 		if err != nil {
 			return 0, fmt.Errorf("queue price search: %w", err)
 		}
@@ -320,7 +356,7 @@ func (s *Searcher) Start(ctx context.Context, tripID, userID int64, want []DateP
 func (s *Searcher) run(dest Destination, home string, px Passengers, jobs []searchJob) {
 	for _, j := range jobs {
 		ctx, cancel := context.WithTimeout(context.Background(), searchTimeout+10*time.Second)
-		q, err := s.search(ctx, j.kind, dest, home, px, j.dates)
+		q, err := s.search(ctx, j.kind, dest, home, px, j.dates, j.label)
 		cancel()
 		if err != nil {
 			log.Printf("trips: %s search %s–%s: %v", j.kind, j.dates.Start, j.dates.End, err)
@@ -390,7 +426,26 @@ type serpFlightsReply struct {
 	} `json:"search_metadata"`
 }
 
+type serpRate struct {
+	Extracted float64 `json:"extracted_lowest"`
+}
+
 type serpHotelsReply struct {
+	// A search that Google resolves to one exact hotel comes back as that
+	// hotel's page: its fields at the top level, with prices per booking site.
+	Name          string   `json:"name"`
+	HotelClass    string   `json:"hotel_class"`
+	OverallRating float64  `json:"overall_rating"`
+	Reviews       int      `json:"reviews"`
+	Link          string   `json:"link"`
+	RatePerNight  serpRate `json:"rate_per_night"`
+	TotalRate     serpRate `json:"total_rate"`
+	Prices        []struct {
+		Source       string   `json:"source"`
+		Link         string   `json:"link"`
+		RatePerNight serpRate `json:"rate_per_night"`
+		TotalRate    serpRate `json:"total_rate"`
+	} `json:"prices"`
 	Properties []struct {
 		Name          string  `json:"name"`
 		HotelClass    string  `json:"hotel_class"`
@@ -415,7 +470,7 @@ type serpHotelsReply struct {
 
 func ptr(f float64) *float64 { return &f }
 
-func (s *Searcher) search(ctx context.Context, kind string, dest Destination, home string, px Passengers, d DatePair) (*Quote, error) {
+func (s *Searcher) search(ctx context.Context, kind string, dest Destination, home string, px Passengers, d DatePair, hotelQuery string) (*Quote, error) {
 	q := &Quote{Kind: kind, Start: d.Start, End: d.End}
 	if kind == "flights" {
 		adults, children, infants := px.flightCounts()
@@ -479,6 +534,9 @@ func (s *Searcher) search(ctx context.Context, kind string, dest Destination, ho
 	if dest.HotelArea != "" {
 		query = dest.HotelArea + ", " + dest.City
 	}
+	if hotelQuery != "" {
+		query = hotelQuery
+	}
 	p := url.Values{}
 	p.Set("engine", "google_hotels")
 	p.Set("q", query)
@@ -507,8 +565,28 @@ func (s *Searcher) search(ctx context.Context, kind string, dest Destination, ho
 		opts = append(opts, HotelOption{Name: h.Name, Class: h.HotelClass, Rating: h.OverallRating, Reviews: h.Reviews,
 			Total: h.TotalRate.Extracted, PerNight: h.RatePerNight.Extracted, Link: h.Link, Lat: h.GPS.Lat, Lng: h.GPS.Lng})
 	}
-	// Well-rated places first (4.0+), cheapest first within each group.
+	if len(opts) == 0 && r.Name != "" {
+		// One exact hotel: its own price, then each booking site's.
+		if r.TotalRate.Extracted > 0 {
+			opts = append(opts, HotelOption{Name: r.Name, Class: r.HotelClass, Rating: r.OverallRating, Reviews: r.Reviews,
+				Total: r.TotalRate.Extracted, PerNight: r.RatePerNight.Extracted, Link: r.Link})
+		}
+		for _, pr := range r.Prices {
+			if pr.TotalRate.Extracted > 0 && pr.Source != "" {
+				opts = append(opts, HotelOption{Name: r.Name + " · " + pr.Source, Class: r.HotelClass, Rating: r.OverallRating,
+					Total: pr.TotalRate.Extracted, PerNight: pr.RatePerNight.Extracted, Link: pr.Link})
+			}
+		}
+	}
+	// The hotel asked for by name first; then well-rated places (4.0+),
+	// cheapest first within each group.
+	named := func(o HotelOption) bool {
+		return hotelQuery != "" && strings.Contains(strings.ToLower(o.Name), strings.ToLower(hotelQuery))
+	}
 	sort.SliceStable(opts, func(i, j int) bool {
+		if ni, nj := named(opts[i]), named(opts[j]); ni != nj {
+			return ni
+		}
 		gi, gj := opts[i].Rating >= 4, opts[j].Rating >= 4
 		if gi != gj {
 			return gi
@@ -522,6 +600,13 @@ func (s *Searcher) search(ctx context.Context, kind string, dest Destination, ho
 		if q.Cheapest == nil || o.Total < *q.Cheapest {
 			q.Cheapest = ptr(o.Total)
 		}
+	}
+	// Asked for one hotel by name: its price is the answer, not the cheapest nearby.
+	if len(opts) > 0 && named(opts[0]) {
+		q.Cheapest = ptr(opts[0].Total)
+	}
+	if opts == nil {
+		opts = []HotelOption{}
 	}
 	q.Options, _ = json.Marshal(opts)
 	q.Link = r.SearchMetadata.GoogleHotelsURL
@@ -548,10 +633,10 @@ func (s *Searcher) Prices(ctx context.Context, tripID, userID int64) (*PriceView
 		v.Home = set.HomeAirport
 	}
 	rows, err := s.DB.QueryContext(ctx, `SELECT id, kind, start_date, end_date, status, searched_at, cheapest, currency,
-		price_level, typical_low, typical_high, options, link, error FROM trip_price_quotes q
+		price_level, typical_low, typical_high, options, link, error, label FROM trip_price_quotes q
 		WHERE trip_id = ? AND id = (SELECT MAX(id) FROM trip_price_quotes x WHERE x.trip_id = q.trip_id AND x.kind = q.kind
-			AND x.start_date = q.start_date AND x.end_date = q.end_date)
-		ORDER BY start_date, kind`, tripID)
+			AND x.start_date = q.start_date AND x.end_date = q.end_date AND x.label = q.label)
+		ORDER BY start_date, label, kind`, tripID)
 	if err != nil {
 		return nil, fmt.Errorf("list prices: %w", err)
 	}
@@ -561,7 +646,7 @@ func (s *Searcher) Prices(ctx context.Context, tripID, userID int64) (*PriceView
 		var cheapest, low, high sql.NullFloat64
 		var opts string
 		if err := rows.Scan(&q.ID, &q.Kind, &q.Start, &q.End, &q.Status, &q.SearchedAt, &cheapest, &q.Currency, &q.PriceLevel,
-			&low, &high, &opts, &q.Link, &q.Error); err != nil {
+			&low, &high, &opts, &q.Link, &q.Error, &q.Label); err != nil {
 			return nil, err
 		}
 		if cheapest.Valid {

@@ -2410,6 +2410,28 @@ func createSchema(db *sql.DB) error {
 	);
 	CREATE INDEX IF NOT EXISTS idx_trip_chat_trip ON trip_chat_messages(trip_id, id);
 
+	-- Pictures sent in a trip chat: data is the encrypted picture, description
+	-- what a vision pass read from it (encrypted). Gone with their message.
+	CREATE TABLE IF NOT EXISTS trip_chat_images (
+		id          INTEGER PRIMARY KEY,
+		trip_id     INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+		message_id  INTEGER NOT NULL REFERENCES trip_chat_messages(id) ON DELETE CASCADE,
+		mime        TEXT NOT NULL,
+		data        TEXT NOT NULL,
+		description TEXT NOT NULL DEFAULT '',
+		created_at  TEXT NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_trip_chat_images ON trip_chat_images(trip_id, message_id);
+
+	-- What the trip assistant remembers about the family across trips
+	-- (encrypted short notes it writes itself).
+	CREATE TABLE IF NOT EXISTS trip_assistant_notes (
+		id         INTEGER PRIMARY KEY,
+		note       TEXT NOT NULL,
+		created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		created_at TEXT NOT NULL
+	);
+
 	-- Trip price searches (Google Flights / Hotels via SerpApi): one row per
 	-- search, kept as price history. options holds the top offers as JSON.
 	CREATE TABLE IF NOT EXISTS trip_price_quotes (
@@ -3678,6 +3700,18 @@ func createSchema(db *sql.DB) error {
 	}
 	if _, err := db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_race_events_source ON race_events(source, source_id) WHERE source != ''`); err != nil {
 		return fmt.Errorf("create race_events source index: %w", err)
+	}
+
+	// trip_price_quotes.label: the hotel query of a hotels-only search (a
+	// named hotel or an area), '' for a destination-wide search.
+	var hasQuoteLabel int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('trip_price_quotes') WHERE name = 'label'`).Scan(&hasQuoteLabel); err != nil {
+		return fmt.Errorf("check trip_price_quotes label column: %w", err)
+	}
+	if hasQuoteLabel == 0 {
+		if _, err := db.Exec(`ALTER TABLE trip_price_quotes ADD COLUMN label TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add trip_price_quotes label column: %w", err)
+		}
 	}
 
 	// Add nominal_m to race_results: the distance a race was billed as when

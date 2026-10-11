@@ -209,6 +209,7 @@ type Trip struct {
 	Checklists  []Checklist `json:"checklists"`
 	CanEdit     bool        `json:"can_edit"`
 	CostSummary CostSummary `json:"cost_summary"`
+	HasPrices   bool        `json:"has_prices"` // a price search exists for this trip
 	CreatedAt   string      `json:"created_at"`
 	UpdatedAt   string      `json:"updated_at"`
 }
@@ -530,6 +531,7 @@ func GetTrip(ctx context.Context, db *sql.DB, tripID, userID int64) (*Trip, erro
 	}
 	t.CanEdit = canEdit
 	t.CostSummary = SummarizeCosts(ctx, db, t.Doc)
+	_ = db.QueryRowContext(ctx, `SELECT EXISTS (SELECT 1 FROM trip_price_quotes WHERE trip_id = ?)`, tripID).Scan(&t.HasPrices)
 	if t.Checklists, err = listChecklists(ctx, db, tripID); err != nil {
 		return nil, err
 	}

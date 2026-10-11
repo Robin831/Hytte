@@ -27,11 +27,12 @@ function options<T>(q?: Quote): T[] {
   return q.options as T[]
 }
 
-interface PriceRow { start: string; end: string; flights?: Quote; hotels?: Quote }
+interface PriceRow { key: string; start: string; end: string; label: string; flights?: Quote; hotels?: Quote }
 
 /** Flights plus hotel, when both are priced (or there is no hotel search). */
 function rowTotal(r: PriceRow): number | null {
-  return r.flights?.cheapest != null && (r.hotels?.cheapest != null || !r.hotels) ? r.flights.cheapest + (r.hotels?.cheapest ?? 0) : null
+  if (!r.flights) return r.hotels?.cheapest ?? null
+  return r.flights.cheapest != null && (r.hotels?.cheapest != null || !r.hotels) ? r.flights.cheapest + (r.hotels?.cheapest ?? 0) : null
 }
 
 function hm(min: number) {
@@ -61,22 +62,24 @@ export function TripPrices({ trip }: { trip: Trip }) {
   const rows = useMemo(() => {
     const by = new Map<string, PriceRow>()
     for (const q of view?.quotes ?? []) {
-      const key = `${q.start}_${q.end}`
-      const r = by.get(key) ?? { start: q.start, end: q.end }
+      // A named-hotel search is its own row; flights and the city's hotels share one.
+      const label = q.kind === 'hotels' ? (q.label ?? '') : ''
+      const key = `${q.start}_${q.end}_${label}`
+      const r = by.get(key) ?? { key, start: q.start, end: q.end, label }
       if (q.kind === 'flights') r.flights = q
       else r.hotels = q
       by.set(key, r)
     }
-    return [...by.values()].sort((a, b) => a.start.localeCompare(b.start))
+    return [...by.values()].sort((a, b) => a.start.localeCompare(b.start) || a.label.localeCompare(b.label))
   }, [view])
   const cheapestKey = useMemo(() => {
     let best: string | null = null
     let bestTotal = Infinity
     for (const r of rows) {
       const tt = rowTotal(r)
-      if (tt != null && tt < bestTotal) { bestTotal = tt; best = `${r.start}_${r.end}` }
+      if (r.label === '' && tt != null && tt < bestTotal) { bestTotal = tt; best = r.key }
     }
-    return rows.length > 1 ? best : null
+    return rows.filter(r => r.label === '').length > 1 ? best : null
   }, [rows])
 
   const search = async () => {
@@ -100,7 +103,7 @@ export function TripPrices({ trip }: { trip: Trip }) {
     ...(px.infants ? [t('prices.infants', { count: px.infants })] : []),
   ].join(' · ') : ''
 
-  if (!dest || dest.airports.length === 0) {
+  if ((!dest || dest.airports.length === 0) && rows.length === 0) {
     return trip.can_edit ? <p className="text-sm text-gray-400">{t('prices.noDestination')}</p> : null
   }
 
@@ -108,9 +111,9 @@ export function TripPrices({ trip }: { trip: Trip }) {
     <div>
       <div className="flex flex-wrap items-start justify-between gap-2">
         <p className="text-sm text-gray-400">
-          {view?.home ?? 'BGO'} → {dest.airports.join('/')}{dest.city && ` · ${dest.city}`}{pxText && ` · ${pxText}`}
+          {dest && dest.airports.length > 0 && <>{view?.home ?? 'BGO'} → {dest.airports.join('/')}{dest.city && ` · ${dest.city}`} · </>}{pxText}
         </p>
-        {trip.can_edit && view?.quota.ready && (
+        {trip.can_edit && view?.quota.ready && dest && dest.airports.length > 0 && (
           <button type="button" onClick={search} disabled={busy || pending}
             className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium hover:bg-blue-500 disabled:opacity-50 cursor-pointer">
             {busy || pending ? <Loader2 size={14} className="animate-spin" aria-hidden="true" /> : <Search size={14} aria-hidden="true" />}
@@ -125,7 +128,7 @@ export function TripPrices({ trip }: { trip: Trip }) {
       {rows.length > 0 && (
         <ul className="mt-3 divide-y divide-gray-800 rounded-lg border border-gray-800">
           {rows.map(r => {
-            const key = `${r.start}_${r.end}`
+            const key = r.key
             const expanded = open === key
             const best = cheapestKey === key
             return (
@@ -135,11 +138,12 @@ export function TripPrices({ trip }: { trip: Trip }) {
                   {expanded ? <ChevronDown size={16} className="mt-0.5" aria-hidden="true" /> : <ChevronRight size={16} className="mt-0.5" aria-hidden="true" />}
                   <span className="min-w-0">
                     <span className="font-semibold">{formatDate(r.start, lang)} – {formatDate(r.end, lang)}</span>
+                    {r.label && <span className="block text-sm text-gray-200">{r.label}</span>}
                     {best && <span className="ml-2 rounded-full bg-green-700 px-2 py-0.5 text-[10px] font-semibold uppercase">{t('prices.cheapest')}</span>}
                     <span className="mt-0.5 block text-xs text-gray-400">
-                      {t('prices.flights')}: {r.flights?.status === 'pending' ? t('prices.searching') : r.flights?.status === 'failed' ? t('prices.failed') : nok(r.flights?.cheapest)}
+                      {r.flights && <>{t('prices.flights')}: {r.flights.status === 'pending' ? t('prices.searching') : r.flights.status === 'failed' ? t('prices.failed') : nok(r.flights.cheapest)}</>}
                       <LevelBadge q={r.flights} />
-                      {r.hotels && <> · {t('prices.hotel')}: {r.hotels.status === 'pending' ? t('prices.searching') : r.hotels.status === 'failed' ? t('prices.failed') : nok(r.hotels.cheapest)}</>}
+                      {r.hotels && <>{r.flights && ' · '}{t('prices.hotel')}: {r.hotels.status === 'pending' ? t('prices.searching') : r.hotels.status === 'failed' ? t('prices.failed') : nok(r.hotels.cheapest)}</>}
                     </span>
                   </span>
                   <span className="text-right">

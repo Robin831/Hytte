@@ -383,14 +383,18 @@ func HandleAskChat(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		var in struct {
-			Message string `json:"message"`
-			Lang    string `json:"lang"`
+			Message string       `json:"message"`
+			Lang    string       `json:"lang"`
+			Images  []ImageInput `json:"images"`
 		}
-		if !decode(w, r, &in) {
+		// Pictures arrive base64-encoded in the JSON body.
+		r.Body = http.MaxBytesReader(w, r.Body, 20<<20)
+		if err := json.NewDecoder(r.Body).Decode(&in); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON, or the pictures are too large")
 			return
 		}
 		chat := NewChat(db)
-		answerID, err := chat.Ask(r.Context(), id, user.ID, in.Message)
+		answerID, err := chat.Ask(r.Context(), id, user.ID, in.Message, in.Images)
 		if errors.Is(err, ErrChatBusy) {
 			writeError(w, http.StatusConflict, err.Error())
 			return
@@ -457,13 +461,11 @@ func HandleSearchPrices(db *sql.DB) http.HandlerFunc {
 			writeError(w, http.StatusBadRequest, "invalid trip ID")
 			return
 		}
-		var in struct {
-			Dates []DatePair `json:"dates"`
-		}
+		var in SearchOptions
 		if r.ContentLength > 0 && !decode(w, r, &in) {
 			return
 		}
-		n, err := NewSearcher(db).Start(r.Context(), id, user.ID, in.Dates)
+		n, err := NewSearcher(db).Start(r.Context(), id, user.ID, in)
 		switch {
 		case errors.Is(err, ErrNoSerpAPI):
 			writeError(w, http.StatusServiceUnavailable, err.Error())
@@ -474,5 +476,56 @@ func HandleSearchPrices(db *sql.DB) http.HandlerFunc {
 		default:
 			writeJSON(w, http.StatusAccepted, map[string]int{"queued": n})
 		}
+	}
+}
+
+// HandleChatImage serves a picture from a trip's chat.
+func HandleChatImage(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		imageID, ok2 := idParam(r, "imageID")
+		if !ok || !ok2 {
+			writeError(w, http.StatusBadRequest, "invalid ID")
+			return
+		}
+		mime, data, err := ChatImage(r.Context(), db, id, imageID, user.ID)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		w.Header().Set("Content-Type", mime)
+		w.Header().Set("Cache-Control", "private, max-age=86400")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = w.Write(data)
+	}
+}
+
+// HandleListNotes returns what the trip assistant remembers about the family.
+func HandleListNotes(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		notes, err := ListNotes(r.Context(), db)
+		if err != nil {
+			log.Printf("trips: assistant notes: %v", err)
+			writeError(w, http.StatusInternalServerError, "failed to load the assistant's notes")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"notes": notes})
+	}
+}
+
+// HandleDeleteNote makes the assistant forget one note.
+func HandleDeleteNote(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid note ID")
+			return
+		}
+		if err := DeleteNote(r.Context(), db, id); err != nil {
+			writeError(w, http.StatusInternalServerError, "failed to remove the note")
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	}
 }

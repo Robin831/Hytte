@@ -19,9 +19,11 @@ import (
 // has one shared conversation. A question is answered in the background (a
 // web-enabled Claude call can take longer than the proxy's request limit);
 // the page polls until the answer is in. Claude sees the whole trip, its
-// checklists and the family roster, and answers with a reply plus, for
-// travellers who may edit, an updated trip and checklist operations. The
-// conversation is deleted a month after the trip ends.
+// checklists, prices, the family roster, what it has been told to remember
+// about the family, and a description of how the trip page works; it answers
+// with a reply plus, for travellers who may edit, a change block. Pictures
+// attached to a question are read by a separate vision pass first (see
+// chat_images.go). The conversation is deleted a month after the trip ends.
 
 // ChatModel answers trip chats.
 const ChatModel = "claude-sonnet-5-5"
@@ -40,13 +42,14 @@ var (
 
 // ChatMessage is one message in a trip's conversation.
 type ChatMessage struct {
-	ID        int64  `json:"id"`
-	Role      string `json:"role"` // user or assistant
-	UserName  string `json:"user_name,omitempty"`
-	Content   string `json:"content"`
-	Status    string `json:"status"`  // pending, done or failed (assistant)
-	Changed   bool   `json:"changed"` // the answer changed the trip
-	CreatedAt string `json:"created_at"`
+	ID        int64   `json:"id"`
+	Role      string  `json:"role"` // user or assistant
+	UserName  string  `json:"user_name,omitempty"`
+	Content   string  `json:"content"`
+	Status    string  `json:"status"`  // pending, done or failed (assistant)
+	Changed   bool    `json:"changed"` // the answer changed the trip
+	Images    []int64 `json:"images"`  // attached pictures (IDs)
+	CreatedAt string  `json:"created_at"`
 }
 
 // ListChat returns a trip's conversation, oldest first.
@@ -73,34 +76,56 @@ func listChat(ctx context.Context, db *sql.DB, tripID int64, last int) ([]ChatMe
 	if err != nil {
 		return nil, fmt.Errorf("list trip chat: %w", err)
 	}
-	defer rows.Close()
 	out := []ChatMessage{}
+	index := map[int64]int{}
 	for rows.Next() {
 		var m ChatMessage
 		var enc, name string
 		if err := rows.Scan(&m.ID, &m.Role, &name, &enc, &m.Status, &m.Changed, &m.CreatedAt); err != nil {
+			rows.Close()
 			return nil, err
 		}
 		m.Content = encryption.DecryptLenient(enc)
+		m.Images = []int64{}
 		if m.Role == "user" {
 			m.UserName = firstName(name)
 		}
+		index[m.ID] = len(out)
 		out = append(out, m)
 	}
-	return out, rows.Err()
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	irows, err := db.QueryContext(ctx, `SELECT id, message_id FROM trip_chat_images WHERE trip_id = ? ORDER BY id`, tripID)
+	if err != nil {
+		return nil, fmt.Errorf("list chat pictures: %w", err)
+	}
+	defer irows.Close()
+	for irows.Next() {
+		var id, msg int64
+		if err := irows.Scan(&id, &msg); err != nil {
+			return nil, err
+		}
+		if i, ok := index[msg]; ok {
+			out[i].Images = append(out[i].Images, id)
+		}
+	}
+	return out, irows.Err()
 }
 
-// Chat runs one question. Run and Config are injectable for tests.
+// Chat runs one question. Run, Describe and Config are injectable for tests.
 type Chat struct {
-	DB     *sql.DB
-	Run    func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, float64, error)
-	Config func(ctx context.Context, db *sql.DB) (*training.ClaudeConfig, error)
-	Now    func() time.Time
+	DB       *sql.DB
+	Run      func(ctx context.Context, cfg *training.ClaudeConfig, prompt string) (string, float64, error)
+	Describe func(ctx context.Context, cfg *training.ClaudeConfig, prompt, imagePath string) (string, error)
+	Config   func(ctx context.Context, db *sql.DB) (*training.ClaudeConfig, error)
+	Now      func() time.Time
 }
 
 // NewChat wires the web-enabled Claude CLI and the shared Claude budget.
 func NewChat(db *sql.DB) *Chat {
-	return &Chat{DB: db, Run: training.RunPromptWithWebTools, Now: time.Now,
+	return &Chat{DB: db, Run: training.RunPromptWithWebTools, Describe: training.RunPromptWithImage, Now: time.Now,
 		Config: func(ctx context.Context, db *sql.DB) (*training.ClaudeConfig, error) {
 			return races.BackgroundClaude(ctx, db, ChatModel)
 		}}
@@ -122,12 +147,16 @@ func insertChat(ctx context.Context, db *sql.DB, tripID int64, userID *int64, ro
 	return res.LastInsertId()
 }
 
-// Ask stores the question and a pending answer. The caller then runs Answer
-// (in the background) with the returned answer ID.
-func (c *Chat) Ask(ctx context.Context, tripID, userID int64, message string) (int64, error) {
+// Ask stores the question (with any pictures) and a pending answer. The
+// caller then runs Answer (in the background) with the returned answer ID.
+func (c *Chat) Ask(ctx context.Context, tripID, userID int64, message string, images []ImageInput) (int64, error) {
 	message = strings.TrimSpace(message)
-	if message == "" || len([]rune(message)) > maxChatMessage {
+	if len([]rune(message)) > maxChatMessage || (message == "" && len(images) == 0) {
 		return 0, invalid("the message must be 1–%d characters", maxChatMessage)
+	}
+	decoded, err := decodeImages(images)
+	if err != nil {
+		return 0, err
 	}
 	canView, _, err := access(ctx, c.DB, tripID, userID)
 	if err != nil {
@@ -144,8 +173,15 @@ func (c *Chat) Ask(ctx context.Context, tripID, userID int64, message string) (i
 	if pending > 0 {
 		return 0, ErrChatBusy
 	}
+	if message == "" {
+		message = "📷"
+	}
 	uid := userID
-	if _, err := insertChat(ctx, c.DB, tripID, &uid, "user", message, "done"); err != nil {
+	msgID, err := insertChat(ctx, c.DB, tripID, &uid, "user", message, "done")
+	if err != nil {
+		return 0, err
+	}
+	if err := saveImages(ctx, c.DB, tripID, msgID, decoded); err != nil {
 		return 0, err
 	}
 	return insertChat(ctx, c.DB, tripID, nil, "assistant", "", "pending")
@@ -163,13 +199,13 @@ type ChecklistOp struct {
 	Done      bool   `json:"done,omitempty"`
 }
 
-// chatChange is the fenced block at the end of a reply that changes the trip.
+// chatChange is the fenced block at the end of a reply that changes things.
 type chatChange struct {
-	Update       *TripInput    `json:"update"`
-	Checklist    []ChecklistOp `json:"checklist"`
-	SearchPrices *struct {
-		Dates []DatePair `json:"dates"`
-	} `json:"search_prices"`
+	Update       *TripInput     `json:"update"`
+	Checklist    []ChecklistOp  `json:"checklist"`
+	SearchPrices *SearchOptions `json:"search_prices"`
+	Remember     []string       `json:"remember"`
+	Forget       []int64        `json:"forget"`
 }
 
 type chatChecklist struct {
@@ -187,41 +223,32 @@ type chatItem struct {
 	DoneBy string `json:"done_by,omitempty"`
 }
 
-const chatPrompt = `You are the trip assistant inside Hytte, a family's private web app. You help with one trip: answer questions about it and, when asked, change it.
+// chatKnowledge is what the assistant is told about the app itself: what
+// the family sees, what each part of a trip is for, and what it can't do.
+const chatKnowledge = `How Hytte trips work:
+- The trip page shows, top to bottom: title, dates, route chips, travellers, a "Now" box (a countdown before the trip; during it the current phase, today's flights, tonight's stay and today's plan; afterwards the result), clocks for home and the destination, then sections that appear only when they have content: Prices, Costs, To do (checklists), Day by day, Flights, Stays, Transport, Contacts & references, Documents, Notes, After the trip.
+- Nobody edits a trip by hand: every change goes through you. The only thing they do themselves is tick checklist items. So when they tell you something happened or changed, updating the trip is your job.
+- doc.phases split a trip into named parts with dates (outbound, a city, return); flights, stays, checklists and notes can carry a phase key, and the "Now" box shows the phase that covers today. doc.days is the day-by-day plan with timed steps ("key": true highlights a step). doc.contacts are phone numbers and booking references with copy buttons ("urgent": true marks emergency numbers). doc.documents are things to bring or have ready (status todo/done). doc.followups are things to do after the trip (claims, refunds). doc.notes are free text.
+- doc.stays: one entry per hotel visit with check_in and check_out local times and tz. A booking that is split or moved becomes one entry per visit, same booking_ref.
+- doc.destination {"city", "airports": [IATA codes], "hotel_area"} is what price searches use. doc.costs is the money: {"category": flights|stay|transport|tickets|food|other, "label": {...}, "amount", "currency": "NOK"/"EUR"/"THB"/..., "status": estimate|booked|paid}; the page totals them in NOK. When something is booked, record the cost (status booked) and fill in the flight or stay.
+- Price searches use Google Flights and Google Hotels and are limited each month; results appear in the Prices section within a minute, each with a link to Google where the family books. Flights are searched as round trips from the home airport for everyone on the trip.
+- You cannot: create or delete trips ("New trip" on the Trips page, "Delete trip" at the bottom of a trip), give someone access to a feature (Robin does that under Admin), book or pay for anything, or read their calendar or email. Say so plainly and tell them where it is done.`
 
-Now: %s (Europe/Oslo). You are talking to %s. Reply in %s. They %s.
-
-The trip (what "update" replaces; booking references and phone numbers are the family's own):
-%s
-
-Checklists (change them only through "checklist" operations):
-%s
-
-The family (people who can travel; use person_id when adding a traveller):
-%s
-
-Prices found so far (Google Flights/Hotels, NOK, totals for all travellers; flights are round trips from %s):
-%s
-
-Conversation so far:
-%s
-
-New message from %s:
-%s
-
-How to answer:
-- Answer from the trip data. For live facts (weather, opening hours, train times, prices, event times) you may search the web; say where an answer comes from when it matters, and say so when you are unsure. Keep replies short and practical; plain text, no markdown headings.
-- To change the trip, put "update" in the block: the COMPLETE trip in the same shape as above (kind, start_date, end_date, home_tz, dest_tz, share_family, race_event_id, result_id, doc). Copy everything you don't change exactly. Change only what was asked, and say in the reply what you changed. Otherwise leave "update" null.
+const chatRules = `How to answer:
+- Act, don't interrogate. When a request is clear enough to make a sensible change, make it in this reply and state any assumption in one line so they can correct you. Ask a question only when a wrong guess would lose a booking, or you truly cannot tell what they mean — then ask one question, once. Never ask for something the conversation, the trip or a picture already tells you.
+- Take what they tell you as fact (a hotel agreed by phone, plans changed, who is driving): record it, don't ask for proof. In a trip that is under way, days before today have happened: don't re-plan them, and reason from today's date.
+- You have web search and can open web pages. Use them before saying you can't find something (a hotel's price on booking sites, opening hours, transport times, event times). Say where an answer comes from when it matters, and say so when a page wouldn't load or you are unsure.
+- Keep replies short and practical: plain text, no markdown headings, no closing boilerplate such as "I haven't changed anything". Say what you changed, in a line or two.
+- To change the trip, put "update" in the block: the COMPLETE trip in the same shape as above (kind, start_date, end_date, home_tz, dest_tz, share_family, race_event_id, result_id, doc). Copy everything you don't change exactly. Change only what was asked.
 - Every text in the doc is an object {"nb": ..., "en": ..., "th": ...}: write all three languages for anything you add or change. Keep names, codes, flight numbers, addresses, phone numbers and prices as written.
-- Dates are YYYY-MM-DD; local times are YYYY-MM-DDTHH:MM with their IANA time zone in the matching tz field. Route stops are airport codes or short place names. A tentative trip has doc.flex; don't change dates of a tentative trip unless asked.
-- doc.destination {"city", "airports": [IATA codes], "hotel_area"} is what price searches use; doc.costs is a list of {"category": flights|stay|transport|tickets|food|other, "label": {...}, "amount", "currency": "NOK"/"EUR"/..., "status": estimate|booked|paid}. When they book something, record it as a cost (status booked) and fill in the flight or stay.
-- To check prices, add "search_prices": {"dates": [{"start","end"}, ...]} to the block (empty dates = the trip's own dates, or a tentative trip's candidates). Each date pair costs two of the month's limited searches, so only search when asked or clearly useful, and reuse prices already found. Results show up on the trip page within a minute.
-- Checklist operations: {"op":"add_item","list_id":N,"title":{...},"detail":{...},"urgent":false} (or "list_title" instead of list_id to add to a new list), {"op":"add_list","list_title":{...}}, {"op":"set_done","item_id":N,"done":true}, {"op":"delete_item","item_id":N}.
-- %s
+- Dates are YYYY-MM-DD; local times are YYYY-MM-DDTHH:MM with their IANA time zone in the matching tz field. Route stops are airport codes or short place names. A tentative trip has doc.flex; to pick dates set start_date/end_date and doc.flex.chosen true.
+- Checklist operations go in "checklist": {"op":"add_item","list_id":N,"title":{...},"detail":{...},"urgent":false} (or "list_title" instead of list_id for a new list), {"op":"add_list","list_title":{...}}, {"op":"set_done","item_id":N,"done":true}, {"op":"delete_item","item_id":N}.
+- To check prices add "search_prices": {"dates": [{"start","end"}], "kinds": ["flights","hotels"], "hotel_query": "..."}. Empty dates = the trip's own dates (or a tentative trip's candidate dates). For one named hotel, or hotels in an area, use "kinds": ["hotels"] with "hotel_query" (the hotel's name, or e.g. "hotels near Suvarnabhumi Airport") — never search flights nobody asked for. Each search of each kind costs one of the month's searches; reuse prices already found.
+- To remember a lasting fact or preference about the family that will matter on other trips (who is who, how they like to travel), add "remember": ["one short sentence", ...]; to drop one, "forget": [id]. Trip details belong in the trip, not in memory. Never store booking references, document numbers or anything secret.`
 
-Format: write your reply to them as plain text. Only when you change something, end the reply with ONE fenced json block holding the change, like
-` + "```json\n{\"update\": <the complete trip or null>, \"checklist\": [<operations>]}\n```" + `
-With no change, write no block at all.`
+const chatFormat = `Format: write your reply to them as plain text. Only when you change, search or remember something, end the reply with ONE fenced json block, like
+` + "```json\n{\"update\": <the complete trip or null>, \"checklist\": [], \"search_prices\": null, \"remember\": [], \"forget\": []}\n```" + `
+Otherwise write no block at all.`
 
 var langNames = map[string]string{"nb": "Norwegian bokmål", "en": "English", "th": "Thai"}
 
@@ -237,6 +264,36 @@ func splitReply(s string) (string, *chatChange, error) {
 		return text, nil, fmt.Errorf("unreadable change block: %w", err)
 	}
 	return text, &c, nil
+}
+
+// tripStatus says where the trip is relative to today, in a sentence.
+func tripStatus(t *Trip, now time.Time) string {
+	loc, err := time.LoadLocation(t.DestTZ)
+	if err != nil {
+		loc = oslo
+	}
+	today := now.In(loc).Format("2006-01-02")
+	days := func(a, b string) int {
+		ta, _ := time.Parse("2006-01-02", a)
+		tb, _ := time.Parse("2006-01-02", b)
+		return int(tb.Sub(ta).Hours() / 24)
+	}
+	switch {
+	case isTentativeTrip(t):
+		return fmt.Sprintf("The dates are tentative: somewhere between %s and %s, %d nights.", t.Doc.Flex.From, t.Doc.Flex.To, t.Doc.Flex.Nights)
+	case today < t.StartDate:
+		return fmt.Sprintf("The trip has not started: it begins in %d days (%s).", days(today, t.StartDate), t.StartDate)
+	case today > t.EndDate:
+		return fmt.Sprintf("The trip is over: it ended %d days ago (%s).", days(t.EndDate, today), t.EndDate)
+	}
+	s := fmt.Sprintf("The trip is under way: today (%s at the destination) is day %d of %d.", today, days(t.StartDate, today)+1, days(t.StartDate, t.EndDate)+1)
+	for _, p := range t.Doc.Phases {
+		if p.Start <= today && today <= p.End {
+			s += fmt.Sprintf(" Current phase: %s.", firstText(p.Title))
+			break
+		}
+	}
+	return s
 }
 
 // Answer produces the pending answer for a trip's latest question.
@@ -275,6 +332,13 @@ func (c *Chat) answer(ctx context.Context, tripID, userID int64, lang string) (s
 		return failed("Claude er ikke tilgjengelig akkurat nå.", "Claude isn't available right now.", "Claude ไม่พร้อมใช้งานในขณะนี้")
 	}
 
+	history, err := listChat(ctx, c.DB, tripID, chatHistory+2)
+	if err != nil {
+		return failed("Kunne ikke lese samtalen.", "Couldn't read the conversation.", "อ่านบทสนทนาไม่ได้")
+	}
+	// Read any pictures on the question before the main call.
+	descriptions := c.describeImages(ctx, cfg, tripID, userID, history)
+
 	snapshot := trip.UpdatedAt
 	input := TripInput{Kind: trip.Kind, StartDate: trip.StartDate, EndDate: trip.EndDate, HomeTZ: trip.HomeTZ, DestTZ: trip.DestTZ,
 		ShareFamily: trip.ShareFamily, RaceEventID: trip.RaceEventID, ResultID: trip.ResultID, Doc: trip.Doc}
@@ -291,27 +355,32 @@ func (c *Chat) answer(ctx context.Context, tripID, userID int64, lang string) (s
 	people, _ := ListPeople(ctx, c.DB)
 	peopleJSON, _ := json.Marshal(people)
 
-	history, err := listChat(ctx, c.DB, tripID, chatHistory+2)
-	if err != nil {
-		return failed("Kunne ikke lese samtalen.", "Couldn't read the conversation.", "อ่านบทสนทนาไม่ได้")
-	}
-	var question, asker string
-	var past strings.Builder
+	var question string
+	var past []string
 	for _, m := range history {
 		if m.Role == "assistant" && m.Status == "pending" {
 			continue
-		}
-		if m.Role == "user" {
-			question, asker = m.Content, m.UserName
 		}
 		who := "Assistant"
 		if m.Role == "user" {
 			who = m.UserName
 		}
-		fmt.Fprintf(&past, "%s: %s\n", who, m.Content)
+		line := who + ": " + m.Content
+		for _, id := range m.Images {
+			if d := descriptions[id]; d != "" {
+				line += "\n  [picture: " + d + "]"
+			}
+		}
+		if m.Role == "user" {
+			question = line
+		}
+		past = append(past, line)
 	}
 	// The latest user message is the question, not history.
-	pastText := strings.TrimSuffix(past.String(), fmt.Sprintf("%s: %s\n", asker, question))
+	if n := len(past); n > 0 && past[n-1] == question {
+		past = past[:n-1]
+	}
+	pastText := strings.Join(past, "\n")
 	if strings.TrimSpace(pastText) == "" {
 		pastText = "(none)"
 	}
@@ -319,19 +388,35 @@ func (c *Chat) answer(ctx context.Context, tripID, userID int64, lang string) (s
 	var viewer string
 	_ = c.DB.QueryRowContext(ctx, `SELECT name FROM users WHERE id = ?`, userID).Scan(&viewer)
 	viewer = firstName(viewer)
-	rights := "can view this trip but not change it"
-	rule := `They can't edit: never write a change block; if they ask for a change, explain that only travellers and the owner can change the trip.`
-	if trip.CanEdit {
-		rights = "can change this trip"
-		rule = "If a request is unclear or would remove bookings, ask before changing anything."
+	rights := "can change this trip"
+	if !trip.CanEdit {
+		rights = "can view this trip but not change it: never write a change block for them; if they ask for a change, explain that only travellers and the owner can change the trip"
 	}
 	pricesText, home := c.pricesContext(ctx, tripID, userID)
-	prompt := fmt.Sprintf(chatPrompt, c.Now().In(oslo).Format("Monday 2 January 2006 15:04"), viewer, langNames[lang], rights,
-		tripJSON, listsJSON, peopleJSON, home, pricesText, pastText, viewer, question, rule)
+	homeCity := "Bergen"
+	if set, err := races.LoadResearchSettings(ctx, c.DB); err == nil && set.HomeCity != "" {
+		homeCity = set.HomeCity
+	}
+	nowT := c.Now()
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "You are the trip assistant inside Hytte, a family's private web app. You help with one trip: answer questions about it and change it when asked.\n\n")
+	fmt.Fprintf(&b, "Now: %s (Europe/Oslo). You are talking to %s, who %s. Reply in %s.\n", nowT.In(oslo).Format("Monday 2 January 2006 15:04"), viewer, rights, langNames[lang])
+	fmt.Fprintf(&b, "%s\nHome is %s (airport %s).\n\n", tripStatus(trip, nowT), homeCity, home)
+	b.WriteString(chatKnowledge + "\n\n")
+	fmt.Fprintf(&b, "What you remember about this family (kept across all their trips):\n%s\n\n", notesContext(ctx, c.DB))
+	fmt.Fprintf(&b, "The trip (what \"update\" replaces; booking references and phone numbers are the family's own):\n%s\n\n", tripJSON)
+	fmt.Fprintf(&b, "Checklists (change them only through \"checklist\" operations):\n%s\n\n", listsJSON)
+	fmt.Fprintf(&b, "The family (people who can travel; use person_id when adding a traveller):\n%s\n\n", peopleJSON)
+	fmt.Fprintf(&b, "Their other trips:\n%s\n\n", c.otherTrips(ctx, tripID, userID))
+	fmt.Fprintf(&b, "Prices found so far (Google Flights/Hotels, NOK, totals for all travellers):\n%s\n\n", pricesText)
+	fmt.Fprintf(&b, "Conversation so far (pictures they sent were read for you; what they show is in [picture: ...]):\n%s\n\n", pastText)
+	fmt.Fprintf(&b, "New message from %s\n\n", question)
+	b.WriteString(chatRules + "\n\n" + chatFormat)
 
 	callCtx, cancel := context.WithTimeout(ctx, chatTimeout)
 	defer cancel()
-	text, cost, err := c.Run(callCtx, cfg, prompt)
+	text, cost, err := c.Run(callCtx, cfg, b.String())
 	if err != nil {
 		races.LogBackgroundRun(ctx, c.DB, "trip_chat", userID, cost, 0, "trip chat", err.Error())
 		return failed("Claude svarte ikke. Prøv igjen.", "Claude didn't answer. Try again.", "Claude ไม่ตอบ ลองใหม่อีกครั้ง")
@@ -346,8 +431,11 @@ func (c *Chat) answer(ctx context.Context, tripID, userID int64, lang string) (s
 	if saveErr == nil && change != nil && trip.CanEdit && (change.Update != nil || len(change.Checklist) > 0) {
 		changes, saveErr = c.apply(ctx, tripID, userID, snapshot, *change)
 	}
+	if saveErr == nil && change != nil && trip.CanEdit {
+		applyNotes(ctx, c.DB, userID, change.Remember, change.Forget)
+	}
 	if saveErr == nil && change != nil && change.SearchPrices != nil && trip.CanEdit {
-		n, err := NewSearcher(c.DB).Start(ctx, tripID, userID, change.SearchPrices.Dates)
+		n, err := NewSearcher(c.DB).Start(ctx, tripID, userID, *change.SearchPrices)
 		switch {
 		case err != nil:
 			content += "\n\n" + map[string]string{"nb": "⚠️ Prissøket startet ikke: ", "en": "⚠️ The price search didn't start: ",
@@ -370,6 +458,32 @@ func (c *Chat) answer(ctx context.Context, tripID, userID int64, lang string) (s
 	return content, changes > 0, "done"
 }
 
+// otherTrips lists the viewer's other trips, one per line.
+func (c *Chat) otherTrips(ctx context.Context, tripID, userID int64) string {
+	list, err := ListTrips(ctx, c.DB, userID)
+	if err != nil {
+		return "(unknown)"
+	}
+	var lines []string
+	for _, t := range list {
+		if t.ID == tripID {
+			continue
+		}
+		line := fmt.Sprintf("- %s (%s, %s to %s)", firstText(t.Title), t.Kind, t.StartDate, t.EndDate)
+		if t.Tentative {
+			line += " — tentative dates"
+		}
+		lines = append(lines, line)
+		if len(lines) == 12 {
+			break
+		}
+	}
+	if len(lines) == 0 {
+		return "(none)"
+	}
+	return strings.Join(lines, "\n")
+}
+
 // pricesContext is the latest prices, compact, for the prompt.
 func (c *Chat) pricesContext(ctx context.Context, tripID, userID int64) (string, string) {
 	v, err := NewSearcher(c.DB).Prices(ctx, tripID, userID)
@@ -378,6 +492,7 @@ func (c *Chat) pricesContext(ctx context.Context, tripID, userID int64) (string,
 	}
 	type brief struct {
 		Kind        string          `json:"kind"`
+		Label       string          `json:"hotel_query,omitempty"`
 		Start       string          `json:"start"`
 		End         string          `json:"end"`
 		Status      string          `json:"status"`
@@ -387,16 +502,17 @@ func (c *Chat) pricesContext(ctx context.Context, tripID, userID int64) (string,
 		TypicalLow  *float64        `json:"typical_low,omitempty"`
 		TypicalHigh *float64        `json:"typical_high,omitempty"`
 		Top         json.RawMessage `json:"top_options,omitempty"`
+		Link        string          `json:"google_link,omitempty"`
 	}
 	var out []brief
 	for _, q := range v.Quotes {
 		var opts []json.RawMessage
 		_ = json.Unmarshal(q.Options, &opts)
-		if len(opts) > 3 {
-			opts = opts[:3]
+		if len(opts) > 5 {
+			opts = opts[:5]
 		}
 		top, _ := json.Marshal(opts)
-		out = append(out, brief{q.Kind, q.Start, q.End, q.Status, q.SearchedAt, q.Cheapest, q.PriceLevel, q.TypicalLow, q.TypicalHigh, top})
+		out = append(out, brief{q.Kind, q.Label, q.Start, q.End, q.Status, q.SearchedAt, q.Cheapest, q.PriceLevel, q.TypicalLow, q.TypicalHigh, top, q.Link})
 	}
 	if len(out) == 0 {
 		return fmt.Sprintf("(none yet; %d of %d searches used this month)", v.Quota.Used, v.Quota.Limit), v.Home
@@ -470,7 +586,7 @@ func (c *Chat) apply(ctx context.Context, tripID, userID int64, snapshot string,
 }
 
 func firstText(t I18n) string {
-	for _, l := range Languages {
+	for _, l := range []string{"en", "nb", "th"} {
 		if t[l] != "" {
 			return t[l]
 		}
