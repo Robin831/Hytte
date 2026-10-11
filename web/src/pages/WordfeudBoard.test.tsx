@@ -243,7 +243,12 @@ describe('WordfeudBoard layout behaviors', () => {
     vi.restoreAllMocks()
   })
 
-  function gamesFetch() {
+  const DEFAULT_GAMES: Record<string, unknown>[] = [
+    { id: 42, my_username: 'me', opponent: 'kari', scores: [10, 20], is_my_turn: true },
+    { id: 43, my_username: 'me', opponent: 'ola', scores: [5, 5], is_my_turn: false },
+  ]
+
+  function gamesFetch(games = DEFAULT_GAMES) {
     return vi.fn(async (url: string, opts?: RequestInit) => {
       const href = String(url)
       if (href.match(/\/api\/wordfeud\/games\/\d+$/)) {
@@ -271,10 +276,7 @@ describe('WordfeudBoard layout behaviors', () => {
           ok: true,
           status: 200,
           json: async () => ({
-            games: [
-              { id: 42, my_username: 'me', opponent: 'kari', scores: [10, 20], is_my_turn: true },
-              { id: 43, my_username: 'me', opponent: 'ola', scores: [5, 5], is_my_turn: false },
-            ],
+            games,
             finished_games: [],
           }),
         } as unknown as Response
@@ -313,6 +315,27 @@ describe('WordfeudBoard layout behaviors', () => {
     await waitFor(() => {
       expect((screen.getByLabelText('Your rack') as HTMLInputElement).value).toBe('A')
     })
+  })
+
+  it('lists your-turn games with the most recent move first', async () => {
+    vi.stubGlobal('fetch', gamesFetch([
+      { id: 1, my_username: 'me', opponent: 'anne', scores: [0, 0], is_my_turn: true, ended_at: 1000 },
+      { id: 2, my_username: 'me', opponent: 'berit', scores: [0, 0], is_my_turn: true, ended_at: 3000 },
+      { id: 3, my_username: 'me', opponent: 'ola', scores: [0, 0], is_my_turn: false, ended_at: 9000 },
+      { id: 4, my_username: 'me', opponent: 'chris', scores: [0, 0], is_my_turn: true, ended_at: 2000 },
+    ]))
+    renderBoard()
+
+    const group = await screen.findByRole('group', { name: 'Quick game switch' })
+    expect(within(group).getAllByRole('button').map(b => b.textContent)).toEqual(['berit', 'chris', 'anne'])
+
+    // The "your turn" section of the game list uses the same order.
+    const section = screen.getByRole('button', { name: /gameList\.yourTurnSection/ }).parentElement as HTMLElement
+    const listed = within(section).getAllByRole('button').map(b => b.textContent ?? '')
+    const position = (name: string) => listed.findIndex(text => text.includes(name))
+    expect(position('berit')).toBeGreaterThan(-1)
+    expect(position('berit')).toBeLessThan(position('chris'))
+    expect(position('chris')).toBeLessThan(position('anne'))
   })
 
   it('refreshes the game list and the open game from the quick-switch bar', async () => {

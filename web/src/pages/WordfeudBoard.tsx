@@ -68,7 +68,17 @@ interface GameSummary {
   opponent: string
   scores: [number, number]
   is_my_turn: boolean
+  // Unix time of the last activity in the game: the latest move while it is
+  // running, the end once it is finished.
   ended_at?: number
+}
+
+// Games waiting for my move, the opponent who moved most recently first — the
+// order the Wordfeud app lists them in.
+function yourTurnByLatestMove(games: GameSummary[]): GameSummary[] {
+  return games
+    .filter(g => g.is_my_turn)
+    .sort((a, b) => (b.ended_at ?? 0) - (a.ended_at ?? 0) || a.opponent.localeCompare(b.opponent))
 }
 
 interface GameTile {
@@ -627,7 +637,7 @@ export default function WordfeudBoard() {
             role="group"
             aria-label={t('board.quickSwitch')}
           >
-            {games.filter(g => g.is_my_turn).map(game => (
+            {yourTurnByLatestMove(games).map(game => (
               <button
                 key={game.id}
                 type="button"
@@ -1023,7 +1033,7 @@ export default function WordfeudBoard() {
       <div className="min-w-0 space-y-6 xl:col-start-1 xl:row-start-1">
         {/* Game list */}
         {gamesAvailable && (games.length > 0 || finishedGames.length > 0) && (() => {
-          const yourTurnGames = [...games].filter(g => g.is_my_turn).sort((a, b) => a.opponent.localeCompare(b.opponent))
+          const yourTurnGames = yourTurnByLatestMove(games)
           const theirTurnGames = [...games].filter(g => !g.is_my_turn).sort((a, b) => a.opponent.localeCompare(b.opponent))
           return (
             <div className="space-y-1">
