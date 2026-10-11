@@ -42,7 +42,7 @@ kill %1 && rm -rf /tmp/hytte-ui-preview
 ## Notes
 
 - Port 8090 is taken by forge's web UI; default here is 8095.
-- The wordfeud dictionary is symlinked from `~/Hytte/data/nsf2025.txt`; without
+- The wordfeud dictionary is symlinked from `~/Hytte/data/nsf2026.txt`; without
   it the solver shows "dictionary not available".
 - Fixed-position elements (mobile hamburger) render at unreliable positions in
   fullPage captures — don't diagnose overlap bugs from them.

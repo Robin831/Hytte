@@ -10,7 +10,7 @@ const (
 	bonusTL     = 2 // Triple Letter
 	bonusDW     = 3 // Double Word
 	bonusTW     = 4 // Triple Word
-	bonusCenter = 5 // Center star (acts as Double Word)
+	bonusCenter = 5 // Center star: where the first word goes; no score bonus in Wordfeud
 )
 
 // StandardLayout is the standard Wordfeud board multiplier layout (board ID 0).

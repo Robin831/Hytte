@@ -538,7 +538,7 @@ func scoreMove(board *SolverBoard, m rawMove) int {
 				mainScore += letterVal * 2
 			case bonusTL:
 				mainScore += letterVal * 3
-			case bonusDW, bonusCenter:
+			case bonusDW:
 				mainScore += letterVal
 				mainWordMul *= 2
 			case bonusTW:
@@ -624,7 +624,7 @@ func scoreCrossWord(board *SolverBoard, row, col int, newLetter rune, newIsBlank
 				score += letterVal * 2
 			case bonusTL:
 				score += letterVal * 3
-			case bonusDW, bonusCenter:
+			case bonusDW:
 				score += letterVal
 				wordMul *= 2
 			case bonusTW:

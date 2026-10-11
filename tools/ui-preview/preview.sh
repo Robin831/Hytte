@@ -35,7 +35,7 @@ chmod 600 "$PREVIEW_DIR/token"
 
 # Static files + wordfeud dictionary from the checkout / prod data dir.
 ln -sfn "$REPO_ROOT/web/dist" "$PREVIEW_DIR/web/dist"
-ln -sfn "$HOME/Hytte/data/nsf2025.txt" "$PREVIEW_DIR/data/nsf2025.txt"
+ln -sfn "$HOME/Hytte/data/nsf2026.txt" "$PREVIEW_DIR/data/nsf2026.txt"
 
 echo "Building server binary..."
 go -C "$REPO_ROOT" build -o "$PREVIEW_DIR/hytte-preview" ./cmd/server

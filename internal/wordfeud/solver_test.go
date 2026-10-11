@@ -50,6 +50,27 @@ func TestSolveEmptyBoard(t *testing.T) {
 	}
 }
 
+// The center star only marks where the first word goes. Unlike Scrabble,
+// Wordfeud gives it no bonus, so an opening word that touches no other bonus
+// square scores the plain sum of its tiles.
+func TestSolveOpeningWordIsNotDoubled(t *testing.T) {
+	result := Solve(NewSolverBoard(), "HER", testSolverTrie())
+	want := LetterValue['H'] + LetterValue['E'] + LetterValue['R']
+	found := false
+	for _, m := range result.Moves {
+		if m.Word != "HER" {
+			continue
+		}
+		found = true
+		if m.Score != want {
+			t.Errorf("HER at (%d,%d) %s scored %d, want %d", m.Row, m.Col, m.Direction, m.Score, want)
+		}
+	}
+	if !found {
+		t.Fatal("expected HER among the opening moves")
+	}
+}
+
 func moveCrossesCenter(m ScoredMove) bool {
 	wordLen := len([]rune(m.Word))
 	if m.Direction == "horizontal" {
@@ -154,7 +175,7 @@ func TestScoreMoveDoubleLetter(t *testing.T) {
 
 func TestScoreMoveBlankTile(t *testing.T) {
 	board := NewSolverBoard()
-	// "TE" at (7,7) center (DW), T is a blank
+	// "TE" at (7,7), the center star (no bonus), T is a blank
 	m := rawMove{
 		word:    []rune("TE"),
 		isBlank: []bool{true, false},
@@ -164,11 +185,11 @@ func TestScoreMoveBlankTile(t *testing.T) {
 	}
 
 	score := scoreMove(board, m)
-	// T at (7,7) center/DW: blank=0, wordMul*=2
+	// T at (7,7) center, no bonus: blank=0
 	// E at (7,8) none: val=1
-	// Main: (0 + 1) * 2 = 2
-	if score != 2 {
-		t.Errorf("expected score 2 for blank T + E on center, got %d", score)
+	// Main: 0 + 1 = 1
+	if score != 1 {
+		t.Errorf("expected score 1 for blank T + E on center, got %d", score)
 	}
 }
 
@@ -188,14 +209,13 @@ func TestScoreMoveCrossWord(t *testing.T) {
 	}
 
 	score := scoreMove(board, m)
-	// Main word "SE": S at (7,7) center/DW val=1 wordMul*=2, E at (7,8) val=1
-	// Main: (1+1)*2 = 4
+	// Main word "SE": S at (7,7) center (no bonus) val=1, E at (7,8) val=1
+	// Main: 1+1 = 2
 	// Cross-word at (7,7): E(above)+S(new)+T(below) = "EST"
-	//   E=1, S at center/DW: val=1 wordMul*=2, T=1
-	//   Cross: (1+1+1)*2 = 6
-	// Total: 4 + 6 = 10
-	if score != 10 {
-		t.Errorf("expected score 10 for SE with EST cross-word, got %d", score)
+	//   Cross: 1+1+1 = 3
+	// Total: 2 + 3 = 5
+	if score != 5 {
+		t.Errorf("expected score 5 for SE with EST cross-word, got %d", score)
 	}
 }
 
@@ -488,7 +508,7 @@ func TestScoreRegression_LayoutCausesWrongScore(t *testing.T) {
 // suspected causes in the original bug report.
 func TestScoreRegression_MultiplierOnlyNewTiles(t *testing.T) {
 	board := NewSolverBoard()
-	// Place T on center (DW) as an existing tile.
+	// Place T on center as an existing tile.
 	board.Set(7, 7, 'T', false)
 	// Place E on (7,3) DW as an existing tile.
 	board.Set(7, 3, 'E', false)
@@ -552,11 +572,11 @@ func TestScoreRegression_BlankAlwaysZero(t *testing.T) {
 		dir:     dirHorizontal,
 	}
 	score := scoreMove(board, m)
-	// J(7,7) center/DW — blank: val=0, wordMul*=2
+	// J(7,7) center, no bonus — blank: val=0
 	// A(7,8) none: val=1
-	// Main: (0+1)*2 = 2
-	if score != 2 {
-		t.Errorf("blank J should score 0 (expected 2), got %d", score)
+	// Main: 0+1 = 1
+	if score != 1 {
+		t.Errorf("blank J should score 0 (expected 1), got %d", score)
 	}
 
 	// Case 2: Existing blank tile on board representing high-value letter
@@ -571,7 +591,7 @@ func TestScoreRegression_BlankAlwaysZero(t *testing.T) {
 		dir:     dirHorizontal,
 	}
 	score2 := scoreMove(board2, m2)
-	// J(7,7) center — existing blank: val=0, no DW
+	// J(7,7) center — existing blank: val=0
 	// A(7,8) none — new: val=1
 	// Main: (0+1)*1 = 1
 	if score2 != 1 {
@@ -584,7 +604,7 @@ func TestScoreRegression_BlankAlwaysZero(t *testing.T) {
 func TestScoreRegression_CrossWordScoredOnce(t *testing.T) {
 	// Board setup: existing tiles form two horizontal fragments that will be
 	// bridged vertically. Placing N at (7,7) creates:
-	//   Main word "ENS" vertically: E(6,7) + N(7,7 new, center/DW) + S(8,7)
+	//   Main word "ENS" vertically: E(6,7) + N(7,7 new, center) + S(8,7)
 	//   Cross-word "NE" horizontally: N(7,7 new) + E(7,8 existing)
 	board := NewSolverBoard()
 	board.Set(6, 7, 'E', false) // existing top anchor
@@ -602,13 +622,13 @@ func TestScoreRegression_CrossWordScoredOnce(t *testing.T) {
 	}
 
 	score := scoreMove(board, m)
-	// Main word: E(6,7) existing=1, N(7,7) new center/DW=1 wordMul*=2, S(8,7) existing=1
-	// Main: (1+1+1)*2 = 6
-	// Cross at (7,7): N(new, center/DW)=1 wordMul*=2, E(7,8 existing)=1
-	// Cross: (1+1)*2 = 4
-	// Total: 6 + 4 = 10
-	if score != 10 {
-		t.Errorf("expected score 10 (main=6 + cross=4), got %d — cross-word may be double-counted or missing", score)
+	// Main word: E(6,7) existing=1, N(7,7) new on center (no bonus)=1, S(8,7) existing=1
+	// Main: 1+1+1 = 3
+	// Cross at (7,7): N(new)=1, E(7,8 existing)=1
+	// Cross: 1+1 = 2
+	// Total: 3 + 2 = 5
+	if score != 5 {
+		t.Errorf("expected score 5 (main=3 + cross=2), got %d — cross-word may be double-counted or missing", score)
 	}
 }
 
