@@ -237,6 +237,32 @@
       "tripLeaving_other": "{{trip}} — leaving in {{count}} days",
       "deadline": "{{what}} · {{race}} — {{when}}",
       "race": "{{race}} — {{when}}"
+    },
+    "bus": {
+      "title": "Bus departures",
+      "none": "No upcoming departures",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min",
+      "delayed_one": "{{count}} min late",
+      "delayed_other": "{{count}} min late",
+      "open": "All departures →"
+    },
+    "moon": {
+      "title": "Moon",
+      "lit": "{{percent}}% lit",
+      "rises": "Rises {{time}}",
+      "sets": "Sets {{time}}",
+      "open": "Sky watch →",
+      "phase": {
+        "new_moon": "New Moon",
+        "waxing_crescent": "Waxing Crescent",
+        "first_quarter": "First Quarter",
+        "waxing_gibbous": "Waxing Gibbous",
+        "full_moon": "Full Moon",
+        "waning_gibbous": "Waning Gibbous",
+        "last_quarter": "Last Quarter",
+        "waning_crescent": "Waning Crescent"
+      }
     }
   },
   "layout": {

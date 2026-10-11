@@ -237,6 +237,32 @@
       "tripLeaving_other": "{{trip}} – avreise om {{count}} dager",
       "deadline": "{{what}} · {{race}} – {{when}}",
       "race": "{{race}} – {{when}}"
+    },
+    "bus": {
+      "title": "Bussavganger",
+      "none": "Ingen kommende avganger",
+      "minutes_one": "{{count}} min",
+      "minutes_other": "{{count}} min",
+      "delayed_one": "{{count}} min forsinket",
+      "delayed_other": "{{count}} min forsinket",
+      "open": "Alle avganger →"
+    },
+    "moon": {
+      "title": "Månen",
+      "lit": "{{percent}} % belyst",
+      "rises": "Står opp {{time}}",
+      "sets": "Går ned {{time}}",
+      "open": "Himmelvakt →",
+      "phase": {
+        "new_moon": "Nymåne",
+        "waxing_crescent": "Voksende månesigd",
+        "first_quarter": "Første kvarter",
+        "waxing_gibbous": "Voksende måne",
+        "full_moon": "Fullmåne",
+        "waning_gibbous": "Avtagende måne",
+        "last_quarter": "Siste kvarter",
+        "waning_crescent": "Avtagende månesigd"
+      }
     }
   },
   "layout": {

@@ -11,6 +11,8 @@ import StarsWidget from './StarsWidget'
 import ChoresWidget from './ChoresWidget'
 import WorkHoursWidget from './WorkHoursWidget'
 import NextUpWidget from './NextUpWidget'
+import BusWidget from './BusWidget'
+import MoonWidget from './MoonWidget'
 import { resetSources } from './useWidgetData'
 
 function mockT(key: string, opts?: Record<string, unknown>): string {
@@ -29,6 +31,7 @@ const authState = {
   hasFeature: (key: string): boolean => authState.features === null || authState.features.includes(key),
 }
 vi.mock('../../auth', () => ({ useAuth: () => authState }))
+vi.mock('../../usePreferredLocation', () => ({ usePreferredLocation: () => ({ name: 'Bergen', lat: 60.39, lon: 5.32 }) }))
 
 const pad = (n: number) => String(n).padStart(2, '0')
 /** A local calendar date `offset` days from today, as YYYY-MM-DD. */
@@ -433,5 +436,63 @@ describe('shared sources', () => {
     await act(async () => { fireEvent.click(punchIn) })
     expect(await screen.findByRole('button', { name: 'widgets.workHours.punchOut' })).toBeInTheDocument()
     expect(calls.filter((c) => c.url === '/api/workhours/punch-session')).toHaveLength(2)
+  })
+})
+
+describe('BusWidget', () => {
+  const inMinutes = (m: number) => new Date(Date.now() + m * 60_000).toISOString()
+
+  it('lists the next departures across stops, soonest first, with delays', async () => {
+    installFetch({
+      '/api/transit/departures': {
+        stops: [
+          { stop_id: 'a', stop_name: 'Lagunen', departures: [
+            { line: '4', destination: 'Sentrum', departure_time: inMinutes(12), is_realtime: true, delay_minutes: 3 },
+            { line: '4', destination: 'Sentrum', departure_time: inMinutes(-5), is_realtime: true, delay_minutes: 0 },
+            { line: '67', destination: 'Nesttun', departure_time: inMinutes(95), is_realtime: false, delay_minutes: 0 } ] },
+          { stop_id: 'b', stop_name: 'Skjold', departures: [
+            { line: '1', destination: 'Byparken', departure_time: inMinutes(4), is_realtime: true, delay_minutes: 0 } ] },
+        ],
+      },
+    })
+    show(<BusWidget />)
+    await screen.findByText('Byparken')
+    const rows = screen.getAllByRole('listitem')
+    expect(rows).toHaveLength(3) // the bus that already left is gone
+    expect(rows[0]).toHaveTextContent('1')
+    expect(rows[0]).toHaveTextContent('Skjold')
+    expect(rows[0]).toHaveTextContent('widgets.bus.minutes:count=4')
+    expect(rows[1]).toHaveTextContent('widgets.bus.minutes:count=12')
+    expect(rows[1]).toHaveTextContent('widgets.bus.delayed:count=3')
+    expect(rows[2]).not.toHaveTextContent('widgets.bus.minutes') // far enough off to show the clock time
+  })
+
+  it('says when nothing more leaves, and is left out when no stops are saved', async () => {
+    installFetch({ '/api/transit/departures': { stops: [{ stop_id: 'a', stop_name: 'Lagunen', departures: null }] } })
+    const first = show(<BusWidget />)
+    expect(await screen.findByText('widgets.bus.none')).toBeInTheDocument()
+    first.unmount()
+    resetSources()
+
+    const calls = installFetch({ '/api/transit/departures': { stops: [] } })
+    const { container } = show(<BusWidget />)
+    await waitFor(() => expect(calls).toHaveLength(1))
+    await act(async () => {})
+    expect(container).toBeEmptyDOMElement()
+  })
+})
+
+describe('MoonWidget', () => {
+  it('shows the phase, how much is lit and when the moon rises', async () => {
+    const calls = installFetch({
+      '/api/skywatch/now': { moon: { phase: 'Waxing Gibbous', illumination: 0.836, moonrise: '2026-10-11T15:20:00Z', moonset: null } },
+    })
+    show(<MoonWidget />)
+    expect(await screen.findByText('widgets.moon.phase.waxing_gibbous')).toBeInTheDocument()
+    expect(screen.getByRole('img', { name: 'widgets.moon.phase.waxing_gibbous' })).toHaveTextContent('🌔')
+    expect(screen.getByText('widgets.moon.lit:percent=84')).toBeInTheDocument()
+    expect(screen.getByText(/widgets.moon.rises:time=/)).toBeInTheDocument()
+    expect(screen.queryByText(/widgets.moon.sets/)).toBeNull()
+    expect(calls[0].url).toBe('/api/skywatch/now?lat=60.39&lon=5.32')
   })
 })

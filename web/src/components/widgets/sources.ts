@@ -164,6 +164,21 @@ export const workHoursSource = source('workhours', async (): Promise<WorkHours> 
   return { session: punch.session ?? null, summary: day.summary ?? null }
 })
 
+// --- bus departures -----------------------------------------------------
+
+export interface StopDepartures {
+  stop_id: string
+  stop_name: string
+  departures: { line: string; destination: string; departure_time: string; is_realtime: boolean; delay_minutes: number }[]
+}
+
+/** Upcoming departures from the user's saved stops. */
+export const departuresSource = source('transit', () =>
+  getJSON<{ stops: StopDepartures[] | null }>('/api/transit/departures').then((d) =>
+    (d.stops ?? []).map((stop) => ({ ...stop, departures: stop.departures ?? [] })),
+  ),
+)
+
 // --- calendar -----------------------------------------------------------
 
 const rfc3339 = (d: Date) => d.toISOString().replace(/\.\d{3}Z$/, 'Z')

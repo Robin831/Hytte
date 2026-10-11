@@ -11,6 +11,8 @@ import ActivityFeedWidget from './ActivityFeedWidget'
 import CalendarWidget from './CalendarWidget'
 import NextUpWidget from './NextUpWidget'
 import StarsWidget from './StarsWidget'
+import BusWidget from './BusWidget'
+import MoonWidget from './MoonWidget'
 import ChoresWidget from './ChoresWidget'
 import HomeworkWidget from './HomeworkWidget'
 import WorkHoursWidget from './WorkHoursWidget'
@@ -71,12 +73,14 @@ export const WIDGET_REGISTRY: WidgetDef[] = [
   { id: 'stride', component: StrideWidget, titleKey: 'widgets.stride.title', feature: 'stride' },
   { id: 'calendar', component: CalendarWidget, titleKey: 'widgets.calendar.title', feature: 'calendar' },
   { id: 'weather', component: WeatherWidget, titleKey: 'widgets.weather.title' },
+  { id: 'bus', component: BusWidget, titleKey: 'widgets.bus.title', feature: 'transit' },
   { id: 'family_chat', component: FamilyChatWidget, titleKey: 'widgets.familyChat.title', feature: 'family_chat' },
   { id: 'stars', component: StarsWidget, titleKey: 'widgets.stars.title', feature: 'kids_stars', familyRole: 'child' },
   { id: 'chores', component: ChoresWidget, titleKey: 'widgets.chores.title', feature: 'kids_allowance' },
   { id: 'homework', component: HomeworkWidget, titleKey: 'widgets.homework.title', feature: 'homework', familyRole: 'child' },
   { id: 'wordfeud', component: WordfeudWidget, titleKey: 'widgets.wordfeud.title', feature: 'wordfeud', lazy: true },
   { id: 'daylight', component: DaylightWidget, titleKey: 'widgets.daylight.title' },
+  { id: 'moon', component: MoonWidget, titleKey: 'widgets.moon.title', feature: 'skywatch' },
   { id: 'netatmo', component: NetatmoWidget, titleKey: 'widgets.netatmo.title', feature: 'netatmo', lazy: true },
   { id: 'training', component: FitnessWidget, titleKey: 'widgets.training.title', feature: 'training' },
   { id: 'lactate', component: LactateSummaryWidget, titleKey: 'widgets.lactate.title', feature: 'lactate' },

@@ -237,6 +237,32 @@
       "tripLeaving_other": "{{trip}} — ออกเดินทางในอีก {{count}} วัน",
       "deadline": "{{what}} · {{race}} — {{when}}",
       "race": "{{race}} — {{when}}"
+    },
+    "bus": {
+      "title": "รถเมล์",
+      "none": "ไม่มีรถออกเร็วๆ นี้",
+      "minutes_one": "{{count}} น.",
+      "minutes_other": "{{count}} น.",
+      "delayed_one": "ช้า {{count}} น.",
+      "delayed_other": "ช้า {{count}} น.",
+      "open": "เที่ยวรถทั้งหมด →"
+    },
+    "moon": {
+      "title": "ดวงจันทร์",
+      "lit": "สว่าง {{percent}}%",
+      "rises": "ขึ้น {{time}}",
+      "sets": "ตก {{time}}",
+      "open": "ท้องฟ้า →",
+      "phase": {
+        "new_moon": "เดือนดับ",
+        "waxing_crescent": "ข้างขึ้น",
+        "first_quarter": "ข้างขึ้นครึ่งดวง",
+        "waxing_gibbous": "ข้างขึ้นค่อนข้างเต็มดวง",
+        "full_moon": "เดือนเพ็ญ",
+        "waning_gibbous": "ข้างแรม",
+        "last_quarter": "ข้างแรมครึ่งดวง",
+        "waning_crescent": "ข้างแรมเสี้ยว"
+      }
     }
   },
   "layout": {
