@@ -2363,6 +2363,21 @@ func createSchema(db *sql.DB) error {
 		updated_at TEXT NOT NULL DEFAULT ''
 	);
 
+	-- Trip chat: one shared conversation per trip with Claude. content is
+	-- encrypted; an assistant message is 'pending' while Claude answers.
+	-- Deleted a month after the trip ends.
+	CREATE TABLE IF NOT EXISTS trip_chat_messages (
+		id         INTEGER PRIMARY KEY,
+		trip_id    INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+		user_id    INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		role       TEXT NOT NULL,
+		content    TEXT NOT NULL DEFAULT '',
+		status     TEXT NOT NULL DEFAULT 'done',
+		changed    INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL
+	);
+	CREATE INDEX IF NOT EXISTS idx_trip_chat_trip ON trip_chat_messages(trip_id, id);
+
 	CREATE TABLE IF NOT EXISTS trips (
 		id            INTEGER PRIMARY KEY,
 		owner_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,

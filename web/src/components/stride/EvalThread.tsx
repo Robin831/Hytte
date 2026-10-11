@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MessageCircle, Send, Loader2, Sparkles, HelpCircle } from 'lucide-react'
+import { MessageCircle, HelpCircle } from 'lucide-react'
+import { ChatComposer, ChatMessageList } from '../chat/ChatThread'
 
 interface EvalMessage {
   id: number
@@ -94,51 +95,18 @@ export default function EvalThread({ evaluationId, questions, onEvalRevised }: E
           {messages === null && !error && (
             <p className="text-xs text-gray-500">{t('evalThread.loading')}</p>
           )}
-          {messages?.map(m => (
-            <div
-              key={m.id}
-              className={`rounded-lg px-3 py-2 text-sm ${
-                m.role === 'coach'
-                  ? 'bg-gray-800/80 text-gray-200'
-                  : 'bg-blue-900/30 border border-blue-800/50 text-blue-100 ml-4'
-              }`}
-            >
-              <span className="block text-[10px] uppercase tracking-wide text-gray-500 mb-0.5">
-                {m.role === 'coach' ? t('evalThread.coach') : t('evalThread.you')}
-              </span>
-              <span className="whitespace-pre-wrap break-words">{m.content}</span>
-              {m.eval_revised && (
-                <span className="mt-1 flex items-center gap-1 text-[11px] text-emerald-400">
-                  <Sparkles size={11} />
-                  {t('evalThread.evalRevised')}
-                </span>
-              )}
-            </div>
-          ))}
+          {messages && (
+            <ChatMessageList compact thinkingLabel={t('evalThread.coachThinking')} messages={messages.map(m => ({
+              id: m.id, mine: m.role !== 'coach', author: m.role === 'coach' ? t('evalThread.coach') : t('evalThread.you'),
+              content: m.content, badge: m.eval_revised ? t('evalThread.evalRevised') : undefined,
+            }))} />
+          )}
           {messages !== null && messages.length === 0 && (
             <p className="text-xs text-gray-500">{t('evalThread.empty')}</p>
           )}
 
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={draft}
-              onChange={e => setDraft(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') void send() }}
-              placeholder={t('evalThread.placeholder')}
-              aria-label={t('evalThread.placeholder')}
-              disabled={sending}
-              className="flex-1 min-w-0 bg-gray-900 border border-gray-700 rounded-lg px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 disabled:opacity-60"
-            />
-            <button
-              onClick={() => void send()}
-              disabled={!draft.trim() || sending}
-              aria-label={t('evalThread.send')}
-              className="shrink-0 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-lg px-3 py-1.5 cursor-pointer transition-colors"
-            >
-              {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            </button>
-          </div>
+          <ChatComposer value={draft} onChange={setDraft} onSend={() => void send()} busy={sending} disabled={sending}
+            placeholder={t('evalThread.placeholder')} sendLabel={t('evalThread.send')} />
           {sending && (
             <p className="text-xs text-gray-500">{t('evalThread.coachThinking')}</p>
           )}

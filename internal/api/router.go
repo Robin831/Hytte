@@ -981,6 +981,9 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/trips/items/{id}/done", trips.HandleToggleItem(db))
 				r.Delete("/trips/items/{id}", trips.HandleDeleteItem(db))
 				r.Get("/trips/{id}/candidates", trips.HandleCandidates(db))
+				r.Get("/trips/{id}/chat", trips.HandleListChat(db))
+				r.Post("/trips/{id}/chat", trips.HandleAskChat(db))
+				r.Delete("/trips/{id}/chat", trips.HandleClearChat(db))
 			})
 
 			// Family roster (trips' travellers, the hall of fame's runners):

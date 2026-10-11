@@ -169,5 +169,23 @@
     "name": "Name",
     "add": "Add",
     "confirmRemove": "Remove {{name}} from the family list?"
+  },
+  "chat": {
+    "open": "Ask Claude",
+    "title": "Trip assistant",
+    "close": "Close",
+    "clear": "Clear the conversation",
+    "confirmClear": "Clear the whole conversation for everyone on the trip?",
+    "thinking": "Thinking…",
+    "changed": "✓ Trip updated",
+    "placeholder": "Ask about the trip, or ask for a change…",
+    "send": "Send",
+    "introEdit": "Ask anything about the trip, or tell me what to change — flights, the plan, checklists. Everyone on the trip sees this conversation; it is deleted a month after the trip.",
+    "introView": "Ask anything about the trip. Only travellers can have it changed. The conversation is deleted a month after the trip.",
+    "suggest": {
+      "left": "What is left to do before we go?",
+      "leave": "When should we leave for the airport?",
+      "weather": "What will the weather be like?"
+    }
   }
 }

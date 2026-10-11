@@ -169,5 +169,23 @@
     "name": "Navn",
     "add": "Legg til",
     "confirmRemove": "Fjerne {{name}} fra familielisten?"
+  },
+  "chat": {
+    "open": "Spør Claude",
+    "title": "Reiseassistent",
+    "close": "Lukk",
+    "clear": "Tøm samtalen",
+    "confirmClear": "Tømme hele samtalen for alle på reisen?",
+    "thinking": "Tenker …",
+    "changed": "✓ Reisen er oppdatert",
+    "placeholder": "Spør om reisen, eller be om en endring …",
+    "send": "Send",
+    "introEdit": "Spør om hva som helst på reisen, eller si hva du vil endre – fly, planen, sjekklister. Alle på reisen ser samtalen; den slettes en måned etter turen.",
+    "introView": "Spør om hva som helst på reisen. Bare de som reiser kan få den endret. Samtalen slettes en måned etter turen.",
+    "suggest": {
+      "left": "Hva gjenstår før vi drar?",
+      "leave": "Når bør vi dra til flyplassen?",
+      "weather": "Hvordan blir været?"
+    }
   }
 }

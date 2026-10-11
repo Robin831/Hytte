@@ -9,6 +9,7 @@ import {
 } from './tripsApi'
 import { SectionEditor, type SectionKey } from './TripEditor'
 import { DateCandidates, ReopenDates } from './DateCandidates'
+import { TripChat } from './TripChat'
 
 function useMinuteClock() {
   const [now, setNow] = useState(() => new Date())
@@ -432,6 +433,7 @@ export default function TripPage() {
           {t('deleteTrip')}
         </button>
       )}
+      <TripChat trip={trip} onTripChanged={reload} />
       <p className="mt-6 text-xs text-gray-500">{t('translationNote')} · {new Intl.DateTimeFormat(intlLocale(lang), { dateStyle: 'medium' }).format(new Date(trip.updated_at))}</p>
     </div>
   )

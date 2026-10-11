@@ -1,0 +1,2 @@
+category: Added
+- **Trip chat** - Every trip has a shared "Ask Claude" conversation: questions are answered with the whole trip as context (and web search for live facts), and travellers can have Claude change the trip or its checklists. Answers run in the background; the conversation is deleted a month after the trip. Stride's coach thread and the trip chat now share the reply format, its parser and the chat thread component.

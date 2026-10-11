@@ -86,6 +86,14 @@ export const addItem = (groupId: number, title: I18n, detail: I18n = {}, urgent 
 export const setItemDone = (id: number, done: boolean) =>
   request<{ status: string }>(`/api/trips/items/${id}/done`, { method: 'POST', body: JSON.stringify({ done }) })
 export const deleteItem = (id: number) => request<{ status: string }>(`/api/trips/items/${id}`, { method: 'DELETE' })
+export interface ChatMessage {
+  id: number; role: 'user' | 'assistant'; user_name?: string; content: string; status: 'pending' | 'done' | 'failed'; changed: boolean; created_at: string
+}
+export const fetchTripChat = (id: number, signal?: AbortSignal) => request<{ messages: ChatMessage[] }>(`/api/trips/${id}/chat`, { signal })
+export const askTripChat = (id: number, message: string, lang: Lang) =>
+  request<{ messages: ChatMessage[] }>(`/api/trips/${id}/chat`, { method: 'POST', body: JSON.stringify({ message, lang }) })
+export const clearTripChat = (id: number) => request<{ status: string }>(`/api/trips/${id}/chat`, { method: 'DELETE' })
+
 export const fetchCandidates = (id: number, signal?: AbortSignal) => request<{ candidates: Candidate[] }>(`/api/trips/${id}/candidates`, { signal })
 
 export const fetchFamily = (signal?: AbortSignal) => request<{ people: Person[] }>('/api/family', { signal })

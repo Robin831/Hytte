@@ -220,36 +220,10 @@ func splitEvalChatResponse(response string) (reply string, updated *Evaluation) 
 	return strings.TrimSpace(response), updated
 }
 
-// extractFencedObject returns the content of the last fenced code block when
-// it holds a JSON object. Mirrors extractPlanJSON, which requires an array.
+// extractFencedObject returns the last fenced JSON object in a reply (shared
+// with the trip chat via the training package).
 func extractFencedObject(response string) (string, bool) {
-	const fence = "```"
-	lastClose := strings.LastIndex(response, "\n"+fence)
-	if lastClose < 0 {
-		return "", false
-	}
-	openStart := strings.LastIndex(response[:lastClose], fence)
-	if openStart < 0 {
-		return "", false
-	}
-	afterTag := response[openStart+len(fence):]
-	nl := strings.IndexByte(afterTag, '\n')
-	if nl < 0 {
-		return "", false
-	}
-	innerStart := openStart + len(fence) + nl + 1
-	innerEnd := lastClose
-	if innerEnd > innerStart && response[innerEnd-1] == '\r' {
-		innerEnd--
-	}
-	if innerEnd <= innerStart {
-		return "", false
-	}
-	inner := strings.TrimSpace(response[innerStart:innerEnd])
-	if !strings.HasPrefix(inner, "{") {
-		return "", false
-	}
-	return inner, true
+	return training.ExtractFencedObject(response)
 }
 
 // updateEvaluationInPlace replaces eval_json for an existing row, preserving

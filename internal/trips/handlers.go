@@ -1,12 +1,14 @@
 package trips
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
 	"github.com/go-chi/chi/v5"
@@ -346,6 +348,81 @@ func HandleDeletePerson(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		if err := DeletePerson(r.Context(), db, id); err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	}
+}
+
+// HandleListChat returns a trip's conversation with Claude.
+func HandleListChat(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid trip ID")
+			return
+		}
+		msgs, err := ListChat(r.Context(), db, id, user.ID)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"messages": msgs})
+	}
+}
+
+// HandleAskChat asks Claude about a trip; the answer arrives in the background.
+func HandleAskChat(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid trip ID")
+			return
+		}
+		var in struct {
+			Message string `json:"message"`
+			Lang    string `json:"lang"`
+		}
+		if !decode(w, r, &in) {
+			return
+		}
+		chat := NewChat(db)
+		answerID, err := chat.Ask(r.Context(), id, user.ID, in.Message)
+		if errors.Is(err, ErrChatBusy) {
+			writeError(w, http.StatusConflict, err.Error())
+			return
+		}
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), chatTimeout+time.Minute)
+			defer cancel()
+			chat.Answer(ctx, id, user.ID, answerID, in.Lang)
+		}()
+		msgs, err := ListChat(r.Context(), db, id, user.ID)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, map[string]any{"messages": msgs})
+	}
+}
+
+// HandleClearChat deletes a trip's conversation (editors).
+func HandleClearChat(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		id, ok := idParam(r, "id")
+		if !ok {
+			writeError(w, http.StatusBadRequest, "invalid trip ID")
+			return
+		}
+		if err := ClearChat(r.Context(), db, id, user.ID); err != nil {
 			writeStoreError(w, err)
 			return
 		}

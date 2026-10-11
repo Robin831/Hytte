@@ -27,6 +27,7 @@ import (
 	"github.com/Robin831/Hytte/internal/stride"
 	"github.com/Robin831/Hytte/internal/suggestions"
 	"github.com/Robin831/Hytte/internal/training"
+	"github.com/Robin831/Hytte/internal/trips"
 )
 
 func main() {
@@ -405,6 +406,8 @@ func main() {
 	go races.RunCalendarLoop(notifCtx, database, races.CalendarSyncInterval)
 	// Local races from Kondis at 05:30 Oslo, and pruning of past races nobody was in.
 	go races.RunLocalSyncLoop(notifCtx, database)
+	// Trip chats are deleted a month after the trip ends.
+	go trips.RunChatCleanupLoop(notifCtx, database)
 
 	// Daily grocery-offer sync from the Tjek API at 06:30 Europe/Oslo
 	// (Hytte-offr). Warm-runs at startup only when stored offers are stale

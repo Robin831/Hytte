@@ -6,6 +6,7 @@ import { dateIn, editI18n, tripState, txt, zonedInstant, type Trip, type TripSum
 import TripsPage from './TripsPage'
 import TripPage from './TripPage'
 import { FamilyPicker } from './Family'
+import { TripChat } from './TripChat'
 import type { Candidate, Person, Traveller } from './tripsApi'
 
 function mockT(key: string, opts?: Record<string, unknown>): string {
@@ -197,5 +198,36 @@ describe('FamilyPicker', () => {
     rerender(<FamilyPicker people={people} value={value} onChange={onChange} date="2026-11-06" />)
     fireEvent.change(screen.getByRole('textbox', { name: 'field.others' }), { target: { value: 'Granny, ' } })
     expect(value).toEqual([{ name: 'William', person_id: 4, user_id: 4, child: true }, { name: 'Granny', child: false }])
+  })
+})
+
+describe('TripChat', () => {
+  it('asks Claude, polls while pending and reloads the trip when it changed', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true })
+    const onChanged = vi.fn()
+    let polls = 0
+    const calls: { url: string; method: string; body?: unknown }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET'
+      calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined })
+      const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as Response
+      const q = { id: 1, role: 'user', user_name: 'Robin', content: 'Tick the SIM card', status: 'done', changed: false, created_at: '' }
+      if (method === 'POST') return ok({ messages: [q, { id: 2, role: 'assistant', content: '', status: 'pending', changed: false, created_at: '' }] })
+      polls++
+      if (polls === 1) return ok({ messages: [] })
+      if (polls === 2) return ok({ messages: [q, { id: 2, role: 'assistant', content: '', status: 'pending', changed: false, created_at: '' }] })
+      return ok({ messages: [q, { id: 2, role: 'assistant', content: 'Done – ticked.', status: 'done', changed: true, created_at: '' }] })
+    }))
+    render(<MemoryRouter><TripChat trip={SURIN} onTripChanged={onChanged} /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: /chat.open/ }))
+    expect(await screen.findByText('chat.introEdit')).toBeInTheDocument()
+    fireEvent.change(screen.getByRole('textbox', { name: 'chat.placeholder' }), { target: { value: 'Tick the SIM card' } })
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'chat.send' })) })
+    expect(calls.find(c => c.method === 'POST')?.body).toEqual({ message: 'Tick the SIM card', lang: 'en' })
+    expect(screen.getByText('chat.thinking')).toBeInTheDocument()
+    await act(async () => { await vi.advanceTimersByTimeAsync(3000) })
+    expect(await screen.findByText('Done – ticked.')).toBeInTheDocument()
+    expect(screen.getByText('chat.changed')).toBeInTheDocument()
+    expect(onChanged).toHaveBeenCalledTimes(1)
   })
 })
