@@ -9,6 +9,12 @@ import FitnessWidget from './FitnessWidget'
 import LactateSummaryWidget from './LactateSummaryWidget'
 import ActivityFeedWidget from './ActivityFeedWidget'
 import CalendarWidget from './CalendarWidget'
+import StarsWidget from './StarsWidget'
+import ChoresWidget from './ChoresWidget'
+import HomeworkWidget from './HomeworkWidget'
+import WorkHoursWidget from './WorkHoursWidget'
+import StrideWidget from './StrideWidget'
+import FamilyChatWidget from './FamilyChatWidget'
 
 // Below-the-fold widgets that fetch on mount are code-split so they do not sit
 // in the initial dashboard chunk. Every lazy entry must set `lazy: true` so the
@@ -16,9 +22,15 @@ import CalendarWidget from './CalendarWidget'
 const InfraStatusWidget = lazy(() => import('./InfraStatusWidget'))
 const GitHubStatusWidget = lazy(() => import('./GitHubStatusWidget'))
 const NetatmoWidget = lazy(() => import('./NetatmoWidget'))
+// These pull in the trips and races clients, or wait on Wordfeud's servers.
+const TripsWidget = lazy(() => import('./TripsWidget'))
+const RacesWidget = lazy(() => import('./RacesWidget'))
+const WordfeudWidget = lazy(() => import('./WordfeudWidget'))
 
 /** Feature key shared by the server-status and GitHub Actions widgets. */
 const INFRA = 'infra'
+
+export type FamilyRole = 'parent' | 'child'
 
 export interface WidgetDef {
   /** Stable id persisted in the dashboard_widgets preference. */
@@ -28,6 +40,8 @@ export interface WidgetDef {
   titleKey: ParseKeys<'dashboard'>
   /** Feature flag that must be enabled for the widget to render at all. */
   feature?: string
+  /** Family role the widget is for; everyone with the feature when unset. */
+  familyRole?: FamilyRole
   /** Grid span class for the widget's slot, mirroring the widget's own layout. */
   colSpanClass?: string
   /** Widgets the user cannot hide (the greeting header). */
@@ -37,9 +51,9 @@ export interface WidgetDef {
 }
 
 /**
- * The dashboard's widgets in their default order. Ids are persisted, so
- * renaming one drops that widget out of a stored layout — add a new entry
- * instead.
+ * The dashboard's widgets in their default order: what needs doing today
+ * first, ambient information after. Ids are persisted, so renaming one drops
+ * that widget out of a stored layout — add a new entry instead.
  */
 export const WIDGET_REGISTRY: WidgetDef[] = [
   {
@@ -49,9 +63,18 @@ export const WIDGET_REGISTRY: WidgetDef[] = [
     colSpanClass: 'col-span-full',
     alwaysVisible: true,
   },
-  { id: 'weather', component: WeatherWidget, titleKey: 'widgets.weather.title' },
-  { id: 'daylight', component: DaylightWidget, titleKey: 'widgets.daylight.title' },
+  { id: 'work_hours', component: WorkHoursWidget, titleKey: 'widgets.workHours.title', feature: 'work_hours' },
+  { id: 'trips', component: TripsWidget, titleKey: 'widgets.trips.title', feature: 'trips', lazy: true },
+  { id: 'races', component: RacesWidget, titleKey: 'widgets.races.title', feature: 'races', lazy: true },
+  { id: 'stride', component: StrideWidget, titleKey: 'widgets.stride.title', feature: 'stride' },
   { id: 'calendar', component: CalendarWidget, titleKey: 'widgets.calendar.title', feature: 'calendar' },
+  { id: 'weather', component: WeatherWidget, titleKey: 'widgets.weather.title' },
+  { id: 'family_chat', component: FamilyChatWidget, titleKey: 'widgets.familyChat.title', feature: 'family_chat' },
+  { id: 'stars', component: StarsWidget, titleKey: 'widgets.stars.title', feature: 'kids_stars', familyRole: 'child' },
+  { id: 'chores', component: ChoresWidget, titleKey: 'widgets.chores.title', feature: 'kids_allowance' },
+  { id: 'homework', component: HomeworkWidget, titleKey: 'widgets.homework.title', feature: 'homework', familyRole: 'child' },
+  { id: 'wordfeud', component: WordfeudWidget, titleKey: 'widgets.wordfeud.title', feature: 'wordfeud', lazy: true },
+  { id: 'daylight', component: DaylightWidget, titleKey: 'widgets.daylight.title' },
   { id: 'netatmo', component: NetatmoWidget, titleKey: 'widgets.netatmo.title', feature: 'netatmo', lazy: true },
   { id: 'training', component: FitnessWidget, titleKey: 'widgets.training.title', feature: 'training' },
   { id: 'lactate', component: LactateSummaryWidget, titleKey: 'widgets.lactate.title', feature: 'lactate' },
@@ -61,6 +84,19 @@ export const WIDGET_REGISTRY: WidgetDef[] = [
   { id: 'norwegian_word', component: NorwegianFunWidget, titleKey: 'widgets.norwegianWord.title' },
   { id: 'quick_links', component: QuickLinksWidget, titleKey: 'widgets.quickLinks.title' },
 ]
+
+/** What a child sees first, ahead of everything in the default order. */
+const CHILD_FIRST = ['greeting', 'stars', 'chores', 'homework', 'races', 'family_chat']
+
+/**
+ * The registry in the default order for a family role. Children get their own
+ * things first; the layout they then save is theirs to rearrange like anyone's.
+ */
+export function registryFor(role: FamilyRole | null, registry: WidgetDef[] = WIDGET_REGISTRY): WidgetDef[] {
+  if (role !== 'child') return registry
+  const first = CHILD_FIRST.flatMap((id) => registry.filter((def) => def.id === id))
+  return [...first, ...registry.filter((def) => !CHILD_FIRST.includes(def.id))]
+}
 
 /** Persisted shape of the `dashboard_widgets` preference. */
 export interface DashboardLayout {

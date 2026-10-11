@@ -13,6 +13,7 @@ import {
   moveWidget,
   orderedWidgets,
   parseLayout,
+  registryFor,
   reorderTo,
   resolveLayout,
   type DashboardLayout,
@@ -22,7 +23,7 @@ import {
 const PREF_KEY = 'dashboard_widgets'
 
 function Dashboard() {
-  const { hasFeature, user } = useAuth()
+  const { hasFeature, user, familyStatus } = useAuth()
   const { t } = useTranslation('dashboard')
   const { toasts, showToast } = useToast()
 
@@ -54,21 +55,24 @@ function Dashboard() {
     }
   }, [user])
 
+  const role = familyStatus?.is_child ? 'child' : familyStatus?.is_parent ? 'parent' : null
+  const registry = useMemo(() => registryFor(role), [role])
+
   const featureEnabled = useCallback(
-    (def: WidgetDef) => !def.feature || hasFeature(def.feature),
-    [hasFeature],
+    (def: WidgetDef) => (!def.feature || hasFeature(def.feature)) && (!def.familyRole || def.familyRole === role),
+    [hasFeature, role],
   )
 
   // The full ordered id list is what gets persisted, so widgets the user cannot
   // currently see keep their place in the layout.
-  const fullOrder = useMemo(() => orderedWidgets(layout).map((def) => def.id), [layout])
+  const fullOrder = useMemo(() => orderedWidgets(layout, registry).map((def) => def.id), [layout, registry])
   const visibleWidgets = useMemo(
-    () => resolveLayout(layout).filter(featureEnabled),
-    [layout, featureEnabled],
+    () => resolveLayout(layout, registry).filter(featureEnabled),
+    [layout, registry, featureEnabled],
   )
   const hiddenList = useMemo(
-    () => hiddenWidgets(layout).filter(featureEnabled),
-    [layout, featureEnabled],
+    () => hiddenWidgets(layout, registry).filter(featureEnabled),
+    [layout, registry, featureEnabled],
   )
   const displayedIds = useMemo(() => visibleWidgets.map((def) => def.id), [visibleWidgets])
 
@@ -228,7 +232,7 @@ function Dashboard() {
   }
 
   return (
-    <div className="p-6">
+    <div className="p-4 sm:p-6">
       <DashboardEditBar
         editing={editing}
         saving={saving}

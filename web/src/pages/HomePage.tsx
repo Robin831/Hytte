@@ -1,75 +1,33 @@
 import { useTranslation } from 'react-i18next'
-import { Link } from 'react-router'
-import { LayoutDashboard } from 'lucide-react'
+import { LogIn } from 'lucide-react'
 import { useAuth } from '../auth'
-import { formatDate, formatTime } from '../utils/formatDate'
-import { getGreetingKey } from '../utils/greeting'
-import { useNow } from '../hooks/useNow'
+import Dashboard from './Dashboard'
+import WeatherWidget from '../components/widgets/WeatherWidget'
 
-export default function HomePage() {
+/** What a visitor sees before signing in: the name, a way in, and the weather. */
+function Welcome() {
   const { t } = useTranslation('common')
-  const auth = useAuth()
-  const user = auth.user
-  const now = useNow()
-
-  const firstName = user?.name.split(' ')[0] ?? ''
-  const hour = now.getHours()
-
-  const timeStr = formatTime(now, {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  })
-  const dateStr = formatDate(now, {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-
   return (
-    <div className="p-4 sm:p-6">
-      {/* Greeting header */}
-      <header className="text-center py-6 sm:py-8">
-        <div className="flex items-center justify-center gap-3 mb-4">
-          {user?.picture ? (
-            <img
-              src={user.picture}
-              alt={user.name}
-              className="w-12 h-12 rounded-full"
-              referrerPolicy="no-referrer"
-            />
-          ) : user ? (
-            <div
-              className="w-12 h-12 rounded-full bg-blue-600 flex items-center justify-center text-lg font-medium"
-              role="img"
-              aria-label={user.name}
-            >
-              {user.name.charAt(0).toUpperCase()}
-            </div>
-          ) : null}
-        </div>
-        <p className="text-gray-400 text-lg mb-4">
-          {firstName
-            ? t(getGreetingKey(hour, true), { name: firstName })
-            : t(getGreetingKey(hour, false))}
-        </p>
-        <time className="block text-6xl font-bold tabular-nums tracking-tight mb-4" dateTime={now.toISOString()}>{timeStr}</time>
-        <p className="text-gray-400 text-lg">{dateStr}</p>
+    <div className="mx-auto flex max-w-md flex-col gap-6 p-4 py-10 sm:p-6 sm:py-16">
+      <header className="text-center">
+        <h1 className="text-5xl font-bold">{t('appName')}</h1>
+        <p className="mt-3 text-lg text-gray-400">{t('tagline')}</p>
+        <a
+          href="/api/auth/google/login"
+          className="mt-6 inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+        >
+          <LogIn size={16} aria-hidden="true" />
+          {t('sidebar.signIn')}
+        </a>
       </header>
-
-      {/* Link to full dashboard */}
-      {user && (
-        <div className="mt-6 text-center">
-          <Link
-            to="/dashboard"
-            className="inline-flex items-center gap-2 text-gray-400 hover:text-white transition-colors text-sm"
-          >
-            <LayoutDashboard size={16} />
-            {t('home.viewDashboard')}
-          </Link>
-        </div>
-      )}
+      <WeatherWidget />
     </div>
   )
+}
+
+/** The landing page: your dashboard when signed in, a welcome when not. */
+export default function HomePage() {
+  const { user, loading } = useAuth()
+  if (loading) return null
+  return user ? <Dashboard /> : <Welcome />
 }

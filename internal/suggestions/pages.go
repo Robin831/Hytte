@@ -35,22 +35,13 @@ var Pages = []Page{
 	{
 		Slug:        "dashboard",
 		Title:       "Dashboard",
-		Route:       "/dashboard",
-		Description: "Personal landing dashboard summarising recent activity across enabled Hytte features.",
+		Route:       "/",
+		Description: "The landing page: a per-user grid of widgets (work hours, trips, races, Stride, chores, weather and more) for the features each user has.",
 		SourceFiles: []string{
 			"web/src/pages/Dashboard.tsx",
 			"web/src/pages/HomePage.tsx",
+			"web/src/components/widgets/registry.ts",
 			"internal/dashboard/activity.go",
-		},
-		FeatureFlag: "",
-	},
-	{
-		Slug:        "today",
-		Title:       "Today",
-		Route:       "/today",
-		Description: "Compact at-a-glance view combining weather, calendar, and other daily signals.",
-		SourceFiles: []string{
-			"web/src/pages/TodayView.tsx",
 		},
 		FeatureFlag: "",
 	},

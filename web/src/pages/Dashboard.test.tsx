@@ -60,18 +60,29 @@ vi.mock('../components/widgets/InfraStatusWidget', () => stub('infra'))
 vi.mock('../components/widgets/GitHubStatusWidget', () => stub('github'))
 vi.mock('../components/widgets/NorwegianFunWidget', () => stub('norwegian_word'))
 vi.mock('../components/widgets/QuickLinksWidget', () => stub('quick_links'))
+vi.mock('../components/widgets/WorkHoursWidget', () => stub('work_hours'))
+vi.mock('../components/widgets/TripsWidget', () => stub('trips'))
+vi.mock('../components/widgets/RacesWidget', () => stub('races'))
+vi.mock('../components/widgets/StrideWidget', () => stub('stride'))
+vi.mock('../components/widgets/FamilyChatWidget', () => stub('family_chat'))
+vi.mock('../components/widgets/StarsWidget', () => stub('stars'))
+vi.mock('../components/widgets/ChoresWidget', () => stub('chores'))
+vi.mock('../components/widgets/HomeworkWidget', () => stub('homework'))
+vi.mock('../components/widgets/WordfeudWidget', () => stub('wordfeud'))
 
 // ── Auth mock ─────────────────────────────────────────────────────────────────
 
 const authState = {
   user: { id: 1, name: 'Robin' } as { id: number; name: string } | null,
   features: {} as Record<string, boolean>,
+  familyStatus: null as { is_parent: boolean; is_child: boolean } | null,
 }
 
 vi.mock('../auth', () => ({
   useAuth: () => ({
     user: authState.user,
     hasFeature: (key: string) => authState.features[key] ?? false,
+    familyStatus: authState.familyStatus,
   }),
 }))
 
@@ -128,6 +139,7 @@ async function renderDashboard() {
 beforeEach(() => {
   authState.user = { id: 1, name: 'Robin' }
   authState.features = {}
+  authState.familyStatus = null
   mockPreferences()
 })
 
@@ -205,9 +217,9 @@ describe('Dashboard – layout resolution', () => {
     await waitFor(() =>
       expect(renderedOrder()).toEqual([
         'greeting',
+        'calendar',
         'weather',
         'daylight',
-        'calendar',
         'activity',
         'infra',
         'github',
@@ -215,6 +227,31 @@ describe('Dashboard – layout resolution', () => {
         'quick_links',
       ]),
     )
+  })
+
+  it('puts what needs doing today ahead of the ambient widgets', async () => {
+    authState.features = { work_hours: true, trips: true, races: true, stride: true, wordfeud: true, family_chat: true }
+    await renderDashboard()
+    await waitFor(() => expect(renderedOrder()).toContain('wordfeud'))
+    expect(renderedOrder().slice(0, 7)).toEqual(['greeting', 'work_hours', 'trips', 'races', 'stride', 'weather', 'family_chat'])
+  })
+
+  it("gives a child their own things first and keeps the kids' widgets from adults", async () => {
+    authState.features = { kids_stars: true, kids_allowance: true, homework: true, races: true, family_chat: true, training: true }
+    authState.familyStatus = { is_parent: false, is_child: true }
+    const view = await renderDashboard()
+    await waitFor(() => expect(renderedOrder()).toContain('races'))
+    expect(renderedOrder().slice(0, 7)).toEqual(['greeting', 'stars', 'chores', 'homework', 'races', 'family_chat', 'weather'])
+    view.unmount()
+
+    // A parent with the same features sees approvals, but not stars or homework.
+    authState.familyStatus = { is_parent: true, is_child: false }
+    await renderDashboard()
+    await waitFor(() => expect(renderedOrder()).toContain('races'))
+    expect(renderedOrder()).toContain('chores')
+    expect(renderedOrder()).not.toContain('stars')
+    expect(renderedOrder()).not.toContain('homework')
+    expect(renderedOrder().indexOf('races')).toBeLessThan(renderedOrder().indexOf('chores'))
   })
 })
 
@@ -241,7 +278,9 @@ describe('Dashboard – edit mode', () => {
     )
     // The persisted order covers every registry widget, not just the visible ones.
     expect(putBodies).toHaveLength(1)
-    expect(putBodies[0].order.slice(0, 3)).toEqual(['greeting', 'daylight', 'weather'])
+    const saved = putBodies[0].order
+    expect(saved[0]).toBe('greeting')
+    expect(saved.indexOf('daylight')).toBe(saved.indexOf('weather') - 1)
     expect(putBodies[0].order).toContain('lactate')
     expect(putBodies[0].hidden).toEqual([])
   })
@@ -328,7 +367,7 @@ describe('Dashboard – code-split widgets', () => {
   it('code-splits the below-the-fold widgets', () => {
     const lazyIds = WIDGET_REGISTRY.filter((def) => def.lazy).map((def) => def.id)
 
-    expect(lazyIds).toEqual(['netatmo', 'infra', 'github'])
+    expect(lazyIds).toEqual(['trips', 'races', 'wordfeud', 'netatmo', 'infra', 'github'])
   })
 
   it('renders a code-split widget once its chunk resolves', async () => {

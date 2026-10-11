@@ -3,7 +3,6 @@ import { NavLink } from 'react-router'
 import {
   House,
   Radio,
-  LayoutDashboard,
   CloudSun,
   Calendar,
   Webhook,
@@ -68,7 +67,6 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { to: '/', icon: <House size={20} />, label: 'nav.home' },
-  { to: '/dashboard', icon: <LayoutDashboard size={20} />, label: 'nav.dashboard', requiresAuth: true },
   { to: '/weather', icon: <CloudSun size={20} />, label: 'nav.weather' },
   { to: '/calendar', icon: <Calendar size={20} />, label: 'nav.calendar', requiresAuth: true, feature: 'calendar' },
   { to: '/news', icon: <Newspaper size={20} />, label: 'nav.news', requiresAuth: true, feature: 'news' },

@@ -148,6 +148,83 @@
         "title": "ชื่อ",
         "url": "URL"
       }
+    },
+    "workHours": {
+      "title": "ชั่วโมงทำงาน",
+      "punchedIn": "บันทึกเวลาเข้าตั้งแต่ {{time}}",
+      "notPunchedIn": "ยังไม่ได้บันทึกเวลาเข้า",
+      "punchIn": "บันทึกเวลาเข้า",
+      "punchOut": "บันทึกเวลาออก",
+      "done": "ครบแล้วสำหรับวันนี้",
+      "worked": "ทำงานแล้ว {{time}}",
+      "remaining": "เหลืออีก {{time}}",
+      "progress": "ชั่วโมงของวันนี้",
+      "unavailable": "โหลดชั่วโมงทำงานไม่ได้",
+      "error": "ทำรายการไม่สำเร็จ ลองอีกครั้ง หรือแก้ไขที่หน้าชั่วโมงทำงาน",
+      "open": "ชั่วโมงทำงาน →"
+    },
+    "trips": {
+      "title": "ทริป",
+      "tentative": "ยังไม่ได้กำหนดวัน",
+      "dayOf": "วันที่ {{day}} จาก {{total}}",
+      "tomorrow": "ออกเดินทางพรุ่งนี้",
+      "inDays_one": "อีก {{count}} วัน",
+      "inDays_other": "อีก {{count}} วัน",
+      "checklistOpen_one": "เหลือ {{count}} อย่างที่ต้องทำ",
+      "checklistOpen_other": "เหลือ {{count}} อย่างที่ต้องทำ",
+      "checklistDone": "เช็กลิสต์ครบแล้ว",
+      "all": "ทริปทั้งหมด →"
+    },
+    "races": {
+      "title": "งานวิ่ง",
+      "none": "ยังไม่มีงานวิ่งในรายการของคุณ",
+      "all": "งานวิ่งทั้งหมด →"
+    },
+    "stride": {
+      "title": "Stride",
+      "today": "วันนี้",
+      "sessions_one": "สัปดาห์นี้ {{count}} ครั้ง",
+      "sessions_other": "สัปดาห์นี้ {{count}} ครั้ง",
+      "open": "เปิด Stride →"
+    },
+    "familyChat": {
+      "title": "แชทครอบครัว",
+      "unread_one": "{{count}} ข้อความที่ยังไม่ได้อ่าน",
+      "unread_other": "{{count}} ข้อความที่ยังไม่ได้อ่าน",
+      "caughtUp": "อ่านครบแล้ว",
+      "unnamed": "บทสนทนา",
+      "open": "เปิดแชท →"
+    },
+    "stars": {
+      "title": "ดาว",
+      "stars_one": "ดวง",
+      "stars_other": "ดวง",
+      "streak_one": "{{count}} วันติดต่อกัน",
+      "streak_other": "{{count}} วันติดต่อกัน",
+      "open": "ดาวของฉัน →"
+    },
+    "chores": {
+      "title": "งานบ้าน",
+      "left_one": "วันนี้เหลือ {{count}} งาน",
+      "left_other": "วันนี้เหลือ {{count}} งาน",
+      "allDone": "วันนี้ทำครบแล้ว!",
+      "open": "งานของฉัน →",
+      "toApprove_one": "{{count}} งานรออนุมัติ",
+      "toApprove_other": "{{count}} งานรออนุมัติ",
+      "review": "ตรวจสอบ →"
+    },
+    "homework": {
+      "title": "การบ้าน",
+      "prompt": "ติดตรงไหนหรือเปล่า? ขอความช่วยเหลือเรื่องการบ้านได้",
+      "open": "ช่วยทำการบ้าน"
+    },
+    "wordfeud": {
+      "title": "Wordfeud",
+      "yourTurn_one": "ถึงตาคุณใน {{count}} เกม",
+      "yourTurn_other": "ถึงตาคุณใน {{count}} เกม",
+      "waiting_one": "รอคู่แข่ง {{count}} คน",
+      "waiting_other": "รอคู่แข่ง {{count}} คน",
+      "open": "เปิด Wordfeud →"
     }
   },
   "layout": {

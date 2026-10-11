@@ -3,9 +3,7 @@ import Sidebar from './components/Sidebar'
 import ProtectedRoute from './components/ProtectedRoute'
 import FeatureRoute from './components/FeatureRoute'
 import KioskPage from './pages/KioskPage'
-import TodayView from './pages/TodayView'
 import HomePage from './pages/HomePage'
-import Dashboard from './pages/Dashboard'
 import Login from './pages/Login'
 import Settings from './pages/Settings'
 import Weather from './pages/Weather'
@@ -108,7 +106,9 @@ function MainLayout() {
         <Routes>
           {/* Public routes */}
           <Route path="/" element={<HomePage />} />
-          <Route path="/today" element={<TodayView />} />
+          {/* The old dashboard and today pages now live at "/". */}
+          <Route path="/today" element={<Navigate to="/" replace />} />
+          <Route path="/dashboard" element={<Navigate to="/" replace />} />
           <Route path="/login" element={<Login />} />
           <Route path="/weather" element={<Weather />} />
 
@@ -760,14 +760,6 @@ function MainLayout() {
 
           {/* Protected routes (accessible to all authenticated users) */}
           {/* Note: FeatureRoute also supports requireAdmin prop for admin-only routes */}
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoute>
-                <Dashboard />
-              </ProtectedRoute>
-            }
-          />
           <Route
             path="/settings"
             element={

@@ -20,7 +20,6 @@ import type wordfeudEn from '../public/locales/en/wordfeud.json'
 import type budgetEn from '../public/locales/en/budget.json'
 import type salaryEn from '../public/locales/en/salary.json'
 import type strideEn from '../public/locales/en/stride.json'
-import type todayEn from '../public/locales/en/today.json'
 import type vaultEn from '../public/locales/en/vault.json'
 import type skywatchEn from '../public/locales/en/skywatch.json'
 import type groceryEn from '../public/locales/en/grocery.json'
@@ -61,7 +60,6 @@ declare module 'i18next' {
       budget: typeof budgetEn
       salary: typeof salaryEn
       stride: typeof strideEn
-      today: typeof todayEn
       vault: typeof vaultEn
       skywatch: typeof skywatchEn
       grocery: typeof groceryEn

@@ -148,6 +148,83 @@
         "title": "Tittel",
         "url": "URL"
       }
+    },
+    "workHours": {
+      "title": "Arbeidstid",
+      "punchedIn": "Stemplet inn siden {{time}}",
+      "notPunchedIn": "Ikke stemplet inn",
+      "punchIn": "Stemple inn",
+      "punchOut": "Stemple ut",
+      "done": "Ferdig for i dag",
+      "worked": "{{time}} jobbet",
+      "remaining": "{{time}} igjen",
+      "progress": "Dagens timer",
+      "unavailable": "Kunne ikke laste arbeidstid",
+      "error": "Det gikk ikke gjennom. Prøv igjen, eller rett det på arbeidstidssiden.",
+      "open": "Arbeidstid →"
+    },
+    "trips": {
+      "title": "Reiser",
+      "tentative": "Datoer ikke satt",
+      "dayOf": "Dag {{day}} av {{total}}",
+      "tomorrow": "Avreise i morgen",
+      "inDays_one": "Om {{count}} dag",
+      "inDays_other": "Om {{count}} dager",
+      "checklistOpen_one": "{{count}} ting igjen å gjøre",
+      "checklistOpen_other": "{{count}} ting igjen å gjøre",
+      "checklistDone": "Sjekklistene er ferdige",
+      "all": "Alle reiser →"
+    },
+    "races": {
+      "title": "Løp",
+      "none": "Ingen løp på listen din ennå.",
+      "all": "Alle løp →"
+    },
+    "stride": {
+      "title": "Stride",
+      "today": "I dag",
+      "sessions_one": "{{count}} økt denne uken",
+      "sessions_other": "{{count}} økter denne uken",
+      "open": "Åpne Stride →"
+    },
+    "familyChat": {
+      "title": "Familiechat",
+      "unread_one": "{{count}} ulest melding",
+      "unread_other": "{{count}} uleste meldinger",
+      "caughtUp": "Alt er lest",
+      "unnamed": "Samtale",
+      "open": "Åpne chat →"
+    },
+    "stars": {
+      "title": "Stjerner",
+      "stars_one": "stjerne",
+      "stars_other": "stjerner",
+      "streak_one": "{{count}} dag på rad",
+      "streak_other": "{{count}} dager på rad",
+      "open": "Mine stjerner →"
+    },
+    "chores": {
+      "title": "Oppgaver",
+      "left_one": "{{count}} oppgave igjen i dag",
+      "left_other": "{{count}} oppgaver igjen i dag",
+      "allDone": "Alt er gjort for i dag!",
+      "open": "Mine oppgaver →",
+      "toApprove_one": "{{count}} oppgave å godkjenne",
+      "toApprove_other": "{{count}} oppgaver å godkjenne",
+      "review": "Se gjennom →"
+    },
+    "homework": {
+      "title": "Lekser",
+      "prompt": "Står du fast? Få hjelp med leksene.",
+      "open": "Leksehjelp"
+    },
+    "wordfeud": {
+      "title": "Wordfeud",
+      "yourTurn_one": "Din tur i {{count}} spill",
+      "yourTurn_other": "Din tur i {{count}} spill",
+      "waiting_one": "Venter på {{count}} motstander",
+      "waiting_other": "Venter på {{count}} motstandere",
+      "open": "Åpne Wordfeud →"
     }
   },
   "layout": {

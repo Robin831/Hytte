@@ -148,6 +148,83 @@
         "title": "Title",
         "url": "URL"
       }
+    },
+    "workHours": {
+      "title": "Work hours",
+      "punchedIn": "Punched in since {{time}}",
+      "notPunchedIn": "Not punched in",
+      "punchIn": "Punch in",
+      "punchOut": "Punch out",
+      "done": "Done for today",
+      "worked": "{{time}} worked",
+      "remaining": "{{time}} left",
+      "progress": "Today's hours",
+      "unavailable": "Could not load work hours",
+      "error": "That didn't go through. Try again, or fix it on the work hours page.",
+      "open": "Work hours →"
+    },
+    "trips": {
+      "title": "Trips",
+      "tentative": "Dates not set",
+      "dayOf": "Day {{day}} of {{total}}",
+      "tomorrow": "Leaving tomorrow",
+      "inDays_one": "In {{count}} day",
+      "inDays_other": "In {{count}} days",
+      "checklistOpen_one": "{{count}} thing left to do",
+      "checklistOpen_other": "{{count}} things left to do",
+      "checklistDone": "Checklists done",
+      "all": "All trips →"
+    },
+    "races": {
+      "title": "Races",
+      "none": "No races on your list yet.",
+      "all": "All races →"
+    },
+    "stride": {
+      "title": "Stride",
+      "today": "Today",
+      "sessions_one": "{{count}} session this week",
+      "sessions_other": "{{count}} sessions this week",
+      "open": "Open Stride →"
+    },
+    "familyChat": {
+      "title": "Family chat",
+      "unread_one": "{{count}} unread message",
+      "unread_other": "{{count}} unread messages",
+      "caughtUp": "All caught up",
+      "unnamed": "Conversation",
+      "open": "Open chat →"
+    },
+    "stars": {
+      "title": "Stars",
+      "stars_one": "star",
+      "stars_other": "stars",
+      "streak_one": "{{count}} day in a row",
+      "streak_other": "{{count}} days in a row",
+      "open": "My stars →"
+    },
+    "chores": {
+      "title": "Chores",
+      "left_one": "{{count}} chore left today",
+      "left_other": "{{count}} chores left today",
+      "allDone": "All done for today!",
+      "open": "My chores →",
+      "toApprove_one": "{{count}} chore to approve",
+      "toApprove_other": "{{count}} chores to approve",
+      "review": "Review →"
+    },
+    "homework": {
+      "title": "Homework",
+      "prompt": "Stuck on something? Get help with your homework.",
+      "open": "Homework help"
+    },
+    "wordfeud": {
+      "title": "Wordfeud",
+      "yourTurn_one": "Your turn in {{count}} game",
+      "yourTurn_other": "Your turn in {{count}} games",
+      "waiting_one": "Waiting for {{count}} opponent",
+      "waiting_other": "Waiting for {{count}} opponents",
+      "open": "Open Wordfeud →"
     }
   },
   "layout": {
