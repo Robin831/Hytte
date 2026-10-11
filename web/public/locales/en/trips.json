@@ -159,7 +159,8 @@
       "calendar": "Calendar",
       "race": "Race",
       "trip": "Trip"
-    }
+    },
+    "askToPick": "Ask Claude to pick one."
   },
   "family": {
     "title": "Family",
@@ -186,6 +187,7 @@
       "left": "What is left to do before we go?",
       "leave": "When should we leave for the airport?",
       "weather": "What will the weather be like?"
-    }
+    },
+    "emptyTrip": "Nothing here yet. Open \"Ask Claude\" and tell it about the trip — or paste in a booking confirmation, and it fills in flights, hotel and plan."
   }
 }

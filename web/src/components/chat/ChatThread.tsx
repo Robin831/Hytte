@@ -46,7 +46,7 @@ export function ChatMessageList({ messages, thinkingLabel, compact = false }: {
   )
 }
 
-export function ChatComposer({ value, onChange, onSend, busy, disabled, placeholder, sendLabel, multiline = false }: {
+export function ChatComposer({ value, onChange, onSend, busy, disabled, placeholder, sendLabel, multiline = false, maxLength = 2000 }: {
   value: string
   onChange: (v: string) => void
   onSend: () => void
@@ -55,6 +55,7 @@ export function ChatComposer({ value, onChange, onSend, busy, disabled, placehol
   placeholder: string
   sendLabel: string
   multiline?: boolean
+  maxLength?: number
 }) {
   const field = 'flex-1 min-w-0 rounded-lg border border-gray-700 bg-gray-900 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none disabled:opacity-60'
   const onKeyDown = (e: React.KeyboardEvent) => {
@@ -63,7 +64,7 @@ export function ChatComposer({ value, onChange, onSend, busy, disabled, placehol
   return (
     <form className="flex gap-2" onSubmit={e => { e.preventDefault(); onSend() }}>
       {multiline ? (
-        <textarea value={value} rows={2} maxLength={2000} onChange={e => onChange(e.target.value)} onKeyDown={onKeyDown}
+        <textarea value={value} rows={2} maxLength={maxLength} onChange={e => onChange(e.target.value)} onKeyDown={onKeyDown}
           placeholder={placeholder} aria-label={placeholder} disabled={disabled} className={`${field} resize-none`} />
       ) : (
         <input type="text" value={value} onChange={e => onChange(e.target.value)} onKeyDown={onKeyDown}

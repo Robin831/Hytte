@@ -159,7 +159,8 @@
       "calendar": "Kalender",
       "race": "Løp",
       "trip": "Reise"
-    }
+    },
+    "askToPick": "Be Claude velge en."
   },
   "family": {
     "title": "Familien",
@@ -186,6 +187,7 @@
       "left": "Hva gjenstår før vi drar?",
       "leave": "Når bør vi dra til flyplassen?",
       "weather": "Hvordan blir været?"
-    }
+    },
+    "emptyTrip": "Ingenting her ennå. Åpne «Spør Claude» og fortell om turen – eller lim inn en bookingbekreftelse, så fyller den inn fly, hotell og plan."
   }
 }

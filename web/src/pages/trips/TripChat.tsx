@@ -106,7 +106,7 @@ export function TripChat({ trip, onTripChanged }: { trip: Trip; onTripChanged: (
 
           {error && <p role="alert" className="px-4 pb-1 text-sm text-red-300">{error}</p>}
           <div className="border-t border-gray-800 p-3">
-            <ChatComposer multiline value={text} onChange={setText} onSend={() => send(text)} busy={sending} disabled={pending}
+            <ChatComposer multiline maxLength={20000} value={text} onChange={setText} onSend={() => send(text)} busy={sending} disabled={pending}
               placeholder={t('chat.placeholder')} sendLabel={t('chat.send')} />
           </div>
         </section>

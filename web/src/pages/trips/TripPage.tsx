@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router'
 import { useTranslation } from 'react-i18next'
-import { ArrowLeft, Check, Clock, Copy, Pencil, Plane, Plus, Trash2, Trophy } from 'lucide-react'
+import { ArrowLeft, Check, Clock, Copy, Plane, Trophy } from 'lucide-react'
 import {
-  type Checklist, type I18n, type Lang, type Trip,
-  addChecklist, addItem, countdown, dateIn, deleteChecklist, deleteItem, deleteTrip, departureInstant, fetchTrip,
+  type Checklist, type Lang, type Trip,
+  countdown, dateIn, deleteTrip, departureInstant, fetchTrip,
   formatClock, formatDate, formatLocal, intlLocale, isTentative, setItemDone, toLang, tripState, txt, zonedInstant,
 } from './tripsApi'
-import { SectionEditor, type SectionKey } from './TripEditor'
 import { DateCandidates, ReopenDates } from './DateCandidates'
 import { TripChat } from './TripChat'
+
+type SectionKey = 'checklists' | 'days' | 'flights' | 'stays' | 'transport' | 'contacts' | 'documents' | 'notes' | 'followups'
 
 function useMinuteClock() {
   const [now, setNow] = useState(() => new Date())
@@ -37,18 +38,10 @@ function CopyButton({ value }: { value: string }) {
   )
 }
 
-function Section({ id, title, onEdit, children }: { id: string; title: string; onEdit?: () => void; children: React.ReactNode }) {
-  const { t } = useTranslation('trips')
+function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
     <section id={id} className="scroll-mt-28 border-t border-gray-800 pt-6" aria-labelledby={`${id}-h`}>
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 id={`${id}-h`} className="text-xl font-bold">{title}</h2>
-        {onEdit && (
-          <button type="button" onClick={onEdit} className="inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-100 cursor-pointer">
-            <Pencil size={13} /> {t('edit')}
-          </button>
-        )}
-      </div>
+      <h2 id={`${id}-h`} className="mb-3 text-xl font-bold">{title}</h2>
       {children}
     </section>
   )
@@ -108,7 +101,6 @@ function NowBox({ trip, now, lang }: { trip: Trip; now: Date; lang: Lang }) {
 
 function ChecklistBlock({ list, trip, lang, onChange }: { list: Checklist; trip: Trip; lang: Lang; onChange: () => void }) {
   const { t } = useTranslation('trips')
-  const [text, setText] = useState('')
   const [busy, setBusy] = useState(false)
   const done = list.items.filter(i => i.done).length
   const act = async (fn: () => Promise<unknown>) => {
@@ -131,21 +123,9 @@ function ChecklistBlock({ list, trip, lang, onChange }: { list: Checklist; trip:
               {txt(item.detail, lang) && <span className="block text-xs text-gray-500">{txt(item.detail, lang)}</span>}
               {item.done && item.done_by_name && <span className="block text-xs text-gray-500">{t('doneBy', { name: item.done_by_name })}</span>}
             </div>
-            {trip.can_edit && (
-              <button type="button" onClick={() => act(() => deleteItem(item.id))} aria-label={t('removeItem')} className="text-gray-600 hover:text-red-300 cursor-pointer">
-                <Trash2 size={12} />
-              </button>
-            )}
           </li>
         ))}
       </ul>
-      {trip.can_edit && (
-        <form className="mt-2 flex gap-2" onSubmit={e => { e.preventDefault(); if (text.trim()) act(async () => { await addItem(list.id, { [lang]: text.trim() }); setText('') }) }}>
-          <input value={text} onChange={e => setText(e.target.value)} placeholder={t('addItem')} aria-label={t('addItem')}
-            className="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-sm" />
-          <button type="submit" disabled={busy} className="rounded bg-gray-700 px-2 text-sm hover:bg-gray-600 cursor-pointer" aria-label={t('addItem')}><Plus size={14} /></button>
-        </form>
-      )}
     </div>
   )
 }
@@ -159,8 +139,6 @@ export default function TripPage() {
   const now = useMinuteClock()
   const [trip, setTrip] = useState<Trip | null>(null)
   const [error, setError] = useState('')
-  const [editing, setEditing] = useState<SectionKey | null>(null)
-  const [newList, setNewList] = useState('')
 
   const load = useCallback(async (signal?: AbortSignal) => {
     const data = await fetchTrip(tripId, signal)
@@ -181,16 +159,16 @@ export default function TripPage() {
     if (!trip) return []
     const d = trip.doc
     return ([
-      ['checklists', trip.checklists.length > 0 || trip.can_edit],
-      ['days', d.days.length > 0 || trip.can_edit],
-      ['flights', d.flights.length > 0 || trip.can_edit],
-      ['stays', d.stays.length > 0 || trip.can_edit],
+      ['checklists', trip.checklists.length > 0],
+      ['days', d.days.length > 0],
+      ['flights', d.flights.length > 0],
+      ['stays', d.stays.length > 0],
       ['transport', d.transport.length > 0],
-      ['contacts', d.contacts.length > 0 || trip.can_edit],
+      ['contacts', d.contacts.length > 0],
       ['documents', d.documents.length > 0],
-      ['notes', d.notes.length > 0 || trip.can_edit],
+      ['notes', d.notes.length > 0],
       ['followups', d.followups.length > 0],
-    ] as [SectionKey | 'checklists', boolean][]).filter(([, show]) => show).map(([k]) => k)
+    ] as [SectionKey, boolean][]).filter(([, show]) => show).map(([k]) => k)
   }, [trip])
 
   if (!trip) {
@@ -204,7 +182,6 @@ export default function TripPage() {
 
   const d = trip.doc
   const phaseTitle = (key: string) => txt(d.phases.find(p => p.key === key)?.title, lang)
-  const edit = (k: SectionKey) => (trip.can_edit ? () => setEditing(k) : undefined)
   const showDest = trip.dest_tz !== trip.home_tz
   const tzCity = (tz: string) => tz.split('/').pop()?.replace('_', ' ')
 
@@ -219,9 +196,6 @@ export default function TripPage() {
         </p>
         <div className="flex items-start justify-between gap-3">
           <h1 className="mt-1 text-3xl font-bold leading-tight">{txt(d.title, lang)}</h1>
-          {trip.can_edit && (
-            <button type="button" onClick={() => setEditing('core')} className="mt-2 inline-flex items-center gap-1 text-sm text-gray-400 hover:text-gray-100 cursor-pointer"><Pencil size={13} /> {t('edit')}</button>
-          )}
         </div>
         {d.route.length > 0 && (
           <p className="mt-2 flex flex-wrap items-center gap-1 font-mono text-sm">
@@ -249,14 +223,12 @@ export default function TripPage() {
         )}
       </header>
 
-      {editing && (
-        <div className="mt-6">
-          <SectionEditor section={editing} trip={trip} lang={lang} onCancel={() => setEditing(null)} onSaved={() => { setEditing(null); reload() }} />
-        </div>
-      )}
 
-      <ReopenDates trip={trip} onChanged={reload} />
-      {isTentative(trip) && <DateCandidates trip={trip} onChosen={reload} />}
+      <ReopenDates trip={trip} />
+      {trip.can_edit && sections.length === 0 && (
+        <p className="mt-6 rounded-lg border border-blue-900 bg-blue-950/30 p-4 text-sm text-blue-100">{t('chat.emptyTrip')}</p>
+      )}
+      {isTentative(trip) && <DateCandidates trip={trip} />}
 
       <nav className="sticky top-14 md:top-0 z-20 -mx-4 mt-6 flex gap-1 overflow-x-auto border-b border-gray-800 bg-gray-900/95 px-4 py-2 backdrop-blur-sm md:-mx-8 md:px-8" aria-label={t('sections')}>
         {sections.map(s => (
@@ -272,24 +244,14 @@ export default function TripPage() {
                 <div key={list.id}>
                   {list.phase && <p className="mb-1 text-xs uppercase tracking-wide text-gray-500">{phaseTitle(list.phase)}</p>}
                   <ChecklistBlock list={list} trip={trip} lang={lang} onChange={reload} />
-                  {trip.can_edit && list.items.length === 0 && (
-                    <button type="button" className="mt-1 text-xs text-gray-500 hover:text-red-300 cursor-pointer" onClick={async () => { await deleteChecklist(list.id); reload() }}>{t('removeList')}</button>
-                  )}
                 </div>
               ))}
             </div>
-            {trip.can_edit && (
-              <form className="mt-3 flex gap-2" onSubmit={async e => { e.preventDefault(); if (newList.trim()) { await addChecklist(trip.id, { [lang]: newList.trim() } as I18n); setNewList(''); reload() } }}>
-                <input value={newList} onChange={e => setNewList(e.target.value)} placeholder={t('newList')} aria-label={t('newList')}
-                  className="flex-1 rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm" />
-                <button type="submit" className="rounded-lg bg-gray-700 px-3 text-sm hover:bg-gray-600 cursor-pointer">{t('add')}</button>
-              </form>
-            )}
           </Section>
         )}
 
         {sections.includes('days') && (
-          <Section id="trip-days" title={t('section.days')} onEdit={edit('days')}>
+          <Section id="trip-days" title={t('section.days')}>
             <div className="space-y-3">
               {d.days.map(day => (
                 <div key={day.date} className={`rounded-lg border p-3 ${day.highlight ? 'border-red-800 bg-red-950/30' : 'border-gray-800'}`}>
@@ -311,7 +273,7 @@ export default function TripPage() {
         )}
 
         {sections.includes('flights') && (
-          <Section id="trip-flights" title={t('section.flights')} onEdit={edit('flights')}>
+          <Section id="trip-flights" title={t('section.flights')}>
             <ol className="space-y-2">
               {d.flights.map((f, i) => (
                 <li key={i} className="rounded-lg border border-gray-800 p-3 text-sm">
@@ -332,7 +294,7 @@ export default function TripPage() {
         )}
 
         {sections.includes('stays') && (
-          <Section id="trip-stays" title={t('section.stays')} onEdit={edit('stays')}>
+          <Section id="trip-stays" title={t('section.stays')}>
             {d.stays.map((s, i) => (
               <div key={i} className="mb-2 rounded-lg border border-gray-800 p-3 text-sm">
                 <p className="font-semibold">{s.name}</p>
@@ -353,7 +315,7 @@ export default function TripPage() {
         )}
 
         {sections.includes('transport') && (
-          <Section id="trip-transport" title={t('section.transport')} onEdit={edit('transport')}>
+          <Section id="trip-transport" title={t('section.transport')}>
             {d.transport.map((tr, i) => (
               <div key={i} className="mb-2 rounded-lg border border-gray-800 p-3 text-sm">
                 <p className="font-semibold">{txt(tr.title, lang)}{tr.when_local && <span className="ml-2 font-normal text-gray-400"><Clock size={12} className="mr-1 inline" />{formatLocal(tr.when_local, lang)}</span>}</p>
@@ -368,7 +330,7 @@ export default function TripPage() {
         )}
 
         {sections.includes('contacts') && (
-          <Section id="trip-contacts" title={t('section.contacts')} onEdit={edit('contacts')}>
+          <Section id="trip-contacts" title={t('section.contacts')}>
             <ul className="divide-y divide-gray-800 rounded-lg border border-gray-800">
               {d.contacts.map((c, i) => (
                 <li key={i} className={`flex items-start justify-between gap-3 p-3 text-sm ${c.urgent ? 'bg-red-950/30' : ''}`}>
@@ -391,7 +353,7 @@ export default function TripPage() {
         )}
 
         {sections.includes('documents') && (
-          <Section id="trip-documents" title={t('section.documents')} onEdit={edit('documents')}>
+          <Section id="trip-documents" title={t('section.documents')}>
             <ul className="space-y-1 text-sm">
               {d.documents.map((doc, i) => (
                 <li key={i}><span className={doc.status === 'done' ? 'text-green-400' : 'text-amber-300'}>{doc.status === 'done' ? '✓' : '•'}</span> {txt(doc.title, lang)}
@@ -402,7 +364,7 @@ export default function TripPage() {
         )}
 
         {sections.includes('notes') && (
-          <Section id="trip-notes" title={t('section.notes')} onEdit={edit('notes')}>
+          <Section id="trip-notes" title={t('section.notes')}>
             {d.notes.map((n, i) => (
               <div key={i} className="mb-3">
                 <h3 className="font-semibold">{txt(n.title, lang)}{n.phase && <span className="ml-2 text-xs font-normal text-gray-500">{phaseTitle(n.phase)}</span>}</h3>
@@ -414,7 +376,7 @@ export default function TripPage() {
         )}
 
         {sections.includes('followups') && (
-          <Section id="trip-followups" title={t('section.followups')} onEdit={edit('followups')}>
+          <Section id="trip-followups" title={t('section.followups')}>
             <ul className="space-y-2 text-sm">
               {d.followups.map((f, i) => (
                 <li key={i}>

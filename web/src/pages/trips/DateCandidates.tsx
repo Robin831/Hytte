@@ -2,10 +2,10 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import { CalendarCheck, CalendarX, Flag, Plane } from 'lucide-react'
-import { type Candidate, type Trip, fetchCandidates, formatDate, toLang, tripToInput, txt, updateTrip } from './tripsApi'
+import { type Candidate, type Trip, fetchCandidates, formatDate, toLang, txt } from './tripsApi'
 
 /** A tentative trip's possible dates, each with what's already on the calendar. */
-export function DateCandidates({ trip, onChosen }: { trip: Trip; onChosen: () => void }) {
+export function DateCandidates({ trip }: { trip: Trip }) {
   const { t, i18n } = useTranslation('trips')
   const lang = toLang(i18n.language)
   const [cands, setCands] = useState<Candidate[] | null>(null)
@@ -19,19 +19,6 @@ export function DateCandidates({ trip, onChosen }: { trip: Trip; onChosen: () =>
       .catch(() => { if (!controller.signal.aborted) setError(t('errors.load')) })
     return () => controller.abort()
   }, [trip.id, trip.updated_at, t])
-
-  const choose = async (c: Candidate) => {
-    const input = tripToInput(trip)
-    input.start_date = c.start
-    input.end_date = c.end
-    input.doc.flex = { ...input.doc.flex!, chosen: true }
-    try {
-      await updateTrip(trip.id, input)
-      onChosen()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : t('errors.save'))
-    }
-  }
 
   const shown = (cands ?? []).filter(c => !onlyFree || c.clashes.length === 0)
   const free = (cands ?? []).filter(c => c.clashes.length === 0).length
@@ -47,7 +34,7 @@ export function DateCandidates({ trip, onChosen }: { trip: Trip; onChosen: () =>
           </label>
         )}
       </div>
-      <p className="mt-1 text-sm text-gray-400">{t('dates.chooseAbout')}</p>
+      <p className="mt-1 text-sm text-gray-400">{t('dates.chooseAbout')} {trip.can_edit && t('dates.askToPick')}</p>
       {error && <p role="alert" className="mt-2 text-sm text-red-300">{error}</p>}
       {cands && cands.length === 0 && <p className="mt-3 text-sm text-gray-400">{t('dates.none')}</p>}
       <ul className="mt-3 space-y-2">
@@ -76,11 +63,6 @@ export function DateCandidates({ trip, onChosen }: { trip: Trip; onChosen: () =>
                 </ul>
               )}
             </div>
-            {trip.can_edit && (
-              <button type="button" onClick={() => choose(c)} className="rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium hover:bg-blue-500 cursor-pointer">
-                {t('dates.pick')}
-              </button>
-            )}
           </li>
         ))}
       </ul>
@@ -88,22 +70,11 @@ export function DateCandidates({ trip, onChosen }: { trip: Trip; onChosen: () =>
   )
 }
 
-/** Shown on a trip whose dates were picked from a window: undo the pick. */
-export function ReopenDates({ trip, onChanged }: { trip: Trip; onChanged: () => void }) {
+/** Shown on a trip whose dates were picked from a window. */
+export function ReopenDates({ trip }: { trip: Trip }) {
   const { t, i18n } = useTranslation('trips')
   const lang = toLang(i18n.language)
   const f = trip.doc.flex
-  if (!f || !f.chosen || !trip.can_edit) return null
-  const reopen = async () => {
-    const input = tripToInput(trip)
-    input.doc.flex = { ...f, chosen: false }
-    await updateTrip(trip.id, input)
-    onChanged()
-  }
-  return (
-    <p className="mt-2 text-xs text-gray-400">
-      {t('dates.pickedFrom', { from: formatDate(f.from, lang), to: formatDate(f.to, lang) })}{' '}
-      <button type="button" onClick={reopen} className="text-blue-400 hover:text-blue-300 cursor-pointer">{t('dates.reopen')}</button>
-    </p>
-  )
+  if (!f || !f.chosen) return null
+  return <p className="mt-2 text-xs text-gray-400">{t('dates.pickedFrom', { from: formatDate(f.from, lang), to: formatDate(f.to, lang) })}</p>
 }

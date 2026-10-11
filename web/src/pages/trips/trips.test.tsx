@@ -106,27 +106,8 @@ describe('TripPage', () => {
     await act(async () => { fireEvent.click(screen.getByRole('checkbox', { name: 'Call home' })) })
     expect(calls.find(c => c.url === '/api/trips/items/30/done')?.body).toEqual({ done: true })
 
-    await act(async () => { fireEvent.change(screen.getByPlaceholderText('addItem'), { target: { value: 'Pay hotel' } }) })
-    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'addItem' })) })
-    expect(calls.find(c => c.url === '/api/trips/checklists/3/items')?.body).toMatchObject({ title: { en: 'Pay hotel' } })
-  })
-
-  it('edits a section and saves the whole trip', async () => {
-    const calls: { url: string; method: string; body?: unknown }[] = []
-    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
-      calls.push({ url, method: init?.method ?? 'GET', body: init?.body ? JSON.parse(String(init.body)) : undefined })
-      return { ok: true, status: 200, json: async () => ({ trip: SURIN, status: 'ok' }) } as Response
-    }))
-    render(<MemoryRouter initialEntries={['/trips/7']}><Routes><Route path="/trips/:id" element={<TripPage />} /></Routes></MemoryRouter>)
-    await screen.findByRole('heading', { level: 1 })
-    const notes = screen.getByRole('region', { name: 'section.notes' })
-    fireEvent.click(within(notes).getByRole('button', { name: /edit/ }))
-    const form = screen.getByRole('form', { name: /editSection/ })
-    fireEvent.change(within(form).getByDisplayValue('Hot and humid.'), { target: { value: 'Very hot.' } })
-    await act(async () => { fireEvent.click(within(form).getByRole('button', { name: 'save' })) })
-    const put = calls.find(c => c.method === 'PUT' && c.url === '/api/trips/7') as { body: { doc: Trip['doc'] } }
-    expect(put.body.doc.notes[0].body).toEqual({ en: 'Very hot.' })
-    expect(put.body.doc.flights[0].flight_no).toBe('KL844')
+    expect(screen.queryByPlaceholderText('addItem')).toBeNull()
+    expect(screen.queryByRole('button', { name: /edit/ })).toBeNull()
   })
 })
 
@@ -161,11 +142,7 @@ describe('tentative trips', () => {
     fireEvent.click(within(section).getByRole('checkbox'))
     expect(within(section).queryByText('Cabin weekend')).toBeNull()
 
-    await act(async () => { fireEvent.click(within(section).getByRole('button', { name: 'dates.pick' })) })
-    const put = calls.find(c => c.method === 'PUT' && c.url === '/api/trips/9') as { body: { start_date: string; end_date: string; doc: Trip['doc'] } }
-    expect(put.body.start_date).toBe('2026-11-06')
-    expect(put.body.end_date).toBe('2026-11-08')
-    expect(put.body.doc.flex).toMatchObject({ from: '2026-11-01', chosen: true })
+    expect(within(section).queryByRole('button', { name: 'dates.pick' })).toBeNull()
   })
 
   it('groups tentative trips under planning', async () => {

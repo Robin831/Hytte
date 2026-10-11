@@ -29,7 +29,7 @@ const ChatModel = "claude-sonnet-5-5"
 const (
 	chatHistory      = 20
 	chatTimeout      = 4 * time.Minute
-	maxChatMessage   = 2000
+	maxChatMessage   = 20000
 	chatRetention    = 30 * 24 * time.Hour
 	chatCleanupEvery = 24 * time.Hour
 )
