@@ -16,6 +16,13 @@ type GameSummary struct {
 	IsMyTurn   bool     `json:"is_my_turn"`
 	LastMove   MoveInfo `json:"last_move"`
 	EndedAt    int64    `json:"ended_at,omitempty"`
+
+	// Used by the league view to pair games with league matches; not sent to
+	// the browser.
+	OpponentID int64 `json:"-"`
+	IsRunning  bool  `json:"-"`
+	CreatedAt  int64 `json:"-"` // Unix time the game started, 0 when unknown
+	Ruleset    int   `json:"-"` // Wordfeud ruleset id, -1 when unknown
 }
 
 // MoveInfo describes the most recent move in a game summary.

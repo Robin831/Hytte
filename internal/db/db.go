@@ -1067,6 +1067,29 @@ func createSchema(db *sql.DB) error {
 	);
 	CREATE UNIQUE INDEX IF NOT EXISTS idx_wordfeud_moves_game_id_move_num ON wordfeud_moves(game_id, move_number);
 
+	-- Wordfeud League of Honour: the last copy of each user's league group
+	-- (encrypted JSON), so the league tab and the notifier don't re-read the
+	-- league site on every request.
+	CREATE TABLE IF NOT EXISTS wordfeud_league (
+		user_id    INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+		serie_id   INTEGER NOT NULL DEFAULT 0,
+		season     INTEGER NOT NULL DEFAULT 0,
+		snapshot   TEXT NOT NULL DEFAULT '',
+		fetched_at TEXT NOT NULL DEFAULT ''
+	);
+
+	-- League pushes already delivered: kind 'season' (ref '') for a new
+	-- season's group, kind 'finished' (ref = Wordfeud game id) for a game
+	-- whose result is waiting to be registered.
+	CREATE TABLE IF NOT EXISTS wordfeud_league_notified (
+		user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		serie_id INTEGER NOT NULL,
+		kind     TEXT NOT NULL,
+		ref      TEXT NOT NULL DEFAULT '',
+		sent_at  TEXT NOT NULL DEFAULT '',
+		PRIMARY KEY (user_id, serie_id, kind, ref)
+	);
+
 	-- Budget: financial accounts owned by a user (Hytte-jas0)
 	-- UNIQUE(user_id, id) allows composite FK references from child tables to
 	-- enforce that transactions/recurring rules belong to the same user's account.

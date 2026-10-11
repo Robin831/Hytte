@@ -36,6 +36,8 @@ var redactedPreferenceKeys = map[string]bool{
 	"wordfeud_email":         true,
 	"wordfeud_password":      true,
 	"wordfeud_session_token": true,
+	"wloh_username":          true,
+	"wloh_email":             true,
 }
 
 // encryptedPreferenceKeys lists preference keys stored encrypted at rest that

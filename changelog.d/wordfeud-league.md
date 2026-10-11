@@ -1,0 +1,2 @@
+category: Added
+- **Wordfeud league tab** - The Wordfeud page has a League tab for Wordfeud League of Honour: your group's table and deadline, each match's status against your Wordfeud games, one-tap invites for opponents you have no game with, and posting a finished game's result to the league site after you confirm the scores. Pushes tell you when a new season's group is out and when a league game is finished and waiting to be reported.

@@ -164,7 +164,7 @@ func PreferencesGetHandler(db *sql.DB) http.HandlerFunc {
 		// Decrypt the stride free-text prefs (user-generated text, encrypted at rest).
 		decryptStridePrefs(prefs)
 		// Mask Wordfeud credentials so the UI knows they exist without exposing them.
-		for _, key := range []string{"wordfeud_session_token", "wordfeud_email", "wordfeud_password"} {
+		for _, key := range []string{"wordfeud_session_token", "wordfeud_email", "wordfeud_password", "wloh_username", "wloh_email"} {
 			if raw, ok := prefs[key]; ok && raw != "" {
 				prefs[key] = "configured"
 			}
@@ -645,7 +645,7 @@ func PreferencesPutHandler(db *sql.DB) http.HandlerFunc {
 		// Decrypt the stride free-text prefs in PUT response (mirrors GET handler).
 		decryptStridePrefs(prefs)
 		// Mask Wordfeud credentials in PUT response (mirrors GET handler).
-		for _, key := range []string{"wordfeud_session_token", "wordfeud_email", "wordfeud_password"} {
+		for _, key := range []string{"wordfeud_session_token", "wordfeud_email", "wordfeud_password", "wloh_username", "wloh_email"} {
 			if raw, ok := prefs[key]; ok && raw != "" {
 				prefs[key] = "configured"
 			}

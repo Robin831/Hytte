@@ -111,6 +111,7 @@ func NewRouter(db *sql.DB) http.Handler {
 	// Wordfeud API client and cache (shared across requests).
 	wfClient := wordfeud.NewClient()
 	wfCache := wordfeud.NewGameCache()
+	wfLeague := wordfeud.NewLeague(db, wfClient)
 
 	// Wordfeud dictionary (lazily loaded on first request).
 	// Path can be overridden via WORDFEUD_DICT_PATH env var. When unset, it defaults to
@@ -903,6 +904,12 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Delete("/wordfeud/local-games/{id}", wordfeud.DeleteLocalGameHandler(db))
 				r.Post("/wordfeud/local-games/{id}/moves", wordfeud.RecordMoveHandler(db))
 				r.Post("/wordfeud/local-games/{id}/undo", wordfeud.UndoMoveHandler(db))
+
+				// League of Honour: group, invites and result posting.
+				r.Get("/wordfeud/league", wordfeud.LeagueHandler(wfLeague))
+				r.Put("/wordfeud/league/config", wordfeud.LeagueConfigHandler(wfLeague))
+				r.Post("/wordfeud/league/invite", wordfeud.LeagueInviteHandler(wfLeague))
+				r.Post("/wordfeud/league/report", wordfeud.LeagueReportHandler(wfLeague))
 			})
 
 			// Wordfeud settings — admin only.

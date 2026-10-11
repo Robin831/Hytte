@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useSearchParams } from 'react-router'
-import { Search, Grid3X3 } from 'lucide-react'
+import { Search, Grid3X3, Trophy } from 'lucide-react'
 import WordfeudBoard from './WordfeudBoard'
+import WordfeudLeague from './WordfeudLeague'
 
 interface FoundWord {
   word: string
@@ -12,14 +13,14 @@ interface FoundWord {
 
 type SearchMode = 'anagram' | 'starts_with' | 'ends_with' | 'contains'
 
-type Tab = 'finder' | 'board'
+type Tab = 'finder' | 'board' | 'league'
 
 const LEGACY_TAB_KEY = 'wordfeud-tab'
 
 // Board is the default tab — it's the daily-driver view (live games + solver);
 // the word finder is the occasional lookup tool.
 function parseTab(value: string | null): Tab {
-  return value === 'finder' ? 'finder' : 'board'
+  return value === 'finder' || value === 'league' ? value : 'board'
 }
 
 export default function WordfeudPage() {
@@ -49,6 +50,17 @@ export default function WordfeudPage() {
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev)
       next.set('tab', tab)
+      next.delete('game')
+      return next
+    })
+  }
+
+  // Opens a league game on the board tab; the board reads ?game= on mount.
+  const openGame = (gameId: number) => {
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev)
+      next.set('tab', 'board')
+      next.set('game', String(gameId))
       return next
     })
   }
@@ -89,6 +101,21 @@ export default function WordfeudPage() {
           <Grid3X3 size={16} />
           {t('board.tab')}
         </button>
+        <button
+          role="tab"
+          id="tab-league"
+          aria-selected={activeTab === 'league'}
+          aria-controls="tabpanel-league"
+          onClick={() => handleTabChange('league')}
+          className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors cursor-pointer ${
+            activeTab === 'league'
+              ? 'border-blue-500 text-white'
+              : 'border-transparent text-gray-400 hover:text-gray-200'
+          }`}
+        >
+          <Trophy size={16} />
+          {t('league.tab')}
+        </button>
       </div>
 
       <div role="tabpanel" id="tabpanel-finder" aria-labelledby="tab-finder" hidden={activeTab !== 'finder'}>
@@ -96,6 +123,9 @@ export default function WordfeudPage() {
       </div>
       <div role="tabpanel" id="tabpanel-board" aria-labelledby="tab-board" hidden={activeTab !== 'board'}>
         {activeTab === 'board' && <WordfeudBoard />}
+      </div>
+      <div role="tabpanel" id="tabpanel-league" aria-labelledby="tab-league" hidden={activeTab !== 'league'}>
+        {activeTab === 'league' && <WordfeudLeague onOpenGame={openGame} />}
       </div>
     </div>
   )

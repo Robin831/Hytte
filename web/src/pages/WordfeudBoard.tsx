@@ -139,7 +139,11 @@ export default function WordfeudBoard() {
   const [yourTurnExpanded, setYourTurnExpanded] = useState(true)
   const [theirTurnExpanded, setTheirTurnExpanded] = useState(false)
   const [finishedExpanded, setFinishedExpanded] = useState(false)
-  const [selectedGameId, setSelectedGameId] = useState<number | null>(null)
+  // ?game= preselects a game, so the league tab can link straight to one.
+  const [selectedGameId, setSelectedGameId] = useState<number | null>(() => {
+    const id = Number(new URLSearchParams(window.location.search).get('game'))
+    return Number.isInteger(id) && id > 0 ? id : null
+  })
   const [loadingGames, setLoadingGames] = useState(false)
   // Bumped by refresh so the open game re-fetches too (opponent may have moved)
   const [gameReloadKey, setGameReloadKey] = useState(0)

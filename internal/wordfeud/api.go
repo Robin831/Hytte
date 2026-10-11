@@ -320,6 +320,10 @@ type rawGame struct {
 	} `json:"last_move"`
 	CurrentPlayer int   `json:"current_player"` // index into Players
 	Updated       int64 `json:"updated"`        // Unix timestamp of last activity
+	// Created and Ruleset are lenient: a surprise in either must not break
+	// the games list.
+	Created flexNumber `json:"created"`
+	Ruleset flexNumber `json:"ruleset"`
 }
 
 func (g rawGame) toSummary() GameSummary {
@@ -330,7 +334,13 @@ func (g rawGame) toSummary() GameSummary {
 			MoveType: g.LastMove.MoveType,
 			Points:   g.LastMove.Points,
 		},
-		EndedAt: g.Updated,
+		EndedAt:   g.Updated,
+		IsRunning: g.IsRunning,
+		CreatedAt: int64(g.Created.value),
+		Ruleset:   -1,
+	}
+	if g.Ruleset.set {
+		s.Ruleset = int(g.Ruleset.value)
 	}
 
 	// Use is_local flag to identify which player is me vs opponent.
@@ -342,6 +352,7 @@ func (g rawGame) toSummary() GameSummary {
 		}
 		s.MyUsername = g.Players[me].Username
 		s.Opponent = g.Players[opp].Username
+		s.OpponentID = g.Players[opp].ID
 		s.Scores = [2]int{g.Players[me].Score, g.Players[opp].Score}
 		s.IsMyTurn = g.CurrentPlayer == me
 	}

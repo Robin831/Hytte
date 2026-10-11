@@ -28,6 +28,7 @@ import (
 	"github.com/Robin831/Hytte/internal/suggestions"
 	"github.com/Robin831/Hytte/internal/training"
 	"github.com/Robin831/Hytte/internal/trips"
+	"github.com/Robin831/Hytte/internal/wordfeud"
 )
 
 func main() {
@@ -408,6 +409,8 @@ func main() {
 	go races.RunLocalSyncLoop(notifCtx, database)
 	// Trip chats are deleted a month after the trip ends.
 	go trips.RunChatCleanupLoop(notifCtx, database)
+	// Wordfeud league: pushes for a new season and for results to register.
+	go wordfeud.RunLeagueLoop(notifCtx, wordfeud.NewLeague(database, wordfeud.NewClient()), wordfeud.LeagueNotifyInterval)
 
 	// Daily grocery-offer sync from the Tjek API at 06:30 Europe/Oslo
 	// (Hytte-offr). Warm-runs at startup only when stored offers are stale
