@@ -12,9 +12,12 @@ import {
 } from '../../push'
 import type { PushDevice, EventTypeInfo, PreferenceSectionProps } from './types'
 
-type NotificationsSectionProps = PreferenceSectionProps
+type NotificationsSectionProps = PreferenceSectionProps & {
+  /** The GitHub / Forge / webhook filters only concern users with those features. */
+  showFilters?: boolean
+}
 
-function NotificationsSection({ preferences, saving, savePreference, savePreferences }: NotificationsSectionProps) {
+function NotificationsSection({ preferences, saving, savePreference, savePreferences, showFilters = true }: NotificationsSectionProps) {
   const { t } = useTranslation(['settings', 'common'])
   const [pushSupported] = useState(() => isPushSupported())
   const [pushSubscribed, setPushSubscribed] = useState(false)
@@ -270,6 +273,7 @@ function NotificationsSection({ preferences, saving, savePreference, savePrefere
 
           {/* Notification Filters */}
           {(() => {
+            if (!showFilters) return null
             const parseFilters = (raw: string | undefined): Record<string, boolean> => {
               try { return JSON.parse(raw || '{}') } catch { return {} }
             }

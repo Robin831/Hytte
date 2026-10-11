@@ -183,6 +183,9 @@ func SearchHandler(svc *Service) http.HandlerFunc {
 			return
 		}
 
+		if results == nil {
+			results = []GeocoderResult{}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"results": results})
 	}
 }
@@ -192,6 +195,10 @@ func SettingsGetHandler(db *sql.DB) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		user := auth.UserFromContext(r.Context())
 		stops := loadFavoriteStops(db, user.ID)
+		if stops == nil {
+			// An empty list, not null: the page reads its length.
+			stops = []FavoriteStop{}
+		}
 		writeJSON(w, http.StatusOK, map[string]any{"stops": stops})
 	}
 }

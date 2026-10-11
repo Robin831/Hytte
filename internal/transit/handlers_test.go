@@ -766,6 +766,12 @@ func TestSettingsGetHandler_DefaultsWhenNoPrefs(t *testing.T) {
 		t.Fatalf("expected 200, got %d", rec.Code)
 	}
 
+	// A new user has no stops: that must be an empty list, never null
+	// (the page reads its length).
+	if raw := rec.Body.String(); !strings.Contains(raw, `"stops":[]`) {
+		t.Fatalf("expected an empty stops list, got %s", raw)
+	}
+
 	var body struct {
 		Stops []FavoriteStop `json:"stops"`
 	}

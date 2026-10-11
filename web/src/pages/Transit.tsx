@@ -184,7 +184,7 @@ export default function Transit() {
         const res = await fetch('/api/transit/departures', { credentials: 'include', signal: controller.signal })
         if (!res.ok) throw new Error(await res.text())
         const data: { stops: StopDepartures[] } = await res.json()
-        setStops(data.stops)
+        setStops(data.stops ?? [])
         setError(null)
         setLastUpdated(new Date())
       } catch (err) {
@@ -241,7 +241,7 @@ export default function Transit() {
     if (!showSettings) return
     fetch('/api/transit/settings', { credentials: 'include' })
       .then(r => r.ok ? r.json() : { stops: [] })
-      .then((data: { stops: FavoriteStop[] }) => setFavoriteStops(data.stops))
+      .then((data: { stops: FavoriteStop[] | null }) => setFavoriteStops(data.stops ?? []))
       .catch(() => {})
   }, [showSettings])
 
@@ -511,7 +511,7 @@ export default function Transit() {
                     <p className="text-sm font-medium text-white truncate">{stop.name}</p>
                     <input
                       type="text"
-                      defaultValue={stop.routes.join(', ')}
+                      defaultValue={(stop.routes ?? []).join(', ')}
                       onBlur={e => updateRoutes(stop.id, e.target.value)}
                       placeholder={t('transit:filterRoutesPlaceholder')}
                       aria-label={t('transit:filterRoutes')}

@@ -264,8 +264,8 @@ function Settings() {
         <ProfileSection preferences={preferences} saving={saving} savePreference={savePreference} />
       </CollapsibleSection>
 
-      {/* Training Section — hidden for child users */}
-      {!isChild && (
+      {/* Training Section — hidden for child users and for users without a training feature */}
+      {!isChild && (hasFeature('training') || hasFeature('stride') || hasFeature('lactate')) && (
         <CollapsibleSection
           id="training"
           title={
@@ -303,6 +303,7 @@ function Settings() {
             saving={saving}
             savePreference={savePreference}
             savePreferences={savePreferences}
+            showFilters={!!user?.is_admin || hasFeature('webhooks') || hasFeature('infra')}
           />
         </CollapsibleSection>
       )}

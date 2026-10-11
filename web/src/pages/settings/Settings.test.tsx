@@ -109,7 +109,7 @@ describe('Settings – section gating', () => {
 
   it('renders all sections for an admin with the pokemon feature', async () => {
     authState.user = makeUser({ is_admin: true, features: { pokemon: true } })
-    authState.hasFeature = (key: string) => key === 'pokemon'
+    authState.hasFeature = (key: string) => key === 'pokemon' || key === 'training'
     renderSettings()
 
     await waitFor(() => expect(screen.getByTestId('profile-section')).toBeInTheDocument())
@@ -147,7 +147,7 @@ describe('Settings – section gating', () => {
 
   it('shows integrations for a non-admin with the infra feature but hides admin-only sections', async () => {
     authState.user = makeUser({ features: { infra: true } })
-    authState.hasFeature = (key: string) => key === 'infra'
+    authState.hasFeature = (key: string) => key === 'infra' || key === 'training'
     renderSettings()
 
     await waitFor(() => expect(screen.getByTestId('profile-section')).toBeInTheDocument())
@@ -160,6 +160,14 @@ describe('Settings – section gating', () => {
     expect(screen.queryByTestId('offers-section')).not.toBeInTheDocument()
     expect(screen.queryByTestId('ai-automation-section')).not.toBeInTheDocument()
     expect(screen.queryByTestId('kiosk-tokens-section')).not.toBeInTheDocument()
+  })
+
+  it('hides the training section from a user with no training feature', async () => {
+    authState.user = makeUser({ features: { trips: true } })
+    authState.hasFeature = (key: string) => key === 'trips'
+    renderSettings()
+    await waitFor(() => expect(screen.getByTestId('profile-section')).toBeInTheDocument())
+    expect(screen.queryByTestId('training-section')).not.toBeInTheDocument()
   })
 
   it('shows the offers section only for a user with the offers feature', async () => {
