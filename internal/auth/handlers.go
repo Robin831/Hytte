@@ -39,10 +39,17 @@ func GoogleLoginHandler() http.HandlerFunc {
 			Secure:   isSecure(),
 		})
 
+		// include_granted_scopes keeps what the user granted before (their
+		// calendar connection survives a plain sign-in).
 		opts := []oauth2.AuthCodeOption{
 			oauth2.AccessTypeOffline,
+			oauth2.SetAuthURLParam("include_granted_scopes", "true"),
 		}
-		if r.URL.Query().Get("prompt") == "consent" || r.URL.Query().Get("reauthorize") == "true" {
+		q := r.URL.Query()
+		// Connecting the calendar (or an explicit re-consent) asks for the
+		// calendar scopes and a fresh refresh token.
+		if q.Get("calendar") == "1" || q.Get("prompt") == "consent" || q.Get("reauthorize") == "true" {
+			cfg.Scopes = append(cfg.Scopes, CalendarScopes...)
 			opts = append(opts, oauth2.SetAuthURLParam("prompt", "consent"))
 		}
 

@@ -128,7 +128,7 @@
     "previousPeriod": "Forrige periode",
     "nextPeriod": "Neste periode",
     "notConnected": "Kalender ikke tilkoblet",
-    "notConnectedHint": "Logg inn med Google og gi kalendertilgang for å se hendelsene dine her.",
+    "notConnectedHint": "Koble til Google Kalender for å se hendelsene dine her.",
     "signInRequired": "Logg inn for å se kalenderen din.",
     "errors": {
       "failedToLoad": "Kunne ikke laste kalenderhendelser",
@@ -138,7 +138,9 @@
       "chip": "Synkroniseringsfeil",
       "tooltip": "Kunne ikke synkronisere: {{calendars}}",
       "ariaLabel": "Synkroniseringsfeil for: {{calendars}}"
-    }
+    },
+    "connect": "Koble til Google Kalender",
+    "connectWarning": "Google vil si at appen ikke er bekreftet. Velg Avansert, og fortsett til robinedvardsmith.com."
   },
   "family": {
     "title": "Familie",

@@ -128,7 +128,7 @@
     "previousPeriod": "ช่วงก่อนหน้า",
     "nextPeriod": "ช่วงถัดไป",
     "notConnected": "ยังไม่ได้เชื่อมต่อปฏิทิน",
-    "notConnectedHint": "เข้าสู่ระบบด้วย Google และอนุญาตการเข้าถึงปฏิทินเพื่อดูกิจกรรมของคุณที่นี่",
+    "notConnectedHint": "เชื่อมต่อ Google ปฏิทินเพื่อดูกิจกรรมของคุณที่นี่",
     "signInRequired": "เข้าสู่ระบบเพื่อดูปฏิทินของคุณ",
     "errors": {
       "failedToLoad": "ไม่สามารถโหลดกิจกรรมปฏิทินได้",
@@ -138,7 +138,9 @@
       "chip": "ปัญหาการซิงค์",
       "tooltip": "ซิงค์ไม่สำเร็จ: {{calendars}}",
       "ariaLabel": "ปัญหาการซิงค์กับ: {{calendars}}"
-    }
+    },
+    "connect": "เชื่อมต่อ Google ปฏิทิน",
+    "connectWarning": "Google จะแจ้งว่ายังไม่ได้ยืนยันแอปนี้ เลือก ขั้นสูง แล้วไปต่อที่ robinedvardsmith.com"
   },
   "family": {
     "title": "ครอบครัว",
