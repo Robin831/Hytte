@@ -653,5 +653,6 @@
       "clipboardUnavailable": "Clipboard is not available in this browser.",
       "failedToCopy": "Failed to copy link to clipboard"
     }
-  }
+  },
+  "notInvited": "Hytte is a private family app, and this Google account has not been invited. Ask the owner for an invitation."
 }

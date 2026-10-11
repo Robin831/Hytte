@@ -213,6 +213,9 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Use(auth.RequireAdmin())
 				r.Get("/admin/users", auth.AdminListUsersHandler(db))
 				r.Put("/admin/users/{id}/features", auth.AdminSetFeatureHandler(db))
+				r.Get("/admin/invites", auth.AdminListInvitesHandler(db))
+				r.Post("/admin/invites", auth.AdminAddInviteHandler(db))
+				r.Delete("/admin/invites", auth.AdminDeleteInviteHandler(db))
 				r.Post("/admin/stars/award", stars.AdminAwardStarsHandler(db))
 
 				// Pokémon TCG: manual full metadata + price sync trigger.

@@ -445,6 +445,15 @@ func createSchema(db *sql.DB) error {
 
 	CREATE INDEX IF NOT EXISTS idx_comparison_analyses_user_workout_b ON comparison_analyses(user_id, workout_id_b);
 
+	-- Invite list: emails an admin has invited that have not signed in yet.
+	-- Sign-in is refused for Google accounts that are neither an existing
+	-- user nor on this list (auth.SignInAllowed).
+	CREATE TABLE IF NOT EXISTS invited_emails (
+		email      TEXT PRIMARY KEY,
+		invited_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+		created_at TEXT NOT NULL
+	);
+
 	CREATE TABLE IF NOT EXISTS user_features (
 		user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		feature_key TEXT NOT NULL,

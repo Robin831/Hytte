@@ -260,7 +260,17 @@
     "allFeatures": "All",
     "enableFeature": "Enable {{feature}} for {{name}}",
     "disableFeature": "Disable {{feature}} for {{name}}",
-    "toggleError": "Failed to update {{feature}} for user — {{error}}"
+    "toggleError": "Failed to update {{feature}} for user — {{error}}",
+    "invites": {
+      "heading": "Who can sign in",
+      "about": "Hytte is invite-only. Family members who already have an account can always sign in; anyone else needs their Google email added here first. An invite disappears once that person has signed in.",
+      "placeholder": "Google email address",
+      "add": "Invite",
+      "none": "No pending invites.",
+      "pending": "not signed in yet",
+      "remove": "Withdraw the invite for {{email}}",
+      "error": "Could not update the invites."
+    }
   },
   "pokemon": {
     "heading": "Pokémon",

@@ -31,6 +31,12 @@ describe('HomePage', () => {
     expect(screen.queryByTestId('dashboard')).toBeNull()
   })
 
+  it('tells a refused visitor that Hytte is invite-only', () => {
+    render(<MemoryRouter initialEntries={['/?error=not_invited']}><HomePage /></MemoryRouter>)
+    expect(screen.getByRole('alert')).toHaveTextContent('notInvited')
+    expect(screen.getByRole('link', { name: 'sidebar.signIn' })).toBeInTheDocument()
+  })
+
   it('is the dashboard itself once signed in', () => {
     authState.user = { name: 'Robin Smith' }
     render(<MemoryRouter><HomePage /></MemoryRouter>)

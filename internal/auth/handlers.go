@@ -112,6 +112,20 @@ func GoogleCallbackHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
+		// Hytte is invite-only: an unknown Google account gets nothing — no
+		// user, no session, no stored token.
+		allowed, err := SignInAllowed(db, userInfo.ID, userInfo.Email)
+		if err != nil {
+			log.Printf("Failed to check invite list: %v", err)
+			http.Error(w, "failed to sign in", http.StatusInternalServerError)
+			return
+		}
+		if !allowed {
+			log.Printf("Sign-in refused: Google account is not invited")
+			http.Redirect(w, r, "/?error=not_invited", http.StatusTemporaryRedirect)
+			return
+		}
+
 		// Upsert user in database.
 		user, err := UpsertUser(db, userInfo.ID, userInfo.Email, userInfo.Name, userInfo.Picture)
 		if err != nil {
@@ -119,6 +133,7 @@ func GoogleCallbackHandler(db *sql.DB) http.HandlerFunc {
 			http.Error(w, "failed to save user", http.StatusInternalServerError)
 			return
 		}
+		UseInvite(db, userInfo.Email)
 
 		// Persist the Google OAuth token (access + refresh) so we can make
 		// Google API calls (e.g. Calendar) on behalf of the user later.

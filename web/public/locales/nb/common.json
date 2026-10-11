@@ -653,5 +653,6 @@
       "clipboardUnavailable": "Utklippstavlen er ikke tilgjengelig i denne nettleseren.",
       "failedToCopy": "Kunne ikke kopiere lenke til utklippstavlen"
     }
-  }
+  },
+  "notInvited": "Hytte er en privat familieapp, og denne Google-kontoen er ikke invitert. Be eieren om en invitasjon."
 }

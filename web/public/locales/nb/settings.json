@@ -260,7 +260,17 @@
     "allFeatures": "Alle",
     "enableFeature": "Aktiver {{feature}} for {{name}}",
     "disableFeature": "Deaktiver {{feature}} for {{name}}",
-    "toggleError": "Kunne ikke oppdatere {{feature}} for bruker — {{error}}"
+    "toggleError": "Kunne ikke oppdatere {{feature}} for bruker — {{error}}",
+    "invites": {
+      "heading": "Hvem kan logge inn",
+      "about": "Hytte er kun for inviterte. Familiemedlemmer som allerede har konto kan alltid logge inn; alle andre må først få Google-e-posten sin lagt til her. En invitasjon forsvinner når personen har logget inn.",
+      "placeholder": "Google-e-postadresse",
+      "add": "Inviter",
+      "none": "Ingen ventende invitasjoner.",
+      "pending": "ikke logget inn ennå",
+      "remove": "Trekk tilbake invitasjonen til {{email}}",
+      "error": "Kunne ikke oppdatere invitasjonene."
+    }
   },
   "pokemon": {
     "heading": "Pokémon",

@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
+import AdminInvites from '../components/AdminInvites'
 import { useAuth } from '../auth'
 import { useNavigate } from 'react-router'
 import { Skeleton } from '../components/ui/skeleton'
@@ -208,6 +209,7 @@ function Admin() {
           </div>
         </section>
       )}
+      <AdminInvites />
     </div>
   )
 }
