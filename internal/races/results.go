@@ -20,10 +20,12 @@ import (
 // Hall of fame: every race a user (or a family member without an account)
 // has run. Results come from the catalog (a watch marked completed), manual
 // entry, or imports (the Gmail backfill) that wait as "pending" until the
-// user confirms them. Personal data: evidence and notes are encrypted.
+// user confirms them. A race entered but never started is kept as "dns":
+// listed, without a time, and left out of every count and personal best.
+// Personal data: evidence and notes are encrypted.
 
 var (
-	validResultStatus = set("pending", "confirmed")
+	validResultStatus = set("pending", "confirmed", "dns")
 	validConfidence   = set("high", "medium", "low", "")
 	validTimeSource   = set("", "email", "strava", "workout", "results_site", "manual", "catalog")
 )
@@ -100,6 +102,9 @@ func (in *ResultInput) normalize() error {
 	}
 	if in.NominalM == in.DistanceM {
 		in.NominalM = 0
+	}
+	if in.Status == "dns" {
+		in.FinishSeconds, in.TimeSource, in.TimeURL = nil, "", ""
 	}
 	switch {
 	case in.RaceName == "" || len([]rune(in.RaceName)) > maxNameLen:
@@ -372,7 +377,7 @@ func resultFromCompletedWatch(ctx context.Context, db *sql.DB, userID, eventID i
 // running workout on the same day within 4% of the distance.
 func matchWorkoutTimes(ctx context.Context, db *sql.DB, userID int64) {
 	rows, err := db.QueryContext(ctx, `SELECT id, race_date, distance_m FROM race_results
-		WHERE user_id = ? AND person_name = '' AND finish_seconds IS NULL`, userID)
+		WHERE user_id = ? AND person_name = '' AND finish_seconds IS NULL AND status != 'dns'`, userID)
 	if err != nil {
 		return
 	}
@@ -445,11 +450,15 @@ type HallOfFame struct {
 }
 
 // Summarize computes PBs and counts over the user's own confirmed results.
+// Races that were never started count for nothing.
 func Summarize(results []Result) HallOfFame {
 	h := HallOfFame{PBs: []PB{}, Countries: []string{}, PerYear: map[string]int{}}
 	best := map[string]*PB{}
 	countries := map[string]bool{}
 	for _, r := range results {
+		if r.Status == "dns" {
+			continue
+		}
 		if r.Status == "pending" {
 			if r.PersonName == "" {
 				h.Pending++
@@ -628,7 +637,7 @@ func (r *Researcher) lookupTime(ctx context.Context, cfg *training.ClaudeConfig,
 		return
 	}
 	if _, err := r.DB.Exec(`UPDATE race_results SET finish_seconds = ?, time_source = 'results_site', time_url = ?, updated_at = ?
-		WHERE id = ? AND user_id = ? AND finish_seconds IS NULL`, out.FinishSeconds, out.URL, ts(time.Now()), res.ID, userID); err != nil {
+		WHERE id = ? AND user_id = ? AND finish_seconds IS NULL AND status != 'dns'`, out.FinishSeconds, out.URL, ts(time.Now()), res.ID, userID); err != nil {
 		r.finishRun(runID, "failed", cost, 0, res.RaceName, nil, err.Error())
 		return
 	}

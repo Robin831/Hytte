@@ -62,6 +62,7 @@ function ResultForm({ initial, onSaved, onCancel }: { initial?: RaceResult; onSa
   const { t } = useRaceFormat()
   const [form, setForm] = useState<ResultInput>(() => (initial ? resultToInput(initial) : emptyInput()))
   const [time, setTime] = useState(initial?.finish_seconds ? formatDuration(initial.finish_seconds) : '')
+  const [dns, setDns] = useState(initial?.status === 'dns')
   const { user } = useAuth()
   const [family, setFamily] = useState<Person[]>([])
   useEffect(() => {
@@ -71,7 +72,7 @@ function ResultForm({ initial, onSaved, onCancel }: { initial?: RaceResult; onSa
   }, [])
   const [error, setError] = useState('')
   const set = <K extends keyof ResultInput>(k: K, v: ResultInput[K]) => setForm(f => ({ ...f, [k]: v }))
-  const timeInvalid = time.trim() !== '' && parseDuration(time) === null
+  const timeInvalid = !dns && time.trim() !== '' && parseDuration(time) === null
   const input = 'w-full rounded-lg border border-gray-700 bg-gray-800 px-3 py-2 text-sm'
   const label = 'mb-1 block text-xs font-semibold uppercase tracking-wide text-gray-400'
   const preset = distanceKey(form.distance_m) ?? 'other'
@@ -79,15 +80,17 @@ function ResultForm({ initial, onSaved, onCancel }: { initial?: RaceResult; onSa
   const save = async (e: React.FormEvent) => {
     e.preventDefault()
     if (timeInvalid) return
-    const seconds = time.trim() ? parseDuration(time) : null
+    const seconds = !dns && time.trim() ? parseDuration(time) : null
     const body: ResultInput = {
       ...form,
+      // Unticking "did not start" puts the race back among the ones that count.
+      status: dns ? 'dns' : form.status === 'dns' ? 'confirmed' : form.status,
       finish_seconds: seconds,
       time_source: seconds !== initial?.finish_seconds ? (seconds ? 'manual' : '') : form.time_source,
     }
     try {
       if (initial) await updateResult(initial.id, body)
-      else await createResult({ ...body, status: 'confirmed' })
+      else await createResult({ ...body, status: dns ? 'dns' : 'confirmed' })
       onSaved()
     } catch (err) {
       setError(err instanceof Error && err.message.includes('already') ? t('hall.duplicate') : t('errors.save'))
@@ -126,7 +129,11 @@ function ResultForm({ initial, onSaved, onCancel }: { initial?: RaceResult; onSa
         <div>
           <label className={label} htmlFor="res-time">{t('hall.time')}</label>
           <input id="res-time" className={`${input} tabular-nums ${timeInvalid ? 'border-red-500' : ''}`} value={time} placeholder="1:45:00"
-            aria-invalid={timeInvalid} onChange={e => setTime(e.target.value)} />
+            aria-invalid={timeInvalid} disabled={dns} onChange={e => setTime(e.target.value)} />
+          <label className="mt-2 flex items-center gap-2 text-sm text-gray-300">
+            <input type="checkbox" checked={dns} onChange={e => setDns(e.target.checked)} className="h-4 w-4 rounded border-gray-600 bg-gray-800" />
+            {t('hall.dnsLabel')}
+          </label>
         </div>
         <div>
           <label className={label} htmlFor="res-person">{t('hall.runner')}</label>
@@ -200,8 +207,10 @@ export function HallOfFame() {
 
   const pending = results.filter(r => r.status === 'pending')
   const confirmed = results.filter(r => r.status === 'confirmed')
-  const people = useMemo(() => [...new Set(confirmed.map(r => r.person_name).filter(Boolean))].sort(), [confirmed])
-  const shown = confirmed.filter(r => r.person_name === person)
+  // Races that were never started are listed with the rest but count for nothing.
+  const listed = results.filter(r => r.status !== 'pending')
+  const people = useMemo(() => [...new Set(listed.map(r => r.person_name).filter(Boolean))].sort(), [listed])
+  const shown = listed.filter(r => r.person_name === person)
   const pbIds = new Set((summary?.pbs ?? []).map(p => p.result_id))
   const dateFmt = new Intl.DateTimeFormat(intlLocale(lang), { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
   const fmtDate = (r: RaceResult) => r.date_exact ? dateFmt.format(new Date(r.race_date + 'T12:00:00Z')) : r.race_date.slice(0, 4)
@@ -352,7 +361,7 @@ export function HallOfFame() {
           <p className="mt-3 text-sm text-gray-400">{t('hall.empty')}</p>
         ) : byYear.map(g => (
           <div key={g.year} className="mt-4">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-400">{g.year} <span className="text-gray-600">{g.items.length}</span></h3>
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-400">{g.year} <span className="text-gray-600">{g.items.filter(r => r.status !== 'dns').length}</span></h3>
             <ul>
               {g.items.map(r => (
                 <li key={r.id} className="grid grid-cols-[1fr_auto] items-start gap-2 border-t border-gray-800 py-2 text-sm">
@@ -377,7 +386,9 @@ export function HallOfFame() {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    {r.finish_seconds ? (
+                    {r.status === 'dns' ? (
+                      <span className="rounded-full bg-gray-700 px-2 py-0.5 text-xs font-semibold text-gray-300" title={t('hall.dnsLabel')}>{t('hall.dns')}</span>
+                    ) : r.finish_seconds ? (
                       <span className="tabular-nums font-semibold" title={t(`hall.source.${r.time_source || 'manual'}`)}>
                         {formatDuration(r.finish_seconds)}
                         {r.time_url && <a href={r.time_url} target="_blank" rel="noopener noreferrer" className="ml-1 text-blue-400" aria-label={t('hall.resultsPage')}><ExternalLink size={11} className="inline" /></a>}

@@ -33,6 +33,7 @@ const RESULTS: RaceResult[] = [
   result({ id: 4, race_name: 'Cardiff Half', race_date: '2023-10-01', status: 'pending', confidence: 'low', evidence: [{ what: 'registration only' }] }),
   result({ id: 5, race_name: 'Semi de Paris', race_date: '2022-03-06', status: 'pending', confidence: 'high', finish_seconds: 7203 }),
   result({ id: 6, person_name: 'Khatiya', race_name: 'Bergen3000', race_date: '2025-06-10', distance_m: 3000 }),
+  result({ id: 8, race_name: 'Bergen3000 2025', race_date: '2025-06-07', distance_m: 3000, status: 'dns' }),
   result({ id: 7, race_name: 'Knarvik Maraton', race_date: '2024-06-22', distance_m: 20657, nominal_m: 21097, finish_seconds: 5290, projected_seconds: 5403 }),
 ]
 
@@ -89,6 +90,30 @@ describe('HallOfFame', () => {
 
     await act(async () => { fireEvent.click(screen.getByRole('button', { name: /hall.findTime/ })) })
     expect(calls.some(c => c.method === 'POST' && c.url === '/api/races/results/3/lookup')).toBe(true)
+  })
+
+  it('lists a race that was never started as DNS, with no time to look up', async () => {
+    installFetch()
+    render(<MemoryRouter><HallOfFame /></MemoryRouter>)
+    const row = (await screen.findByText('Bergen3000 2025')).closest('li')!
+    expect(within(row).getByText('hall.dns')).toBeInTheDocument()
+    expect(within(row).queryByRole('button', { name: /hall.findTime/ })).toBeNull()
+    // Only the two confirmed races without a time are offered for lookup, not the DNS.
+    expect(screen.getByRole('button', { name: /hall.findMissing:count=2/ })).toBeInTheDocument()
+  })
+
+  it('saves a race as did-not-start without a time', async () => {
+    const calls = installFetch()
+    render(<MemoryRouter><HallOfFame /></MemoryRouter>)
+    await act(async () => { fireEvent.click(await screen.findByRole('button', { name: /hall.add/ })) })
+    fireEvent.change(screen.getByLabelText('hall.race'), { target: { value: 'Bergen3000' } })
+    fireEvent.change(screen.getByLabelText('admin.date'), { target: { value: '2025-06-07' } })
+    fireEvent.change(screen.getByLabelText('hall.time'), { target: { value: '14:15' } })
+    fireEvent.click(screen.getByLabelText('hall.dnsLabel'))
+    expect(screen.getByLabelText('hall.time')).toBeDisabled()
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'admin.save' })) })
+    const post = calls.find(c => c.method === 'POST' && c.url === '/api/races/results')
+    expect(post?.body).toMatchObject({ race_name: 'Bergen3000', status: 'dns', finish_seconds: null })
   })
 
   it('adds a race by hand with a parsed time', async () => {

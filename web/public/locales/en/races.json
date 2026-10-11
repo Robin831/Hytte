@@ -377,6 +377,8 @@
       "low": "Unsure"
     },
     "noTime": "no time yet",
+    "dns": "DNS",
+    "dnsLabel": "Did not start (DNS)",
     "add": "Add a race",
     "edit": "Edit race",
     "delete": "Delete race",

@@ -241,6 +241,46 @@ func TestTimeLookups(t *testing.T) {
 	}
 }
 
+func TestDidNotStart(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	finish := 900
+	ran, err := SaveResult(ctx, d, 1, 0, ResultInput{RaceName: "Bergen3000", RaceDate: "2026-06-06", DistanceM: 3000,
+		Country: "NO", FinishSeconds: &finish}, "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A time sent along with "dns" is dropped: nobody finished.
+	dns, err := SaveResult(ctx, d, 1, 0, ResultInput{RaceName: "Bergen3000", RaceDate: "2025-06-07", DistanceM: 3000,
+		Country: "SE", FinishSeconds: &finish, TimeURL: "https://example.com/r", Status: "dns"}, "manual")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if dns.Status != "dns" || dns.FinishSeconds != nil || dns.TimeSource != "" || dns.TimeURL != "" {
+		t.Fatalf("dns result = %+v", dns)
+	}
+	results, _ := ListResults(ctx, d, 1)
+	if len(results) != 2 {
+		t.Fatalf("listed %d results, want the DNS kept", len(results))
+	}
+	h := Summarize(results)
+	if h.Races != 1 || h.Pending != 0 || h.FirstYear != 2026 || h.PerYear["2025"] != 0 || strings.Join(h.Countries, ",") != "NO" {
+		t.Fatalf("a DNS must not count: %+v", h)
+	}
+	if len(h.PBs) != 1 || h.PBs[0].Count != 1 || h.PBs[0].ResultID != ran.ID {
+		t.Fatalf("pbs = %+v", h.PBs)
+	}
+	// A run on the day does not turn a DNS into a finish.
+	if _, err := d.Exec(`INSERT INTO workouts (user_id, sport, started_at, duration_seconds, distance_meters, fit_file_hash)
+		VALUES (1, 'running', '2025-06-07T10:00:00Z', 880, 3010, 'dns-test')`); err != nil {
+		t.Fatal(err)
+	}
+	matchWorkoutTimes(ctx, d, 1)
+	if again, _ := GetResult(ctx, d, 1, dns.ID); again.FinishSeconds != nil {
+		t.Fatalf("workout time filled into a DNS: %+v", again)
+	}
+}
+
 func TestShortCourseProjection(t *testing.T) {
 	d := setupTestDB(t)
 	ctx := context.Background()

@@ -227,7 +227,8 @@ export interface RaceResult {
   time_source: '' | 'email' | 'strava' | 'workout' | 'results_site' | 'manual' | 'catalog'
   time_url: string
   bib: string
-  status: 'pending' | 'confirmed'
+  /** 'dns' = entered but never started: listed, no time, counts for nothing. */
+  status: 'pending' | 'confirmed' | 'dns'
   confidence: '' | 'high' | 'medium' | 'low'
   source: string
   evidence: { thread_id?: string; url?: string; date?: string; from?: string; what?: string }[]

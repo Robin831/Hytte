@@ -377,6 +377,8 @@
       "low": "Usikker"
     },
     "noTime": "ingen tid ennå",
+    "dns": "DNS",
+    "dnsLabel": "Startet ikke (DNS)",
     "add": "Legg til løp",
     "edit": "Rediger løp",
     "delete": "Slett løp",
