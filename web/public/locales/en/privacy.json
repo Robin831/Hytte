@@ -1,0 +1,39 @@
+{
+  "title": "Privacy policy",
+  "updated": "Last updated: 11 October 2026",
+  "back": "Back to Hytte",
+  "sections": {
+    "what": {
+      "title": "What Hytte is",
+      "body": "Hytte is a private web app for one family: a shared dashboard for calendars, trips, races, training, chores and similar everyday things. It is not a public service. Only people the owner has invited can use it."
+    },
+    "google": {
+      "title": "Signing in with Google",
+      "body": "You sign in with your Google account. Hytte receives your name, email address and profile picture, and uses them to recognise you and show who did what inside the family."
+    },
+    "calendar": {
+      "title": "Google Calendar",
+      "body": "If you grant calendar access, Hytte reads your calendar events to show them in the app and to warn when a planned trip or race collides with something. If you switch on the race calendar option, Hytte also adds race days and entry deadlines to your calendar and keeps those entries up to date. Hytte never changes or deletes events it did not create."
+    },
+    "other": {
+      "title": "What else is stored",
+      "body": "What you and your family enter yourselves: trips, race results, workouts, notes, checklists, chores and settings. Sensitive text, such as notes, booking references and calendar titles, is encrypted where it is stored. Sign-in sessions are kept so you stay signed in, and can be reviewed and ended under Settings."
+    },
+    "where": {
+      "title": "Where it is kept and who sees it",
+      "body": "Everything is kept on a private server run by the owner. It is not sold, not used for advertising and not shared with anyone outside the family. Some features send the minimum needed to a service provider: Google for sign-in and calendar, a weather service for forecasts, a search service for flight and hotel prices (dates and destination only), browser push services for notifications, and an AI assistant (Claude by Anthropic) when you ask it something, in which case the content of that request is sent to it."
+    },
+    "limited": {
+      "title": "Google user data",
+      "body": "Hytte's use of information received from Google APIs adheres to the Google API Services User Data Policy, including the Limited Use requirements. Google data is used only to provide the features you see in Hytte. Hytte does not use it for advertising and does not use it to develop or train AI models."
+    },
+    "rights": {
+      "title": "Your choices",
+      "body": "Under Settings you can download a copy of your data and delete your account, which removes your data from Hytte. You can withdraw Hytte’s access to your Google account at any time at myaccount.google.com/permissions."
+    },
+    "contact": {
+      "title": "Contact",
+      "body": "Questions go to the owner, at the support email address shown on the Google sign-in screen for Hytte."
+    }
+  }
+}

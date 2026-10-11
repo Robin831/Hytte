@@ -1,4 +1,5 @@
 import { useTranslation } from 'react-i18next'
+import { Link } from 'react-router'
 import { LogIn } from 'lucide-react'
 import { useAuth } from '../auth'
 import Dashboard from './Dashboard'
@@ -21,6 +22,7 @@ function Welcome() {
         </a>
       </header>
       <WeatherWidget />
+      <p className="text-center text-xs text-gray-500"><Link to="/privacy" className="hover:text-gray-300">{t('sidebar.privacy')}</Link></p>
     </div>
   )
 }

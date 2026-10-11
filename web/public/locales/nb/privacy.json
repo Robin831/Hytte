@@ -1,0 +1,39 @@
+{
+  "title": "Personvern",
+  "updated": "Sist oppdatert: 11. oktober 2026",
+  "back": "Tilbake til Hytte",
+  "sections": {
+    "what": {
+      "title": "Hva Hytte er",
+      "body": "Hytte er en privat nettapp for én familie: en felles oversikt over kalendere, reiser, løp, trening, gjøremål og andre hverdagsting. Den er ikke en offentlig tjeneste. Bare de eieren har invitert kan bruke den."
+    },
+    "google": {
+      "title": "Innlogging med Google",
+      "body": "Du logger inn med Google-kontoen din. Hytte får navnet, e-postadressen og profilbildet ditt, og bruker dem til å kjenne deg igjen og vise hvem som har gjort hva i familien."
+    },
+    "calendar": {
+      "title": "Google Kalender",
+      "body": "Hvis du gir kalendertilgang, leser Hytte kalenderhendelsene dine for å vise dem i appen og for å varsle når en planlagt reise eller et løp kolliderer med noe. Hvis du slår på kalendervalget for løp, legger Hytte også løpsdager og påmeldingsfrister inn i kalenderen din og holder dem oppdatert. Hytte endrer eller sletter aldri hendelser den ikke selv har laget."
+    },
+    "other": {
+      "title": "Hva annet som lagres",
+      "body": "Det du og familien selv legger inn: reiser, løpsresultater, treningsøkter, notater, sjekklister, gjøremål og innstillinger. Følsom tekst, som notater, bookingreferanser og kalendertitler, er kryptert der den lagres. Innloggingsøkter lagres så du forblir innlogget, og kan ses og avsluttes under Innstillinger."
+    },
+    "where": {
+      "title": "Hvor det lagres og hvem som ser det",
+      "body": "Alt lagres på en privat server som eieren drifter. Det selges ikke, brukes ikke til reklame og deles ikke med noen utenfor familien. Noen funksjoner sender det som er nødvendig til en tjenesteleverandør: Google for innlogging og kalender, en værtjeneste for varsel, en søketjeneste for fly- og hotellpriser (bare datoer og reisemål), nettleserens varslingstjeneste for varsler, og en KI-assistent (Claude fra Anthropic) når du spør den om noe – da sendes innholdet i forespørselen dit."
+    },
+    "limited": {
+      "title": "Google-brukerdata",
+      "body": "Hyttes bruk av informasjon mottatt fra Google-API-er følger Google API Services User Data Policy, inkludert kravene til begrenset bruk (Limited Use). Google-data brukes bare til å levere funksjonene du ser i Hytte. Hytte bruker dem ikke til reklame og ikke til å utvikle eller trene KI-modeller."
+    },
+    "rights": {
+      "title": "Dine valg",
+      "body": "Under Innstillinger kan du laste ned en kopi av dataene dine og slette kontoen din, som fjerner dataene dine fra Hytte. Du kan når som helst trekke tilbake Hyttes tilgang til Google-kontoen din på myaccount.google.com/permissions."
+    },
+    "contact": {
+      "title": "Kontakt",
+      "body": "Spørsmål rettes til eieren, på support-e-postadressen som vises på Googles innloggingsskjerm for Hytte."
+    }
+  }
+}

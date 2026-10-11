@@ -97,7 +97,8 @@
     "collapseSidebar": "ยุบแถบด้านข้าง",
     "openMenu": "เปิดเมนู",
     "signIn": "เข้าสู่ระบบ",
-    "signOut": "ออกจากระบบ"
+    "signOut": "ออกจากระบบ",
+    "privacy": "ความเป็นส่วนตัว"
   },
   "time": {
     "justNow": "เมื่อกี้",

@@ -5,6 +5,7 @@ import FeatureRoute from './components/FeatureRoute'
 import KioskPage from './pages/KioskPage'
 import HomePage from './pages/HomePage'
 import Login from './pages/Login'
+import PrivacyPage from './pages/PrivacyPage'
 import Settings from './pages/Settings'
 import Weather from './pages/Weather'
 import CalendarPage from './pages/CalendarPage'
@@ -110,6 +111,7 @@ function MainLayout() {
           <Route path="/today" element={<Navigate to="/" replace />} />
           <Route path="/dashboard" element={<Navigate to="/" replace />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/weather" element={<Weather />} />
 
           {/* Feature-gated routes */}

@@ -97,7 +97,8 @@
     "collapseSidebar": "Collapse sidebar",
     "openMenu": "Open menu",
     "signIn": "Sign in",
-    "signOut": "Sign out"
+    "signOut": "Sign out",
+    "privacy": "Privacy"
   },
   "time": {
     "justNow": "just now",
