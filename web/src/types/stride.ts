@@ -69,6 +69,42 @@ export interface WeekSummary {
   total_distance_meters?: number
 }
 
+// Race is one entry on the race calendar (GET/POST/PUT/DELETE /api/stride/races).
+export interface Race {
+  id: number
+  user_id: number
+  name: string
+  date: string
+  distance_m: number
+  target_time: number | null
+  priority: 'A' | 'B' | 'C'
+  notes: string
+  result_time: number | null
+  created_at: string
+}
+
+// NoteScope is which coach run a note is meant for: any, nightly or weekly.
+export type NoteScope = 'any' | 'nightly' | 'weekly'
+
+// Note is one coach note (GET/POST/PATCH/DELETE /api/stride/notes). A note is
+// active until a coach run consumes it, after which consumed_at/consumed_by are set.
+export interface Note {
+  id: number
+  user_id: number
+  plan_id: number | null
+  content: string
+  target_date: string
+  consumed_at: string | null
+  consumed_by: string | null
+  scope: NoteScope
+  created_at: string
+}
+
+// StrideMutationResult is what the Stride data hooks answer a write with. On
+// failure, error carries the server's message when it sent one, so the caller
+// can fall back to its own localized text.
+export type StrideMutationResult = { ok: true } | { ok: false; status?: number; error?: string }
+
 // StrideWorkout is one workout-library entry: a reusable session definition
 // the weekly plan generator draws from (GET/POST/PUT /api/stride/workouts).
 export interface StrideWorkout {
