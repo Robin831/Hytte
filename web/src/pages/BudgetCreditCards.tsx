@@ -608,6 +608,44 @@ function MonthlyHistoryView({ creditCardId, currency, t }: MonthlyHistoryViewPro
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
+// Shared GET helpers for the card's month view. Both the full reload and the
+// background refresh after a delete go through these so the URLs and response
+// parsing stay in one place.
+interface CardTransactionsResult {
+  transactions: Transaction[]
+  variableBillName: string | null
+  variableBillAmount: number
+  openingBalance: number
+}
+
+async function fetchCardTransactions(accountId: number, m: string, signal: AbortSignal): Promise<CardTransactionsResult> {
+  const r = await fetch(`/api/credit-card/transactions?credit_card_id=${encodeURIComponent(String(accountId))}&month=${encodeURIComponent(m)}`, {
+    credentials: 'include',
+    signal,
+  })
+  if (!r.ok) throw new Error('failed')
+  const data = await r.json()
+  return {
+    transactions: Array.isArray(data.transactions) ? data.transactions : [],
+    variableBillName: data.variable_bill_name || null,
+    variableBillAmount: data.variable_bill_amount || 0,
+    openingBalance: typeof data.opening_balance === 'number' ? data.opening_balance : 0,
+  }
+}
+
+async function fetchCardSummary(accountId: number, m: string, signal: AbortSignal): Promise<CreditCardSummary> {
+  const r = await fetch(`/api/budget/credit/summary?account_id=${encodeURIComponent(String(accountId))}&month=${encodeURIComponent(m)}`, {
+    credentials: 'include',
+    signal,
+  })
+  if (!r.ok) throw new Error('failed')
+  return r.json()
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError'
+}
+
 export default function BudgetCreditCards() {
   const { t } = useTranslation('budget')
 
@@ -725,18 +763,10 @@ export default function BudgetCreditCards() {
     setLoadingSummary(true)
     setSummary(null)
     setError(null)
-    fetch(`/api/budget/credit/summary?account_id=${encodeURIComponent(accountId)}&month=${encodeURIComponent(m)}`, {
-      credentials: 'include',
-      signal: ctrl.signal,
-    })
-      .then(r => {
-        if (!r.ok) throw new Error('failed')
-        return r.json()
-      })
-      .then((data: CreditCardSummary) => setSummary(data))
+    fetchCardSummary(accountId, m, ctrl.signal)
+      .then(setSummary)
       .catch(err => {
-        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
-        if (!isAbortError) setError(t('creditCards.errors.loadFailed'))
+        if (!isAbortError(err)) setError(t('creditCards.errors.loadFailed'))
       })
       .finally(() => { if (!ctrl.signal.aborted) setLoadingSummary(false) })
     return () => ctrl.abort()
@@ -752,26 +782,16 @@ export default function BudgetCreditCards() {
     setVariableBillAmount(0)
     setOpeningBalance(0)
     setOpeningBalanceInput('')
-    const cardId = String(accountId)
-    fetch(`/api/credit-card/transactions?credit_card_id=${encodeURIComponent(cardId)}&month=${encodeURIComponent(m)}`, {
-      credentials: 'include',
-      signal: ctrl.signal,
-    })
-      .then(r => {
-        if (!r.ok) throw new Error('failed')
-        return r.json()
-      })
-      .then(data => {
-        setTransactions(Array.isArray(data.transactions) ? data.transactions : [])
-        setVariableBillName(data.variable_bill_name || null)
-        setVariableBillAmount(data.variable_bill_amount || 0)
-        const ob = typeof data.opening_balance === 'number' ? data.opening_balance : 0
-        setOpeningBalance(ob)
-        setOpeningBalanceInput(String(ob === 0 ? '' : ob))
+    fetchCardTransactions(accountId, m, ctrl.signal)
+      .then(res => {
+        setTransactions(res.transactions)
+        setVariableBillName(res.variableBillName)
+        setVariableBillAmount(res.variableBillAmount)
+        setOpeningBalance(res.openingBalance)
+        setOpeningBalanceInput(String(res.openingBalance === 0 ? '' : res.openingBalance))
       })
       .catch(err => {
-        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
-        if (!isAbortError) setTxnsError(t('creditCards.errors.loadTransactionsFailed'))
+        if (!isAbortError(err)) setTxnsError(t('creditCards.errors.loadTransactionsFailed'))
       })
       .finally(() => { if (!ctrl.signal.aborted) setLoadingTxns(false) })
     return () => ctrl.abort()
@@ -950,44 +970,29 @@ export default function BudgetCreditCards() {
   // keeps the current rows and summary on screen until the response arrives
   // and leaves the opening balance (and any unsaved input) alone, since a
   // delete never changes it. Responses are dropped if the selection moved on.
+  // A failed refresh is only logged: the delete itself succeeded and the
+  // locally filtered rows are still correct, so they stay visible.
   const refreshAfterDelete = useCallback((accountId: number, m: string) => {
     const ctrl = new AbortController()
     const isCurrent = () =>
       !ctrl.signal.aborted && currentSelectedIdRef.current === accountId && currentMonthRef.current === m
-    const query = `month=${encodeURIComponent(m)}`
-    fetch(`/api/credit-card/transactions?credit_card_id=${encodeURIComponent(String(accountId))}&${query}`, {
-      credentials: 'include',
-      signal: ctrl.signal,
-    })
-      .then(r => {
-        if (!r.ok) throw new Error('failed')
-        return r.json()
-      })
-      .then(data => {
+    fetchCardTransactions(accountId, m, ctrl.signal)
+      .then(res => {
         if (!isCurrent()) return
-        setTransactions(Array.isArray(data.transactions) ? data.transactions : [])
-        setVariableBillName(data.variable_bill_name || null)
-        setVariableBillAmount(data.variable_bill_amount || 0)
+        setTransactions(res.transactions)
+        setVariableBillName(res.variableBillName)
+        setVariableBillAmount(res.variableBillAmount)
       })
       .catch(err => {
-        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
-        if (!isAbortError && isCurrent()) setTxnsError(t('creditCards.errors.loadTransactionsFailed'))
+        if (!isAbortError(err)) console.error('Failed to refresh transactions after delete:', err)
       })
-    fetch(`/api/budget/credit/summary?account_id=${encodeURIComponent(accountId)}&${query}`, {
-      credentials: 'include',
-      signal: ctrl.signal,
-    })
-      .then(r => {
-        if (!r.ok) throw new Error('failed')
-        return r.json()
-      })
-      .then((data: CreditCardSummary) => { if (isCurrent()) setSummary(data) })
+    fetchCardSummary(accountId, m, ctrl.signal)
+      .then(data => { if (isCurrent()) setSummary(data) })
       .catch(err => {
-        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
-        if (!isAbortError && isCurrent()) setError(t('creditCards.errors.loadFailed'))
+        if (!isAbortError(err)) console.error('Failed to refresh summary after delete:', err)
       })
     return () => ctrl.abort()
-  }, [t])
+  }, [])
 
   const handleDeleteTransaction = useCallback(async (txId: number) => {
     // Capture the selection the delete was issued from; the user may switch

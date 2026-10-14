@@ -965,6 +965,34 @@ describe('BudgetCreditCards – delete transaction', () => {
     expect(screen.getByDisplayValue('1234')).toBeInTheDocument()
   })
 
+  it('keeps the remaining rows when the background refresh after delete fails', async () => {
+    const { fn: base, calls } = makeDeleteFetchMock(true)
+    const fn = vi.fn((url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET'
+      const deleted = calls.some(c => c.method === 'DELETE')
+      if (deleted && method === 'GET' && url.includes('/api/credit-card/transactions?')) {
+        calls.push({ url, method })
+        return Promise.reject(new TypeError('network down'))
+      }
+      return base(url, init)
+    })
+    vi.stubGlobal('fetch', fn)
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await openDeleteDialogForRema()
+
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole('dialog')).getByText('Delete'))
+    })
+
+    await waitFor(() => {
+      expect(consoleError).toHaveBeenCalledWith('Failed to refresh transactions after delete:', expect.any(TypeError))
+    })
+    expect(screen.queryByText('Failed to load transactions.')).not.toBeInTheDocument()
+    expect(screen.getByText('Pending Charge')).toBeInTheDocument()
+    expect(screen.queryByText('Rema 1000')).not.toBeInTheDocument()
+    consoleError.mockRestore()
+  })
+
   it('does not reload the old month when the month changes while DELETE is in flight', async () => {
     const calls: Call[] = []
     let resolveDelete: (r: Response) => void = () => {}
@@ -977,12 +1005,17 @@ describe('BudgetCreditCards – delete transaction', () => {
       if (url.includes('/api/budget/accounts')) return respond({ accounts: [ACCOUNT] })
       if (url.includes('/api/credit-card/groups')) return respond(GROUPS)
       if (url.includes('/api/budget/credit/summary')) return respond(BEFORE_SUMMARY)
-      if (url.includes('/api/credit-card/transactions?')) return respond(BEFORE_TXNS)
+      if (url.includes('/api/credit-card/transactions?')) {
+        // Only the starting month has Rema 1000; any other month returns
+        // different rows, so a stale old-month response would be visible.
+        firstMonthUrl ??= url
+        return respond(url === firstMonthUrl ? BEFORE_TXNS : AFTER_TXNS)
+      }
       return respond({})
     })
+    let firstMonthUrl: string | undefined
     vi.stubGlobal('fetch', fn)
     await openDeleteDialogForRema()
-    const firstMonthUrl = calls.find(c => c.url.includes('/api/credit-card/transactions?'))!.url
 
     await act(async () => {
       fireEvent.click(within(screen.getByRole('dialog')).getByText('Delete'))
@@ -993,6 +1026,10 @@ describe('BudgetCreditCards – delete transaction', () => {
     await waitFor(() => {
       expect(calls.filter(c => c.url.includes('/api/credit-card/transactions?') && c.url !== firstMonthUrl).length).toBe(1)
     })
+    await waitFor(() => {
+      expect(screen.getByText('Pending Charge')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Rema 1000')).not.toBeInTheDocument()
     const getsBefore = calls.filter(c => c.method === 'GET').length
 
     await act(async () => {
@@ -1000,8 +1037,9 @@ describe('BudgetCreditCards – delete transaction', () => {
     })
 
     expect(calls.filter(c => c.method === 'GET').length).toBe(getsBefore)
-    // The new month's rows stay; the old month's response never replaces them.
-    expect(screen.getByText('Rema 1000')).toBeInTheDocument()
+    // The new month's rows stay; the old month's rows (with Rema 1000) never come back.
+    expect(screen.getByText('Pending Charge')).toBeInTheDocument()
+    expect(screen.queryByText('Rema 1000')).not.toBeInTheDocument()
   })
 
   it('shows the delete error and does not reload when DELETE fails', async () => {
