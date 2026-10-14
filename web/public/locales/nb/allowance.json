@@ -33,6 +33,20 @@
     "close": "Lukk",
     "refresh": "Oppdater"
   },
+  "toast": {
+    "approved": "Oppgave godkjent",
+    "undo": "Angre",
+    "undoSuccess_one": "Godkjenning angret",
+    "undoSuccess_other": "{{count}} godkjenninger angret",
+    "undoPartial": "{{undone}} angret, {{failed}} kunne ikke angres: {{reason}}",
+    "undoFailed": "Kunne ikke angre: {{reason}}",
+    "undoReason": {
+      "weekPaid": "uken er allerede utbetalt",
+      "notApproved": "den er ikke lenger godkjent",
+      "notFound": "fullføringen finnes ikke lenger",
+      "generic": "noe gikk galt"
+    }
+  },
   "bulk": {
     "select": "Velg",
     "cancelSelection": "Avbryt",
@@ -45,12 +59,7 @@
       "approved": "{{succeeded}} godkjent",
       "rejected": "{{succeeded}} avvist",
       "approvedPartial": "{{succeeded}} godkjent, {{failed}} mislyktes",
-      "rejectedPartial": "{{succeeded}} avvist, {{failed}} mislyktes",
-      "undo": "Angre",
-      "undoSuccess_one": "Godkjenning angret",
-      "undoSuccess_other": "{{count}} godkjenninger angret",
-      "undoFailed": "Kunne ikke angre: {{error}}",
-      "undoFailedGeneric": "Noe gikk galt"
+      "rejectedPartial": "{{succeeded}} avvist, {{failed}} mislyktes"
     }
   },
   "form": {

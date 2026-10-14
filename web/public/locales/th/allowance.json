@@ -33,6 +33,20 @@
     "close": "ปิด",
     "refresh": "รีเฟรช"
   },
+  "toast": {
+    "approved": "อนุมัติงานแล้ว",
+    "undo": "เลิกทำ",
+    "undoSuccess_one": "ยกเลิกการอนุมัติแล้ว {{count}} รายการ",
+    "undoSuccess_other": "ยกเลิกการอนุมัติแล้ว {{count}} รายการ",
+    "undoPartial": "ยกเลิกแล้ว {{undone}} รายการ, ยกเลิกไม่ได้ {{failed}} รายการ: {{reason}}",
+    "undoFailed": "ไม่สามารถเลิกทำได้: {{reason}}",
+    "undoReason": {
+      "weekPaid": "สัปดาห์นี้จ่ายเงินไปแล้ว",
+      "notApproved": "รายการนี้ไม่ได้อยู่ในสถานะอนุมัติแล้ว",
+      "notFound": "ไม่พบรายการนี้แล้ว",
+      "generic": "เกิดข้อผิดพลาด"
+    }
+  },
   "bulk": {
     "select": "เลือก",
     "cancelSelection": "ยกเลิก",
@@ -45,12 +59,7 @@
       "approved": "อนุมัติแล้ว {{succeeded}} รายการ",
       "rejected": "ปฏิเสธแล้ว {{succeeded}} รายการ",
       "approvedPartial": "อนุมัติแล้ว {{succeeded}} รายการ, ล้มเหลว {{failed}} รายการ",
-      "rejectedPartial": "ปฏิเสธแล้ว {{succeeded}} รายการ, ล้มเหลว {{failed}} รายการ",
-      "undo": "เลิกทำ",
-      "undoSuccess_one": "ยกเลิกการอนุมัติแล้ว {{count}} รายการ",
-      "undoSuccess_other": "ยกเลิกการอนุมัติแล้ว {{count}} รายการ",
-      "undoFailed": "ไม่สามารถเลิกทำได้: {{error}}",
-      "undoFailedGeneric": "เกิดข้อผิดพลาด"
+      "rejectedPartial": "ปฏิเสธแล้ว {{succeeded}} รายการ, ล้มเหลว {{failed}} รายการ"
     }
   },
   "form": {

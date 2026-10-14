@@ -29,6 +29,19 @@ function fetchPendingDeduped(): Promise<{ pending: CompletionWithDetails[] }> {
 /** How long approve toasts stay up so the parent has time to hit Undo. */
 const UNDO_TOAST_DURATION_MS = 10000
 
+/**
+ * Maps the (English) error text from the unapprove endpoints to a translated
+ * reason key, so nb/th parents never see raw backend strings.
+ */
+function undoFailureReasonKey(serverError: string) {
+  switch (serverError) {
+    case 'week has already been paid out': return 'toast.undoReason.weekPaid' as const
+    case 'completion is not approved': return 'toast.undoReason.notApproved' as const
+    case 'completion not found': return 'toast.undoReason.notFound' as const
+    default: return 'toast.undoReason.generic' as const
+  }
+}
+
 /** Per-ID outcome returned by the batch approve/reject/unapprove endpoints. */
 interface BatchCompletionResult {
   id: number
@@ -363,21 +376,25 @@ export default function AllowancePage() {
       if (!res.ok) throw new Error()
       setPending(prev => prev.filter(c => c.id !== id))
       payoutsFetch.invalidate()
-      showToast(t('bulk.toast.approved', { succeeded: 1 }), 'success', {
-        action: { label: t('bulk.toast.undo'), onClick: () => { void undoApprove([id]) } },
-        durationMs: UNDO_TOAST_DURATION_MS,
-      })
+      showToast(t('toast.approved'), 'success', undoToastOptions([id]))
     } catch {
       setActionError(t('errors.actionFailed'))
     }
   }
+
+  // Toast options shared by single and batch approve so the Undo label,
+  // duration and handler can't drift apart.
+  const undoToastOptions = (ids: number[]) => ({
+    action: { label: t('toast.undo'), onClick: () => { void undoApprove(ids) } },
+    durationMs: UNDO_TOAST_DURATION_MS,
+  })
 
   // Moves approved completions back to pending. The toast's action button
   // dismisses the toast itself (ToastList onDismiss), so only the outcome is shown here.
   const undoApprove = async (ids: number[]) => {
     if (ids.length === 0) return
     let undone = 0
-    let failed = false
+    let notUndone = 0
     let serverError = ''
     try {
       const res = ids.length === 1
@@ -392,7 +409,7 @@ export default function AllowancePage() {
         | (Partial<BatchCompletionResponse> & { error?: string })
         | null
       if (!res.ok) {
-        failed = true
+        notUndone = ids.length
         serverError = data?.error ?? ''
       } else if (ids.length === 1) {
         undone = 1
@@ -400,24 +417,24 @@ export default function AllowancePage() {
         const results = data?.results ?? []
         undone = data?.succeeded ?? results.filter(r => r.status === 'unapproved').length
         const failures = results.filter(r => r.status !== 'unapproved')
-        if ((data?.failed ?? failures.length) > 0) {
-          failed = true
-          serverError = failures.find(r => r.error)?.error ?? ''
-        }
+        notUndone = data?.failed ?? failures.length
+        serverError = failures.find(r => r.error)?.error ?? ''
       }
     } catch {
-      failed = true
+      notUndone = ids.length
     } finally {
       pendingFetch.reload()
       payoutsFetch.invalidate()
     }
-    if (failed) {
-      showToast(
-        t('bulk.toast.undoFailed', { error: serverError || t('bulk.toast.undoFailedGeneric') }),
-        'error',
-      )
+    if (notUndone === 0) {
+      showToast(t('toast.undoSuccess', { count: undone }), 'success')
+      return
+    }
+    const reason = t(undoFailureReasonKey(serverError))
+    if (undone > 0) {
+      showToast(t('toast.undoPartial', { undone, failed: notUndone, reason }), 'warning')
     } else {
-      showToast(t('bulk.toast.undoSuccess', { count: undone }), 'success')
+      showToast(t('toast.undoFailed', { reason }), 'error')
     }
   }
 
@@ -524,12 +541,7 @@ export default function AllowancePage() {
       const failed = data.failed ?? 0
       // Undo is offered only for approvals, scoped to the IDs that actually went through.
       const approvedIds = action === 'approve' ? [...resolvedIds] : []
-      const undoOptions = approvedIds.length > 0
-        ? {
-          action: { label: t('bulk.toast.undo'), onClick: () => { void undoApprove(approvedIds) } },
-          durationMs: UNDO_TOAST_DURATION_MS,
-        }
-        : undefined
+      const undoOptions = approvedIds.length > 0 ? undoToastOptions(approvedIds) : undefined
       if (failed > 0) {
         showToast(
           action === 'approve'
