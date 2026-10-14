@@ -139,6 +139,10 @@ func sessionMinutes(s WorkSession) (int, error) {
 //	net     = gross - deduct  (clamped to 0)
 //	reported = floor(net / rounding) * rounding
 //	remainder = net - reported  → goes to flex pool
+//
+// A TypeScript mirror exists at web/src/pages/workhours/calculateDay.ts; the
+// two must change together (its test file replays the cases in
+// calculator_test.go).
 func CalculateDay(day WorkDay, settings UserSettings) (DaySummary, error) {
 	rounding := settings.RoundingMinutes
 	if rounding <= 0 {
