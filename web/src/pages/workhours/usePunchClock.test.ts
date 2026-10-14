@@ -2,7 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act, waitFor } from '@testing-library/react'
 import { usePunchClock } from './usePunchClock'
-import { DEFAULT_WORK_SETTINGS } from '../calculateDay'
+import { DEFAULT_WORK_SETTINGS } from './calculateDay'
 
 const stableT = (key: string) => key
 
@@ -98,6 +98,23 @@ describe('usePunchClock', () => {
     expect(result.current.openPunch).toEqual({ start: '12:00', date: TODAY })
   })
 
+  it('toggle does nothing while blocked', async () => {
+    const fetchMock = stubFetch({
+      'GET /api/workhours/punch-session': noPunch,
+      'POST /api/workhours/punch-in': () => Promise.resolve(jsonResponse({})),
+    })
+    let blocked = true
+    const { result } = renderHook(() => usePunchClock({ date: TODAY, setDate: vi.fn(), blocked: () => blocked }))
+    await waitFor(() => expect(calls(fetchMock, 'GET', '/api/workhours/punch-session')).toHaveLength(1))
+
+    act(() => { result.current.toggle() })
+    expect(calls(fetchMock, 'POST', '/api/workhours/punch-in')).toHaveLength(0)
+
+    blocked = false
+    await act(async () => { result.current.toggle() })
+    expect(calls(fetchMock, 'POST', '/api/workhours/punch-in')).toHaveLength(1)
+  })
+
   it('calls onChanged after a punch-out and moves to the saved date', async () => {
     stubFetch({
       'GET /api/workhours/punch-session': openPunchAt('08:00'),
@@ -110,6 +127,7 @@ describe('usePunchClock', () => {
 
     await act(async () => { await result.current.punchOut() })
     expect(onChanged).toHaveBeenCalledTimes(1)
+    expect(onChanged).toHaveBeenCalledWith({ day: null, summary: null, date: '2026-04-16' })
     expect(setDate).toHaveBeenCalledWith('2026-04-16')
     expect(result.current.openPunch).toBeNull()
   })

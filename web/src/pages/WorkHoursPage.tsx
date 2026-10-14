@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Settings } from 'lucide-react'
 import { buildNavHolidaySet, getInitialDate, localDateStr, prevWeekday, nextWeekday } from './workhours/dateUtils'
@@ -7,7 +7,8 @@ import DayView from './workhours/views/DayView'
 import WeekView from './workhours/views/WeekView'
 import MonthView from './workhours/views/MonthView'
 import SettingsView from './workhours/views/SettingsView'
-import { usePunchClock } from './workhours/hooks/usePunchClock'
+import { usePunchClock } from './workhours/usePunchClock'
+import type { PunchOutResult } from './workhours/useWorkHoursApi'
 import { WorkHoursShortcutsDialog } from '../components/WorkHoursShortcutsDialog'
 
 export default function WorkHoursPage() {
@@ -17,12 +18,17 @@ export default function WorkHoursPage() {
     getInitialDate(buildNavHolidaySet(new Date().getFullYear()))
   )
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
-  // Bumped after a punch-out saves a session so DayView reloads the day.
-  const [punchVersion, setPunchVersion] = useState(0)
+  // The latest punch-out response; DayView shows its saved day and reloads flex.
+  const [lastPunchOut, setLastPunchOut] = useState<PunchOutResult | null>(null)
+  // Whether DayView has a day edit in flight; the punch shortcut waits for it
+  // just like the punch buttons do.
+  const dayBusyRef = useRef(false)
+  const setDayBusy = useCallback((busy: boolean) => { dayBusyRef.current = busy }, [])
   const punch = usePunchClock({
     date: currentDate,
     setDate: setCurrentDate,
-    onChanged: () => setPunchVersion(v => v + 1),
+    onChanged: setLastPunchOut,
+    blocked: () => dayBusyRef.current,
   })
   const punchToggle = punch.toggle
 
@@ -164,7 +170,7 @@ export default function WorkHoursPage() {
       </div>
 
       {activeTab === 'day' && (
-        <DayView currentDate={currentDate} setCurrentDate={setCurrentDate} onNavigateToSettings={() => setActiveTab('settings')} punch={punch} punchVersion={punchVersion} />
+        <DayView currentDate={currentDate} setCurrentDate={setCurrentDate} onNavigateToSettings={() => setActiveTab('settings')} punch={punch} lastPunchOut={lastPunchOut} onBusyChange={setDayBusy} />
       )}
       {activeTab === 'week' && (
         <WeekView currentDate={currentDate} setCurrentDate={setCurrentDate} onSelectDay={handleSelectDay} />

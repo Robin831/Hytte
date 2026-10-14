@@ -24,8 +24,8 @@ import {
   prevWeekday,
 } from '../dateUtils'
 import { normalizePresetIcon } from '../presetIcons'
-import { SessionConflict, useWorkHoursApi } from '../useWorkHoursApi'
-import type { PunchClock } from '../hooks/usePunchClock'
+import { SessionConflict, useWorkHoursApi, type PunchOutResult } from '../useWorkHoursApi'
+import type { PunchClock } from '../usePunchClock'
 
 type ConflictCause = 'save' | 'toggle' | 'copy'
 
@@ -40,14 +40,17 @@ export default function DayView({
   setCurrentDate,
   onNavigateToSettings,
   punch,
-  punchVersion,
+  lastPunchOut,
+  onBusyChange,
 }: {
   currentDate: string
   setCurrentDate: (d: string | ((prev: string) => string)) => void
   onNavigateToSettings: () => void
   punch: PunchClock
-  /** Bumped by the page after a punch-out saves a session; triggers a reload. */
-  punchVersion: number
+  /** The latest punch-out response from the page's punch clock; applied when it changes. */
+  lastPunchOut: PunchOutResult | null
+  /** Reports whether a day edit is saving, so the page's punch shortcut can wait for it. */
+  onBusyChange: (busy: boolean) => void
 }) {
   const { t } = useTranslation(['workhours', 'common'])
   const api = useWorkHoursApi()
@@ -219,14 +222,23 @@ export default function DayView({
     return () => controller.abort()
   }, [currentDate, loadDay, loadLeaveDay])
 
-  // A punch-out saved a session (possibly on this day); reload the day and flex.
-  const seenPunchVersionRef = useRef(punchVersion)
+  // A punch-out saved a session; show the saved day and reload flex. When it
+  // landed on another day the clock has already moved the view there, and
+  // the ref effect above has caught up by the time this runs.
+  const seenPunchOutRef = useRef(lastPunchOut)
   useEffect(() => {
-    if (seenPunchVersionRef.current === punchVersion) return
-    seenPunchVersionRef.current = punchVersion
-    loadDay(currentDateRef.current)
+    if (!lastPunchOut || seenPunchOutRef.current === lastPunchOut) return
+    seenPunchOutRef.current = lastPunchOut
+    if (lastPunchOut.date === currentDateRef.current) {
+      setDayData({ day: lastPunchOut.day, summary: lastPunchOut.summary })
+    }
     loadFlex()
-  }, [punchVersion, loadDay, loadFlex])
+  }, [lastPunchOut, loadFlex])
+
+  useEffect(() => {
+    onBusyChange(saving)
+    return () => onBusyChange(false)
+  }, [saving, onBusyChange])
 
   const ensureDay = async (lunch?: boolean): Promise<WorkDay | null> => {
     const targetDate = currentDate
@@ -833,9 +845,7 @@ export default function DayView({
               </div>
             </div>
 
-            {/* The estimate mixes the viewed day's sessions and deductions into the
-                open punch's elapsed time, so it is only meaningful on the day the
-                punch-in itself belongs to. */}
+            {/* Null off the punch-in's own day; see usePunchClock's liveEstimate. */}
             {liveEstimate && (() => {
               if (liveEstimate.kind !== 'estimate') {
                 // A punch-in that has been open for longer than the allowed

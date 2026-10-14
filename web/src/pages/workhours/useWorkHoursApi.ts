@@ -73,7 +73,7 @@ interface PresetUpdate extends PresetInput {
   active: boolean
 }
 
-interface PunchOutResult {
+export interface PunchOutResult {
   day: WorkDay | null
   summary: DaySummary | null
   date: string

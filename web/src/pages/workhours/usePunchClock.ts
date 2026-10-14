@@ -6,10 +6,10 @@ import {
   isPunchStale,
   liveSegmentMinutes,
   type DaySummaryCalc,
-} from '../calculateDay'
-import type { WorkDeduction, WorkSession, WorkSettings } from '../types'
-import { currentTimeHHMM } from '../dateUtils'
-import { useWorkHoursApi } from '../useWorkHoursApi'
+} from './calculateDay'
+import type { WorkDeduction, WorkSession, WorkSettings } from './types'
+import { currentTimeHHMM } from './dateUtils'
+import { useWorkHoursApi, type PunchOutResult } from './useWorkHoursApi'
 
 /** An in-progress punch-in. */
 export interface OpenPunch {
@@ -45,8 +45,17 @@ export interface UsePunchClockOptions {
   date: string
   /** Moves the view to another day (a restored or punched-out session's date). */
   setDate: (date: string) => void
-  /** Called after a punch-out has saved a session, so the day and flex can reload. */
-  onChanged?: () => void
+  /**
+   * Called after a punch-out has saved a session with the server's response
+   * (the saved day and its summary), so the day view can show it and reload flex.
+   */
+  onChanged?: (result: PunchOutResult) => void
+  /**
+   * True while something else is saving that a toggle must not race, such as
+   * a day edit in the day view. The punch buttons are disabled then; this
+   * makes the keyboard toggle wait too.
+   */
+  blocked?: () => boolean
 }
 
 /**
@@ -54,7 +63,7 @@ export interface UsePunchClockOptions {
  * the live "if punched out now" estimate. Called once by WorkHoursPage so the
  * keyboard shortcut and the day view share the same state.
  */
-export function usePunchClock({ date, setDate, onChanged }: UsePunchClockOptions) {
+export function usePunchClock({ date, setDate, onChanged, blocked }: UsePunchClockOptions) {
   const { t } = useTranslation(['workhours', 'common'])
   const api = useWorkHoursApi()
 
@@ -69,11 +78,13 @@ export function usePunchClock({ date, setDate, onChanged }: UsePunchClockOptions
   const dateRef = useRef(date)
   const setDateRef = useRef(setDate)
   const onChangedRef = useRef(onChanged)
+  const blockedRef = useRef(blocked)
 
   useEffect(() => {
     dateRef.current = date
     setDateRef.current = setDate
     onChangedRef.current = onChanged
+    blockedRef.current = blocked
   })
 
   const markSaving = useCallback((value: boolean) => {
@@ -170,7 +181,7 @@ export function usePunchClock({ date, setDate, onChanged }: UsePunchClockOptions
         if (data.date !== dateRef.current) {
           setDateRef.current(data.date)
         }
-        onChangedRef.current?.()
+        onChangedRef.current?.(data)
       } else {
         alert(t('workhours:punchSaveError'))
       }
@@ -203,7 +214,7 @@ export function usePunchClock({ date, setDate, onChanged }: UsePunchClockOptions
   }, [api, openPunch])
 
   const toggle = useCallback(() => {
-    if (savingRef.current) return
+    if (savingRef.current || blockedRef.current?.()) return
     if (openPunch === null) punchIn()
     else punchOut()
   }, [openPunch, punchIn, punchOut])
@@ -212,8 +223,9 @@ export function usePunchClock({ date, setDate, onChanged }: UsePunchClockOptions
    * The "if punched out now" totals for the viewed day, or null when there is
    * nothing to estimate: no open punch, or the punch belongs to another day
    * (the viewed day's sessions plus its elapsed time would describe neither).
+   * Recomputed on every call; it is cheap enough to run on each render.
    */
-  const liveEstimate = useCallback((input: LiveEstimateInput): LiveEstimate | null => {
+  const liveEstimate = (input: LiveEstimateInput): LiveEstimate | null => {
     if (!openPunch) return null
     if (openPunch.date !== null && openPunch.date !== date) return null
     // The live segment is null when it cannot be measured (stale punch-in,
@@ -239,7 +251,7 @@ export function usePunchClock({ date, setDate, onChanged }: UsePunchClockOptions
     } catch {
       return { kind: 'invalid' }
     }
-  }, [openPunch, date, now])
+  }
 
   return { openPunch, saving, punchIn, punchOut, cancelPunch, editStart, toggle, liveEstimate }
 }
