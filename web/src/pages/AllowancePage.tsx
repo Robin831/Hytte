@@ -26,10 +26,13 @@ function fetchPendingDeduped(): Promise<{ pending: CompletionWithDetails[] }> {
   return pendingInFlight
 }
 
-/** Per-ID outcome returned by the batch approve/reject endpoints. */
+/** How long approve toasts stay up so the parent has time to hit Undo. */
+const UNDO_TOAST_DURATION_MS = 10000
+
+/** Per-ID outcome returned by the batch approve/reject/unapprove endpoints. */
 interface BatchCompletionResult {
   id: number
-  status: 'approved' | 'rejected' | 'skipped' | 'error'
+  status: 'approved' | 'rejected' | 'unapproved' | 'skipped' | 'error'
   error?: string
 }
 
@@ -244,7 +247,7 @@ export default function AllowancePage() {
   const [recordChore, setRecordChore] = useState<Chore | null>(null)
   const [familyChildren, setFamilyChildren] = useState<{ child_id: number; nickname: string; avatar_emoji: string }[]>([])
   const [familyChildrenLoaded, setFamilyChildrenLoaded] = useState(false)
-  const { toasts, showToast } = useToast()
+  const { toasts, showToast, dismissToast } = useToast()
 
   // Action error feedback
   const [actionError, setActionError] = useState('')
@@ -360,8 +363,61 @@ export default function AllowancePage() {
       if (!res.ok) throw new Error()
       setPending(prev => prev.filter(c => c.id !== id))
       payoutsFetch.invalidate()
+      showToast(t('bulk.toast.approved', { succeeded: 1 }), 'success', {
+        action: { label: t('bulk.toast.undo'), onClick: () => { void undoApprove([id]) } },
+        durationMs: UNDO_TOAST_DURATION_MS,
+      })
     } catch {
       setActionError(t('errors.actionFailed'))
+    }
+  }
+
+  // Moves approved completions back to pending. The toast's action button
+  // dismisses the toast itself (ToastList onDismiss), so only the outcome is shown here.
+  const undoApprove = async (ids: number[]) => {
+    if (ids.length === 0) return
+    let undone = 0
+    let failed = false
+    let serverError = ''
+    try {
+      const res = ids.length === 1
+        ? await fetch(`/api/allowance/unapprove/${ids[0]}`, { method: 'POST', credentials: 'include' })
+        : await fetch('/api/allowance/unapprove/batch', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        })
+      const data = await res.json().catch(() => null) as
+        | (Partial<BatchCompletionResponse> & { error?: string })
+        | null
+      if (!res.ok) {
+        failed = true
+        serverError = data?.error ?? ''
+      } else if (ids.length === 1) {
+        undone = 1
+      } else {
+        const results = data?.results ?? []
+        undone = data?.succeeded ?? results.filter(r => r.status === 'unapproved').length
+        const failures = results.filter(r => r.status !== 'unapproved')
+        if ((data?.failed ?? failures.length) > 0) {
+          failed = true
+          serverError = failures.find(r => r.error)?.error ?? ''
+        }
+      }
+    } catch {
+      failed = true
+    } finally {
+      pendingFetch.reload()
+      payoutsFetch.invalidate()
+    }
+    if (failed) {
+      showToast(
+        t('bulk.toast.undoFailed', { error: serverError || t('bulk.toast.undoFailedGeneric') }),
+        'error',
+      )
+    } else {
+      showToast(t('bulk.toast.undoSuccess', { count: undone }), 'success')
     }
   }
 
@@ -466,12 +522,21 @@ export default function AllowancePage() {
 
       const succeeded = data.succeeded ?? resolvedIds.size
       const failed = data.failed ?? 0
+      // Undo is offered only for approvals, scoped to the IDs that actually went through.
+      const approvedIds = action === 'approve' ? [...resolvedIds] : []
+      const undoOptions = approvedIds.length > 0
+        ? {
+          action: { label: t('bulk.toast.undo'), onClick: () => { void undoApprove(approvedIds) } },
+          durationMs: UNDO_TOAST_DURATION_MS,
+        }
+        : undefined
       if (failed > 0) {
         showToast(
           action === 'approve'
             ? t('bulk.toast.approvedPartial', { succeeded, failed })
             : t('bulk.toast.rejectedPartial', { succeeded, failed }),
           'warning',
+          undoOptions,
         )
       } else {
         showToast(
@@ -479,6 +544,7 @@ export default function AllowancePage() {
             ? t('bulk.toast.approved', { succeeded })
             : t('bulk.toast.rejected', { succeeded }),
           'success',
+          undoOptions,
         )
         setSelectionMode(false)
       }
@@ -1668,7 +1734,7 @@ export default function AllowancePage() {
         minTeamSize={recordChore?.min_team_size ?? 2}
         children={familyChildren}
       />
-      <ToastList toasts={toasts} />
+      <ToastList toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }

@@ -45,7 +45,12 @@
       "approved": "{{succeeded}} approved",
       "rejected": "{{succeeded}} rejected",
       "approvedPartial": "{{succeeded}} approved, {{failed}} failed",
-      "rejectedPartial": "{{succeeded}} rejected, {{failed}} failed"
+      "rejectedPartial": "{{succeeded}} rejected, {{failed}} failed",
+      "undo": "Undo",
+      "undoSuccess_one": "Approval undone",
+      "undoSuccess_other": "{{count}} approvals undone",
+      "undoFailed": "Could not undo: {{error}}",
+      "undoFailedGeneric": "Something went wrong"
     }
   },
   "form": {

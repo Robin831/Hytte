@@ -45,7 +45,12 @@
       "approved": "อนุมัติแล้ว {{succeeded}} รายการ",
       "rejected": "ปฏิเสธแล้ว {{succeeded}} รายการ",
       "approvedPartial": "อนุมัติแล้ว {{succeeded}} รายการ, ล้มเหลว {{failed}} รายการ",
-      "rejectedPartial": "ปฏิเสธแล้ว {{succeeded}} รายการ, ล้มเหลว {{failed}} รายการ"
+      "rejectedPartial": "ปฏิเสธแล้ว {{succeeded}} รายการ, ล้มเหลว {{failed}} รายการ",
+      "undo": "เลิกทำ",
+      "undoSuccess_one": "ยกเลิกการอนุมัติแล้ว {{count}} รายการ",
+      "undoSuccess_other": "ยกเลิกการอนุมัติแล้ว {{count}} รายการ",
+      "undoFailed": "ไม่สามารถเลิกทำได้: {{error}}",
+      "undoFailedGeneric": "เกิดข้อผิดพลาด"
     }
   },
   "form": {

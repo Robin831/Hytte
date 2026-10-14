@@ -45,7 +45,12 @@
       "approved": "{{succeeded}} godkjent",
       "rejected": "{{succeeded}} avvist",
       "approvedPartial": "{{succeeded}} godkjent, {{failed}} mislyktes",
-      "rejectedPartial": "{{succeeded}} avvist, {{failed}} mislyktes"
+      "rejectedPartial": "{{succeeded}} avvist, {{failed}} mislyktes",
+      "undo": "Angre",
+      "undoSuccess_one": "Godkjenning angret",
+      "undoSuccess_other": "{{count}} godkjenninger angret",
+      "undoFailed": "Kunne ikke angre: {{error}}",
+      "undoFailedGeneric": "Noe gikk galt"
     }
   },
   "form": {
