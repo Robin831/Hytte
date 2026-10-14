@@ -1,0 +1,2 @@
+category: Changed
+- **Dependency updates** - Go: chi 5.4.0, golang.org/x/net 0.61.0, golang.org/x/sync 0.24.0, google.golang.org/api 0.303.0. Web: @radix-ui/react-slot 1.5.0, i18next 26.4.4, lucide-react 1.57.0, react-syntax-highlighter 16.1.2, react-window 2.3.4, @types/node 26.6.5, happy-dom 20.14.6, typescript-eslint 8.71.2, vite 8.3.4. The happy-dom 21 major is left for a separate review; TypeScript 7 and vitest 5 were already adopted. (Hytte-jtm71)
