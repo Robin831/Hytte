@@ -1,7 +1,7 @@
 import React, { memo, useEffect } from 'react'
 import { Pencil, Send, Square, X } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { ComposerProps } from './types'
+import type { ChatPageComposerProps } from './types'
 
 // Maximum auto-grow height of the textarea (matches the max-h-40 class).
 const MAX_TEXTAREA_HEIGHT = 160
@@ -16,7 +16,9 @@ function autoGrow(el: HTMLTextAreaElement) {
 // Error line plus the message input: auto-growing textarea, send / stop
 // button and the "editing message" banner. The textarea ref is owned by the
 // parent so it can move focus there (after a send, on edit, on new chat).
-function Composer({
+// Specific to the Chat page (pages/Chat.tsx); the shared composer used by
+// TripChat and Stride's coach thread is ChatComposer in ChatThread.tsx.
+function ChatPageComposer({
   hasConversation,
   value,
   onChange,
@@ -28,7 +30,7 @@ function Composer({
   error,
   onDismissError,
   textareaRef,
-}: ComposerProps) {
+}: ChatPageComposerProps) {
   const { t } = useTranslation('chat')
 
   // Resize textarea when input changes (including programmatic clears)
@@ -127,4 +129,4 @@ function Composer({
   )
 }
 
-export default memo(Composer)
+export default memo(ChatPageComposer)

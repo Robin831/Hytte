@@ -5,11 +5,11 @@ import { useIdSet } from '../hooks/useIdSet'
 import type { Conversation, Message } from '../hooks/useChatStream'
 import ChatHeader from '../components/chat/ChatHeader'
 import ConversationSidebar from '../components/chat/ConversationSidebar'
-import Composer from '../components/chat/Composer'
+import ChatPageComposer from '../components/chat/ChatPageComposer'
 import JumpToLatest from '../components/chat/JumpToLatest'
-import MessageList from '../components/chat/MessageList'
+import ChatPageMessageList from '../components/chat/ChatPageMessageList'
 import { DEFAULT_MODEL } from '../components/chat/ModelSelect'
-import * as chatApi from '../components/chat/api'
+import * as chatApi from './chatApi'
 
 // Distance from the bottom (px) within which the messages view is considered
 // "pinned": new streamed tokens keep the view glued to the latest message.
@@ -26,8 +26,7 @@ export default function Chat() {
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
   // Track every conversation with an in-flight send so concurrent sends in
-  // different conversations don't clobber each other's pending state. Kept
-  // immutably (a fresh Set on each update) so React re-renders fire.
+  // different conversations don't clobber each other's pending state.
   const [sendingConversationIds, addSendingConversation, removeSendingConversation] = useIdSet()
   const [showSidebar, setShowSidebar] = useState(true)
   // Model chosen for the next new conversation (used when none is active).
@@ -426,7 +425,7 @@ export default function Chat() {
         {/* Messages area */}
         <div className="relative flex-1 min-h-0">
         <div ref={scrollContainerRef} className="h-full overflow-y-auto">
-          <MessageList
+          <ChatPageMessageList
             messages={messages}
             hasConversation={activeConversation !== null}
             loading={loadingMessages}
@@ -441,7 +440,7 @@ export default function Chat() {
           {activeConversation && messages.length > 0 && !isPinned && <JumpToLatest onClick={jumpToLatest} />}
         </div>
 
-        <Composer
+        <ChatPageComposer
           hasConversation={activeConversation !== null}
           value={input}
           onChange={setInput}

@@ -1,9 +1,23 @@
-import type { Conversation, Message } from './types'
+import type { Conversation, Message } from '../components/chat/types'
 
 // Thin wrappers around the chat REST endpoints used by the Chat page. Each
 // throws an Error carrying `fallbackError` (or, where `preferServerError` is
 // set, the server's `{"error"}` message) when the response is not OK. The
 // SSE send lives in useChatStream.
+
+async function send(
+  url: string,
+  init: RequestInit,
+  fallbackError: string,
+  preferServerError: boolean,
+): Promise<Response> {
+  const res = await fetch(url, { credentials: 'include', ...init })
+  if (!res.ok) {
+    const data = preferServerError ? await res.json().catch(() => null) : null
+    throw new Error(data?.error || fallbackError)
+  }
+  return res
+}
 
 async function request<T>(
   url: string,
@@ -11,11 +25,7 @@ async function request<T>(
   fallbackError: string,
   preferServerError = false,
 ): Promise<T> {
-  const res = await fetch(url, { credentials: 'include', ...init })
-  if (!res.ok) {
-    const data = preferServerError ? await res.json().catch(() => null) : null
-    throw new Error(data?.error || fallbackError)
-  }
+  const res = await send(url, init, fallbackError, preferServerError)
   return res.json()
 }
 
@@ -62,8 +72,7 @@ export async function updateConversation(
 }
 
 export async function deleteConversation(id: number, fallbackError: string): Promise<void> {
-  const res = await fetch(`/api/chat/conversations/${id}`, { method: 'DELETE', credentials: 'include' })
-  if (!res.ok) throw new Error(fallbackError)
+  await send(`/api/chat/conversations/${id}`, { method: 'DELETE' }, fallbackError, false)
 }
 
 /** Deletes `messageId` and every later message; returns the deleted message. */

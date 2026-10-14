@@ -48,7 +48,9 @@ function makeMessage(id: number, overrides: Partial<Message> = {}): Message {
   }
 }
 
-// Stable callbacks shared by every row, as Chat passes them.
+// Stable callbacks shared by every row, as Chat passes them. This harness
+// only proves MessageRow's memo; Chat.test.tsx checks that Chat and
+// ChatPageMessageList keep older rows' props stable while streaming.
 const onEdit = vi.fn()
 const onRegenerate = vi.fn()
 

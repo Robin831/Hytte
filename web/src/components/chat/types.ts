@@ -43,7 +43,7 @@ export interface ModelSelectProps {
   onChange: (model: string) => void
 }
 
-export interface ComposerProps {
+export interface ChatPageComposerProps {
   /** Whether a conversation is active — the input area only renders then. */
   hasConversation: boolean
   value: string
@@ -59,7 +59,7 @@ export interface ComposerProps {
   textareaRef: RefObject<HTMLTextAreaElement | null>
 }
 
-export interface MessageListProps {
+export interface ChatPageMessageListProps {
   messages: Message[]
   hasConversation: boolean
   loading: boolean

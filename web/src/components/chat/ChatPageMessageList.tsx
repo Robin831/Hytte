@@ -2,13 +2,15 @@ import { memo } from 'react'
 import { Bot, Loader2, Plus } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import MessageRow from './MessageRow'
-import type { MessageListProps } from './types'
+import type { ChatPageMessageListProps } from './types'
 
 // Contents of the scrollable messages pane: the welcome screen, the loading
 // spinner, the empty-thread hint, or the list of memoized message rows. Each
 // row receives only its own message and per-row booleans, so a streamed token
-// re-renders just the row whose message object changed.
-function MessageList({
+// re-renders just the row whose message object changed. Specific to the Chat
+// page (pages/Chat.tsx); the shared list used by TripChat and Stride's coach
+// thread is ChatMessageList in ChatThread.tsx.
+function ChatPageMessageList({
   messages,
   hasConversation,
   loading,
@@ -17,7 +19,7 @@ function MessageList({
   onRegenerate,
   onEdit,
   endRef,
-}: MessageListProps) {
+}: ChatPageMessageListProps) {
   const { t } = useTranslation('chat')
 
   if (!hasConversation) {
@@ -82,4 +84,4 @@ function MessageList({
   )
 }
 
-export default memo(MessageList)
+export default memo(ChatPageMessageList)
