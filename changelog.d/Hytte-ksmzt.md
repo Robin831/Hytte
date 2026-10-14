@@ -1,0 +1,2 @@
+category: Fixed
+- **Chat replies survive switching conversations** - Switching to another conversation mid-reply no longer aborts the reply: it keeps streaming in the background without leaking tokens into the conversation you are viewing, and returning shows the completed answer exactly once. If a background reply fails, the error and your typed message are shown when you return. If the connection drops or you click Stop after the reply has started, the text streamed so far is now saved (with the session and auto-title) instead of being discarded. (Hytte-ksmzt)

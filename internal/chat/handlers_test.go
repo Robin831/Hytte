@@ -3,6 +3,7 @@ package chat
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -836,30 +837,20 @@ func TestStreamMessageHandler_CLIError(t *testing.T) {
 	}
 }
 
-func TestStreamMessageHandler_ClientDisconnect(t *testing.T) {
-	d := setupTestDB(t)
-	if _, err := d.Exec(
-		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true'), (1, 'claude_model', 'claude-sonnet-4-6')`,
-	); err != nil {
-		t.Fatalf("set prefs: %v", err)
-	}
-	convo, err := CreateConversation(d, 1, "", "claude-sonnet-4-6")
-	if err != nil {
-		t.Fatalf("create: %v", err)
-	}
-
-	// Fake stream that observes ctx cancellation: writes one chunk, then
-	// blocks until the caller cancels and returns ctx.Err().
-	var (
-		started sync.WaitGroup
-		seenCtx context.Context
-	)
+// runStreamUntilCancel drives StreamMessageHandler with a fake stream that
+// emits chunks (and a session id), then blocks until the request context is
+// cancelled. It returns once the handler has fully returned.
+func runStreamUntilCancel(t *testing.T, d *sql.DB, convoID int64, chunks []string) {
+	t.Helper()
+	var started sync.WaitGroup
 	started.Add(1)
 
 	orig := runPromptWithSessionStreamFn
-	runPromptWithSessionStreamFn = func(ctx context.Context, _ *training.ClaudeConfig, _, _ string, onChunk func(string), _ func(string)) (string, error) {
-		seenCtx = ctx
-		onChunk("partial")
+	runPromptWithSessionStreamFn = func(ctx context.Context, _ *training.ClaudeConfig, _, _ string, onChunk func(string), onSession func(string)) (string, error) {
+		onSession("sess-disconnect")
+		for _, c := range chunks {
+			onChunk(c)
+		}
 		started.Done()
 		<-ctx.Done()
 		return "", ctx.Err()
@@ -869,10 +860,11 @@ func TestStreamMessageHandler_ClientDisconnect(t *testing.T) {
 	rec := newFlushRecorder()
 	body := `{"content": "Hi"}`
 	reqCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(body))
 	req = req.WithContext(reqCtx)
 	req = withUser(req)
-	req = withURLParam(req, "id", strconv.FormatInt(convo.ID, 10))
+	req = withURLParam(req, "id", strconv.FormatInt(convoID, 10))
 
 	done := make(chan struct{})
 	go func() {
@@ -885,23 +877,116 @@ func TestStreamMessageHandler_ClientDisconnect(t *testing.T) {
 
 	select {
 	case <-done:
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Fatal("handler did not return after context cancel")
 	}
+}
 
-	if seenCtx == nil {
-		t.Fatal("handler never invoked the stream stub")
+func TestStreamMessageHandler_ClientDisconnectAfterTokensPersistsPartial(t *testing.T) {
+	d := setupTestDB(t)
+	if _, err := d.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true'), (1, 'claude_model', 'claude-sonnet-4-6')`,
+	); err != nil {
+		t.Fatalf("set prefs: %v", err)
+	}
+	convo, err := CreateConversation(d, 1, "", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
 	}
 
-	// On client disconnect, no assistant row may be written.
+	// Auto-title runs in a background goroutine; the stub signals once the
+	// title prompt has returned so the test can wait for the title write.
+	titleCalls := make(chan struct{}, 2)
+	origPrompt := runPromptFn
+	runPromptFn = func(ctx context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		defer func() { titleCalls <- struct{}{} }()
+		if ctx.Err() != nil {
+			t.Errorf("auto-title ran on a dead context: %v", ctx.Err())
+		}
+		return "Partial Title", nil
+	}
+	t.Cleanup(func() { runPromptFn = origPrompt })
+
+	runStreamUntilCancel(t, d, convo.ID, []string{"Hello ", "from ", "partial"})
+
+	select {
+	case <-titleCalls:
+	case <-time.After(5 * time.Second):
+		t.Fatal("auto-title never ran after the disconnect")
+	}
+
 	msgs, err := GetMessages(d, convo.ID)
 	if err != nil {
 		t.Fatalf("get messages: %v", err)
 	}
-	for _, m := range msgs {
-		if m.Role == "assistant" {
-			t.Errorf("expected no assistant row on disconnect, found one")
+	if len(msgs) != 2 {
+		t.Fatalf("expected user + assistant rows, got %d", len(msgs))
+	}
+	if msgs[0].Role != "user" || msgs[0].Content != "Hi" {
+		t.Errorf("unexpected user row: %+v", msgs[0])
+	}
+	if msgs[1].Role != "assistant" || msgs[1].Content != "Hello from partial" {
+		t.Errorf("unexpected assistant row: %+v", msgs[1])
+	}
+
+	updated, err := GetConversation(d, convo.ID, 1)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if updated.SessionID != "sess-disconnect" {
+		t.Errorf("expected session id 'sess-disconnect', got %q", updated.SessionID)
+	}
+	// The title update lands just after the prompt returns; poll briefly.
+	deadline := time.Now().Add(2 * time.Second)
+	for updated.Title == "" && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		if updated, err = GetConversation(d, convo.ID, 1); err != nil {
+			t.Fatalf("get conversation: %v", err)
 		}
+	}
+	if updated.Title != "Partial Title" {
+		t.Errorf("expected auto-title 'Partial Title', got %q", updated.Title)
+	}
+	if extra := len(titleCalls); extra != 0 {
+		t.Errorf("expected auto-title to run once, ran %d extra times", extra)
+	}
+}
+
+func TestStreamMessageHandler_ClientDisconnectBeforeTokens(t *testing.T) {
+	d := setupTestDB(t)
+	if _, err := d.Exec(
+		`INSERT INTO user_preferences (user_id, key, value) VALUES (1, 'claude_enabled', 'true'), (1, 'claude_model', 'claude-sonnet-4-6')`,
+	); err != nil {
+		t.Fatalf("set prefs: %v", err)
+	}
+	convo, err := CreateConversation(d, 1, "", "claude-sonnet-4-6")
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	origPrompt := runPromptFn
+	runPromptFn = func(_ context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
+		t.Error("auto-title must not run when no tokens were emitted")
+		return "", nil
+	}
+	t.Cleanup(func() { runPromptFn = origPrompt })
+
+	runStreamUntilCancel(t, d, convo.ID, nil)
+
+	// Only the user row may exist on a disconnect before any token.
+	msgs, err := GetMessages(d, convo.ID)
+	if err != nil {
+		t.Fatalf("get messages: %v", err)
+	}
+	if len(msgs) != 1 || msgs[0].Role != "user" {
+		t.Fatalf("expected only the user row, got %+v", msgs)
+	}
+	updated, err := GetConversation(d, convo.ID, 1)
+	if err != nil {
+		t.Fatalf("get conversation: %v", err)
+	}
+	if updated.SessionID != "" {
+		t.Errorf("expected session id untouched, got %q", updated.SessionID)
 	}
 }
 
