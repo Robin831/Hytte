@@ -30,14 +30,15 @@ function fetchPendingDeduped(): Promise<{ pending: CompletionWithDetails[] }> {
 const UNDO_TOAST_DURATION_MS = 10000
 
 /**
- * Maps the (English) error text from the unapprove endpoints to a translated
- * reason key, so nb/th parents never see raw backend strings.
+ * Maps the stable `code` from the unapprove endpoints to a translated reason
+ * key, so nb/th parents never see raw backend strings. The codes are defined
+ * as constants in internal/allowance/handlers.go (codeWeekAlreadyPaid etc.).
  */
-function undoFailureReasonKey(serverError: string) {
-  switch (serverError) {
-    case 'week has already been paid out': return 'toast.undoReason.weekPaid' as const
-    case 'completion is not approved': return 'toast.undoReason.notApproved' as const
-    case 'completion not found': return 'toast.undoReason.notFound' as const
+function undoFailureReasonKey(code: string) {
+  switch (code) {
+    case 'week_already_paid': return 'toast.undoReason.weekPaid' as const
+    case 'completion_not_approved': return 'toast.undoReason.notApproved' as const
+    case 'completion_not_found': return 'toast.undoReason.notFound' as const
     default: return 'toast.undoReason.generic' as const
   }
 }
@@ -47,6 +48,8 @@ interface BatchCompletionResult {
   id: number
   status: 'approved' | 'rejected' | 'unapproved' | 'skipped' | 'error'
   error?: string
+  /** Stable machine-readable reason for skipped items (e.g. 'week_already_paid'). */
+  code?: string
 }
 
 interface BatchCompletionResponse {
@@ -395,7 +398,7 @@ export default function AllowancePage() {
     if (ids.length === 0) return
     let undone = 0
     let notUndone = 0
-    let serverError = ''
+    let failureCode = ''
     try {
       const res = ids.length === 1
         ? await fetch(`/api/allowance/unapprove/${ids[0]}`, { method: 'POST', credentials: 'include' })
@@ -406,11 +409,11 @@ export default function AllowancePage() {
           body: JSON.stringify({ ids }),
         })
       const data = await res.json().catch(() => null) as
-        | (Partial<BatchCompletionResponse> & { error?: string })
+        | (Partial<BatchCompletionResponse> & { code?: string })
         | null
       if (!res.ok) {
         notUndone = ids.length
-        serverError = data?.error ?? ''
+        failureCode = data?.code ?? ''
       } else if (ids.length === 1) {
         undone = 1
       } else {
@@ -418,7 +421,7 @@ export default function AllowancePage() {
         undone = data?.succeeded ?? results.filter(r => r.status === 'unapproved').length
         const failures = results.filter(r => r.status !== 'unapproved')
         notUndone = data?.failed ?? failures.length
-        serverError = failures.find(r => r.error)?.error ?? ''
+        failureCode = failures.find(r => r.code)?.code ?? ''
       }
     } catch {
       notUndone = ids.length
@@ -430,7 +433,7 @@ export default function AllowancePage() {
       showToast(t('toast.undoSuccess', { count: undone }), 'success')
       return
     }
-    const reason = t(undoFailureReasonKey(serverError))
+    const reason = t(undoFailureReasonKey(failureCode))
     if (undone > 0) {
       showToast(t('toast.undoPartial', { undone, failed: notUndone, reason }), 'warning')
     } else {

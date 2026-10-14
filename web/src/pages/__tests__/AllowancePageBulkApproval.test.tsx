@@ -554,7 +554,7 @@ describe('AllowancePage approve undo', () => {
           results: [
             { id: 1, status: 'unapproved' },
             { id: 2, status: 'unapproved' },
-            { id: 3, status: 'skipped', error: 'week has already been paid out' },
+            { id: 3, status: 'skipped', error: 'week has already been paid out', code: 'week_already_paid' },
           ],
         }))
       }
@@ -570,7 +570,23 @@ describe('AllowancePage approve undo', () => {
     mockRoutes(url => {
       if (url === '/api/allowance/approve/1') return Promise.resolve(jsonResponse({ id: 1, status: 'approved' }))
       if (url === '/api/allowance/unapprove/1') {
-        return Promise.resolve(jsonResponse({ error: 'week has already been paid out' }, false))
+        return Promise.resolve(jsonResponse({ error: 'week has already been paid out', code: 'week_already_paid' }, false))
+      }
+    })
+
+    await renderTodayTab()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Approve' })[0])
+    await screen.findByText('Chore approved')
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    await screen.findByText('Could not undo: the week has already been paid out')
+  })
+
+  it('keys the undo reason off the stable code, not the English error text', async () => {
+    mockRoutes(url => {
+      if (url === '/api/allowance/approve/1') return Promise.resolve(jsonResponse({ id: 1, status: 'approved' }))
+      if (url === '/api/allowance/unapprove/1') {
+        return Promise.resolve(jsonResponse({ error: 'reworded: this week was already settled', code: 'week_already_paid' }, false))
       }
     })
 

@@ -3039,6 +3039,20 @@ func assertJSONError(t *testing.T, w *httptest.ResponseRecorder, wantCode int) {
 	}
 }
 
+// assertJSONErrorCode is assertJSONError plus a check on the stable "code"
+// field. The expected codes are literals on purpose: the frontend
+// (undoFailureReasonKey in web/src/pages/AllowancePage.tsx) matches these exact
+// values, so changing one here means updating it there too.
+func assertJSONErrorCode(t *testing.T, w *httptest.ResponseRecorder, wantStatus int, wantCode string) {
+	t.Helper()
+	assertJSONError(t, w, wantStatus)
+	var body map[string]string
+	decode(t, w.Body.Bytes(), &body)
+	if body["code"] != wantCode {
+		t.Errorf("expected code %q, got %q", wantCode, body["code"])
+	}
+}
+
 func TestUnapproveCompletionHandler_Success(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)
@@ -3082,9 +3096,9 @@ func TestUnapproveCompletionHandler_Errors(t *testing.T) {
 	}
 
 	assertJSONError(t, serveUnapprove(t, db, testParent, "abc"), http.StatusBadRequest)
-	assertJSONError(t, serveUnapprove(t, db, testParent, "99999"), http.StatusNotFound)
-	assertJSONError(t, serveUnapprove(t, db, otherParent, strconv.FormatInt(approvedID, 10)), http.StatusNotFound)
-	assertJSONError(t, serveUnapprove(t, db, testParent, strconv.FormatInt(pending.ID, 10)), http.StatusConflict)
+	assertJSONErrorCode(t, serveUnapprove(t, db, testParent, "99999"), http.StatusNotFound, "completion_not_found")
+	assertJSONErrorCode(t, serveUnapprove(t, db, otherParent, strconv.FormatInt(approvedID, 10)), http.StatusNotFound, "completion_not_found")
+	assertJSONErrorCode(t, serveUnapprove(t, db, testParent, strconv.FormatInt(pending.ID, 10)), http.StatusConflict, "completion_not_approved")
 	assertJSONError(t, serveUnapprove(t, db, testChild, strconv.FormatInt(approvedID, 10)), http.StatusForbidden)
 
 	payout, err := UpsertPayout(db, 1, 2, unapproveTestWeek, 0, 0, 25)
@@ -3094,7 +3108,7 @@ func TestUnapproveCompletionHandler_Errors(t *testing.T) {
 	if _, err := MarkPayoutPaid(db, payout.ID, 1); err != nil {
 		t.Fatalf("MarkPayoutPaid: %v", err)
 	}
-	assertJSONError(t, serveUnapprove(t, db, testParent, strconv.FormatInt(approvedID, 10)), http.StatusConflict)
+	assertJSONErrorCode(t, serveUnapprove(t, db, testParent, strconv.FormatInt(approvedID, 10)), http.StatusConflict, "week_already_paid")
 	if got := completionStatus(t, db, approvedID); got != "approved" {
 		t.Errorf("expected completion to stay approved, got %q", got)
 	}
@@ -3133,6 +3147,13 @@ func TestBatchUnapproveCompletionsHandler_Mixed(t *testing.T) {
 	for id, status := range want {
 		if byID[id] != status {
 			t.Errorf("completion %d: expected %q, got %q", id, status, byID[id])
+		}
+	}
+	// Stable codes the frontend keys its translated undo reasons off.
+	wantCodes := map[int64]string{ids[0]: "", ids[1]: "", ids[2]: "completion_not_approved", 99999: "completion_not_found"}
+	for _, res := range resp.Results {
+		if res.Code != wantCodes[res.ID] {
+			t.Errorf("completion %d: expected code %q, got %q", res.ID, wantCodes[res.ID], res.Code)
 		}
 	}
 	for _, id := range ids {

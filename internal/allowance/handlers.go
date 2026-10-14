@@ -33,6 +33,22 @@ func errResponse(msg string) map[string]string {
 	return map[string]string{"error": msg}
 }
 
+// Stable machine-readable codes for completion conflicts. The frontend keys its
+// translated messages off these (see undoFailureReasonKey in
+// web/src/pages/AllowancePage.tsx), so the English "error" text can be reworded
+// freely but these values must not change.
+const (
+	codeCompletionNotFound    = "completion_not_found"
+	codeCompletionNotPending  = "completion_not_pending"
+	codeCompletionNotApproved = "completion_not_approved"
+	codeWeekAlreadyPaid       = "week_already_paid"
+)
+
+// errCodeResponse is errResponse plus a stable machine-readable code.
+func errCodeResponse(code, msg string) map[string]string {
+	return map[string]string{"error": msg, "code": code}
+}
+
 // requireParent verifies the authenticated user is a parent and returns true if so.
 func requireParent(db *sql.DB, w http.ResponseWriter, user *auth.User) bool {
 	isParent, err := family.IsParent(db, user.ID)
@@ -503,11 +519,11 @@ func UnapproveCompletionHandler(db *sql.DB) http.HandlerFunc {
 		if err != nil {
 			switch {
 			case errors.Is(err, ErrCompletionNotFound):
-				writeJSON(w, http.StatusNotFound, errResponse("completion not found"))
+				writeJSON(w, http.StatusNotFound, errCodeResponse(codeCompletionNotFound, "completion not found"))
 			case errors.Is(err, ErrCompletionNotApproved):
-				writeJSON(w, http.StatusConflict, errResponse("completion is not approved"))
+				writeJSON(w, http.StatusConflict, errCodeResponse(codeCompletionNotApproved, "completion is not approved"))
 			case errors.Is(err, ErrWeekAlreadyPaid):
-				writeJSON(w, http.StatusConflict, errResponse("week has already been paid out"))
+				writeJSON(w, http.StatusConflict, errCodeResponse(codeWeekAlreadyPaid, "week has already been paid out"))
 			default:
 				log.Printf("allowance: unapprove completion %d parent %d: %v", completionID, user.ID, err)
 				writeJSON(w, http.StatusInternalServerError, errResponse("failed to unapprove completion"))
@@ -531,10 +547,13 @@ type batchCompletionRequest struct {
 
 // batchCompletionResult reports the outcome for a single completion ID.
 // Status is one of "approved", "rejected", "unapproved", "skipped" or "error".
+// Code is a stable machine-readable reason for skipped items (see the code*
+// constants); Error is human-readable English and may be reworded.
 type batchCompletionResult struct {
 	ID     int64  `json:"id"`
 	Status string `json:"status"`
 	Error  string `json:"error,omitempty"`
+	Code   string `json:"code,omitempty"`
 }
 
 type batchCompletionResponse struct {
@@ -584,13 +603,13 @@ func decodeBatchCompletionIDs(w http.ResponseWriter, r *http.Request) (batchComp
 func batchCompletionFailure(id, parentID int64, action string, err error) batchCompletionResult {
 	switch {
 	case errors.Is(err, ErrCompletionNotFound):
-		return batchCompletionResult{ID: id, Status: "skipped", Error: "completion not found"}
+		return batchCompletionResult{ID: id, Status: "skipped", Error: "completion not found", Code: codeCompletionNotFound}
 	case errors.Is(err, ErrCompletionNotPending):
-		return batchCompletionResult{ID: id, Status: "skipped", Error: "completion is not pending"}
+		return batchCompletionResult{ID: id, Status: "skipped", Error: "completion is not pending", Code: codeCompletionNotPending}
 	case errors.Is(err, ErrCompletionNotApproved):
-		return batchCompletionResult{ID: id, Status: "skipped", Error: "completion is not approved"}
+		return batchCompletionResult{ID: id, Status: "skipped", Error: "completion is not approved", Code: codeCompletionNotApproved}
 	case errors.Is(err, ErrWeekAlreadyPaid):
-		return batchCompletionResult{ID: id, Status: "skipped", Error: "week has already been paid out"}
+		return batchCompletionResult{ID: id, Status: "skipped", Error: "week has already been paid out", Code: codeWeekAlreadyPaid}
 	default:
 		log.Printf("allowance: batch %s completion %d parent %d: %v", action, id, parentID, err)
 		return batchCompletionResult{ID: id, Status: "error", Error: "failed to " + action + " completion"}
