@@ -1,0 +1,2 @@
+category: Changed
+- **Smoother chat streaming on long threads** - The Chat page is split into memoized `MessageRow`, `ConversationSidebar`, `Composer` (plus header, message list and model picker) components under `web/src/components/chat/`, with stable callbacks, so a streamed token only re-renders the bubble being written instead of re-running markdown and syntax highlighting for every earlier message. No visual or behavioural changes. (Hytte-na136)
