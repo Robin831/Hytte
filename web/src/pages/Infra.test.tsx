@@ -2,10 +2,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
-import Infra, { POLL_BASE_MS, POLL_MAX_MS } from './Infra'
+import Infra, { POLL_BASE_MS, POLL_MAX_MS, STALE_AFTER_FAILURES } from './Infra'
 
 vi.mock('react-i18next', () => {
-  const t = (k: string) => k
+  const t = (k: string, o?: { time?: string }) => (o?.time ? `${k}:${o.time}` : k)
   const i18n = { language: 'en' }
   const hook = { t, i18n }
   return {
@@ -34,6 +34,9 @@ const statusPayload = {
 
 let statusCalls: Array<{ signal: AbortSignal | null }> = []
 let failStatus = false
+let failStatusCode = 500
+let failModulesCode: number | null = null
+let abortStatus = false
 let hangStatus = false
 type MockResponse = { ok: boolean; status: number; json: () => Promise<unknown> }
 let hangResolvers: Array<(value: MockResponse) => void> = []
@@ -45,10 +48,16 @@ const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
   if (url.includes('/api/infra/status')) {
     statusCalls.push({ signal: init?.signal ?? null })
     if (hangStatus) return new Promise<MockResponse>(r => { hangResolvers.push(r) })
-    if (failStatus) return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) })
+    if (abortStatus) return Promise.reject(new DOMException('aborted', 'AbortError'))
+    if (failStatus) return Promise.resolve({ ok: false, status: failStatusCode, json: () => Promise.resolve({}) })
     return json(statusPayload)
   }
-  if (url.includes('/api/infra/modules')) return json(modulesPayload)
+  if (url.includes('/api/infra/modules')) {
+    if (failModulesCode !== null) {
+      return Promise.resolve({ ok: false, status: failModulesCode, json: () => Promise.resolve({}) })
+    }
+    return json(modulesPayload)
+  }
   return json({})
 })
 
@@ -105,6 +114,9 @@ describe('Infra background polling', () => {
     visibility = 'visible'
     statusCalls = []
     failStatus = false
+    failStatusCode = 500
+    failModulesCode = null
+    abortStatus = false
     hangStatus = false
     hangResolvers = []
     capturedTimers = []
@@ -260,5 +272,177 @@ describe('Infra background polling', () => {
     capturedTimers = []
     await flushAsync()
     expect(statusCalls.length).toBe(1)
+  })
+
+  describe('staleness', () => {
+    const statusContent = () => screen.getByTestId('infra-status-content')
+
+    it('shows a freshness line after the first load and keeps it on a failed poll', async () => {
+      await renderInfra()
+      expect(screen.getByTestId('infra-freshness')).toHaveTextContent('updatedAgo:justNow')
+
+      failStatus = true
+      await triggerPoll()
+      expect(screen.getByTestId('infra-freshness')).toHaveTextContent('updatedAgo:justNow')
+      expect(screen.queryByText('neverUpdated')).not.toBeInTheDocument()
+    })
+
+    it('ages the freshness line without a reload', async () => {
+      const intervals: Array<() => void> = []
+      vi.spyOn(window, 'setInterval').mockImplementation(((cb: TimerHandler) => {
+        if (typeof cb === 'function') intervals.push(cb as () => void)
+        return 1
+      }) as typeof window.setInterval)
+      vi.spyOn(window, 'clearInterval').mockImplementation(() => {})
+
+      await renderInfra()
+      expect(screen.getByTestId('infra-freshness')).toHaveTextContent('updatedAgo:justNow')
+
+      // Mock the clock only after the load so testing-library's own timing
+      // is unaffected; the last success happened just before this point.
+      vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 3 * 60_000)
+      act(() => { for (const cb of intervals) cb() })
+      expect(screen.getByTestId('infra-freshness')).toHaveTextContent('updatedAgo:3 minutes ago')
+    })
+
+    it('does not show the stale banner after a single failed poll', async () => {
+      await renderInfra()
+      failStatus = true
+      await triggerPoll()
+      expect(screen.queryByText('staleBanner')).not.toBeInTheDocument()
+      expect(statusContent()).toHaveAttribute('data-stale', 'false')
+    })
+
+    it('shows the stale banner and dims the cards after consecutive failed polls', async () => {
+      await renderInfra()
+      failStatus = true
+      for (let i = 0; i < STALE_AFTER_FAILURES; i++) await triggerPoll()
+      expect(screen.getByText('staleBanner')).toBeInTheDocument()
+      expect(statusContent()).toHaveAttribute('data-stale', 'true')
+      expect(statusContent().className).toContain('opacity-50')
+    })
+
+    it('retry reloads, clears the banner and resets the failure counter', async () => {
+      await renderInfra()
+      failStatus = true
+      await triggerPoll()
+      await triggerPoll()
+      expect(screen.getByText('staleBanner')).toBeInTheDocument()
+
+      failStatus = false
+      const before = statusCalls.length
+      fireEvent.click(screen.getByText('retry'))
+      await flushAsync()
+      expect(statusCalls.length).toBe(before + 1)
+      expect(screen.queryByText('staleBanner')).not.toBeInTheDocument()
+      expect(statusContent()).toHaveAttribute('data-stale', 'false')
+
+      // Counter was reset: one further failure must not bring the banner back.
+      failStatus = true
+      await triggerPoll()
+      expect(screen.queryByText('staleBanner')).not.toBeInTheDocument()
+    })
+
+    it('a successful poll clears the banner and resets the poll delay', async () => {
+      await renderInfra()
+      failStatus = true
+      await triggerPoll()
+      await triggerPoll()
+      expect(screen.getByText('staleBanner')).toBeInTheDocument()
+
+      failStatus = false
+      await triggerPoll()
+      expect(screen.queryByText('staleBanner')).not.toBeInTheDocument()
+      expect(capturedTimers[0].delay).toBe(POLL_BASE_MS)
+    })
+
+    it('a successful manual refresh resets the backoff to the base delay', async () => {
+      await renderInfra()
+      failStatus = true
+      await triggerPoll()
+      await triggerPoll()
+      expect(capturedTimers[0].delay).toBe(POLL_BASE_MS * 4)
+
+      failStatus = false
+      fireEvent.click(screen.getByText('actions.refresh'))
+      await flushAsync()
+      expect(screen.queryByText('staleBanner')).not.toBeInTheDocument()
+
+      // The pending timer still carries the old delay; the next failure must
+      // double from the base delay rather than from the backed-off one.
+      failStatus = true
+      await triggerPoll()
+      expect(capturedTimers[0].delay).toBe(POLL_BASE_MS * 2)
+    })
+
+    it.each([401, 403])('shows the session-expired prompt after one %i from status', async code => {
+      await renderInfra()
+      failStatus = true
+      failStatusCode = code
+      await triggerPoll()
+      expect(screen.getByText('sessionExpired')).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'signIn' })).toHaveAttribute('href', '/api/auth/google/login')
+      expect(screen.queryByText('staleBanner')).not.toBeInTheDocument()
+      expect(statusContent()).toHaveAttribute('data-stale', 'true')
+      // Auth failures do not double the backoff.
+      expect(capturedTimers[0].delay).toBe(POLL_BASE_MS)
+    })
+
+    it('shows the session-expired prompt when the modules endpoint returns 401', async () => {
+      await renderInfra()
+      failModulesCode = 401
+      await triggerPoll()
+      expect(screen.getByText('sessionExpired')).toBeInTheDocument()
+    })
+
+    it('prefers the session-expired prompt over a concurrent server error', async () => {
+      await renderInfra()
+      failModulesCode = 500
+      failStatus = true
+      failStatusCode = 401
+      await triggerPoll()
+      expect(screen.getByText('sessionExpired')).toBeInTheDocument()
+    })
+
+    it('clears the session-expired prompt after a successful load', async () => {
+      await renderInfra()
+      failStatus = true
+      failStatusCode = 401
+      await triggerPoll()
+      expect(screen.getByText('sessionExpired')).toBeInTheDocument()
+
+      failStatus = false
+      await triggerPoll()
+      expect(screen.queryByText('sessionExpired')).not.toBeInTheDocument()
+      expect(statusContent()).toHaveAttribute('data-stale', 'false')
+    })
+
+    it('does not count aborted polls as failures', async () => {
+      await renderInfra()
+      abortStatus = true
+      await triggerPoll()
+      await triggerPoll()
+      await triggerPoll()
+      expect(screen.queryByText('staleBanner')).not.toBeInTheDocument()
+      expect(statusContent()).toHaveAttribute('data-stale', 'false')
+    })
+
+    it('does not count a poll superseded by a manual refresh as a failure', async () => {
+      await renderInfra()
+      failStatus = true
+      await triggerPoll()
+
+      // Next poll hangs and is then aborted by a manual refresh that fails.
+      hangStatus = true
+      await triggerPoll()
+      hangStatus = false
+      fireEvent.click(screen.getByText('actions.refresh'))
+      await flushAsync()
+      releaseHungPolls()
+      await flushAsync()
+
+      // Only one background failure was recorded, so no stale banner.
+      expect(screen.queryByText('staleBanner')).not.toBeInTheDocument()
+    })
   })
 })

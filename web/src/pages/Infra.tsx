@@ -98,8 +98,47 @@ const statusConfig = {
 export const POLL_BASE_MS = 60_000
 export const POLL_MAX_MS = 480_000
 
+// Consecutive failed background polls before the dashboard is marked stale.
+// One failure is tolerated so a single network blip does not flap the banner.
+export const STALE_AFTER_FAILURES = 2
+
+// How often the "Updated Xm ago" line re-renders.
+const FRESHNESS_TICK_MS = 30_000
+
+// Thrown by the infra loaders so callers can branch on the HTTP status
+// (e.g. 401/403 means the session expired rather than the server failing).
+class InfraFetchError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = 'InfraFetchError'
+    this.status = status
+  }
+}
+
+function isAuthError(err: unknown): boolean {
+  return err instanceof InfraFetchError && (err.status === 401 || err.status === 403)
+}
+
+function isAbortError(err: unknown, signal: AbortSignal): boolean {
+  return signal.aborted || (err instanceof DOMException && err.name === 'AbortError')
+}
+
+type LoadResult = 'ok' | 'failed' | 'auth' | 'aborted'
+
+// Relative age of the last successful load, coarse to the minute since the
+// line only re-renders every FRESHNESS_TICK_MS.
+function formatAge(then: number, now: number, language: string, justNow: string): string {
+  const diffSec = Math.max(0, Math.floor((now - then) / 1000))
+  if (diffSec < 60) return justNow
+  const rtf = new Intl.RelativeTimeFormat(language, { numeric: 'auto' })
+  if (diffSec < 60 * 60) return rtf.format(-Math.floor(diffSec / 60), 'minute')
+  if (diffSec < 60 * 60 * 24) return rtf.format(-Math.floor(diffSec / 3600), 'hour')
+  return rtf.format(-Math.floor(diffSec / 86400), 'day')
+}
+
 export default function Infra() {
-  const { t } = useTranslation('infra')
+  const { t, i18n } = useTranslation('infra')
   const [modules, setModules] = useState<ModuleInfo[]>([])
   const [status, setStatus] = useState<StatusResponse | null>(null)
   const [loading, setLoading] = useState(true)
@@ -107,6 +146,18 @@ export default function Infra() {
   const [toggling, setToggling] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [selectedModule, setSelectedModule] = useState<string | null>(null)
+  // Freshness tracking: when the data on screen was last loaded successfully,
+  // how many background polls in a row have failed since, and whether the
+  // server rejected us with 401/403 (session expired).
+  const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null)
+  const [consecutiveFailures, setConsecutiveFailures] = useState(0)
+  const [authExpired, setAuthExpired] = useState(false)
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), FRESHNESS_TICK_MS)
+    return () => window.clearInterval(id)
+  }, [])
 
   const abortRef = useRef<AbortController | null>(null)
 
@@ -120,7 +171,7 @@ export default function Infra() {
   const fetchModules = useCallback(async (signal: AbortSignal) => {
     const res = await fetch('/api/infra/modules', { credentials: 'include', signal })
     if (!res.ok) {
-      throw new Error(`Failed to load modules (${res.status})`)
+      throw new InfraFetchError(res.status, `Failed to load modules (${res.status})`)
     }
     const data = await res.json()
     if (signal.aborted) return
@@ -130,7 +181,7 @@ export default function Infra() {
   const fetchStatus = useCallback(async (signal: AbortSignal) => {
     const res = await fetch('/api/infra/status', { credentials: 'include', signal })
     if (!res.ok) {
-      throw new Error(`Failed to load status (${res.status})`)
+      throw new InfraFetchError(res.status, `Failed to load status (${res.status})`)
     }
     const data: StatusResponse = await res.json()
     if (signal.aborted) return
@@ -139,11 +190,14 @@ export default function Infra() {
 
   const loadInFlightRef = useRef(0)
 
+  // Current poll delay; grows on consecutive failures, resets on success.
+  const pollDelayRef = useRef(POLL_BASE_MS)
+
   const loadAll = useCallback(async (
     background: boolean,
     signal: AbortSignal,
     opts?: { suppressErrors?: boolean },
-  ): Promise<boolean> => {
+  ): Promise<LoadResult> => {
     loadInFlightRef.current++
     if (background) {
       setRefreshing(true)
@@ -154,15 +208,37 @@ export default function Infra() {
       setError(null)
     }
     try {
-      await Promise.all([fetchModules(signal), fetchStatus(signal)])
-      return true
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return true
-      if (signal.aborted) return true
+      const results = await Promise.allSettled([fetchModules(signal), fetchStatus(signal)])
+      const failures = results
+        .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+        .map(r => r.reason as unknown)
+      // The loaders return early (without throwing) when aborted after the
+      // response arrived, so check the signal too; a superseded load is
+      // neither a success nor a failure.
+      if (signal.aborted || failures.some(err => isAbortError(err, signal))) return 'aborted'
+      if (failures.length === 0) {
+        // Any successful load (poll, manual refresh, retry, toggle) makes the
+        // data fresh again and restores the normal poll cadence.
+        setLastSuccessAt(Date.now())
+        setConsecutiveFailures(0)
+        setAuthExpired(false)
+        pollDelayRef.current = POLL_BASE_MS
+        return 'ok'
+      }
+      // Prefer the auth failure when both endpoints fail so an expired
+      // session is never masked by an unrelated error.
+      const err = failures.find(isAuthError) ?? failures[0]
       if (!opts?.suppressErrors) {
         setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
       }
-      return false
+      if (isAuthError(err)) {
+        setAuthExpired(true)
+        return 'auth'
+      }
+      if (opts?.suppressErrors) {
+        setConsecutiveFailures(n => n + 1)
+      }
+      return 'failed'
     } finally {
       loadInFlightRef.current--
       if (background) {
@@ -180,9 +256,6 @@ export default function Infra() {
       abortRef.current?.abort()
     }
   }, [loadAll, newAbort])
-
-  // Current poll delay; grows on consecutive failures, resets on success.
-  const pollDelayRef = useRef(POLL_BASE_MS)
 
   useEffect(() => {
     let cancelled = false
@@ -206,12 +279,14 @@ export default function Infra() {
         return
       }
       const signal = newAbort()
-      const ok = await loadAll(true, signal, { suppressErrors: true })
+      const result = await loadAll(true, signal, { suppressErrors: true })
       if (cancelled) return
-      if (!signal.aborted) {
-        pollDelayRef.current = ok
-          ? POLL_BASE_MS
-          : Math.min(pollDelayRef.current * 2, POLL_MAX_MS)
+      if (result === 'failed') {
+        pollDelayRef.current = Math.min(pollDelayRef.current * 2, POLL_MAX_MS)
+      } else if (result === 'auth') {
+        // Backing off would only delay noticing a fresh sign-in; keep polling
+        // at the base cadence while the session-expired prompt is shown.
+        pollDelayRef.current = POLL_BASE_MS
       }
       scheduleNext()
     }
@@ -272,6 +347,49 @@ export default function Infra() {
     )
   }
 
+  const isStale = !authExpired && consecutiveFailures >= STALE_AFTER_FAILURES
+  const dimmed = isStale || authExpired
+
+  const freshnessLine = (
+    <span className="text-xs text-gray-500" data-testid="infra-freshness">
+      {lastSuccessAt === null
+        ? t('neverUpdated')
+        : t('updatedAgo', { time: formatAge(lastSuccessAt, now, i18n.language, t('justNow')) })}
+    </span>
+  )
+
+  const staleBanners = authExpired ? (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-lg border mb-4 bg-yellow-400/10 border-yellow-400/20"
+    >
+      <AlertTriangle size={18} className="text-yellow-400 shrink-0" />
+      <span className="text-sm text-yellow-400">{t('sessionExpired')}</span>
+      <a
+        href="/api/auth/google/login"
+        className="ml-auto text-sm font-medium text-yellow-300 hover:text-yellow-200 underline"
+      >
+        {t('signIn')}
+      </a>
+    </div>
+  ) : isStale ? (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-lg border mb-4 bg-yellow-400/10 border-yellow-400/20"
+    >
+      <AlertTriangle size={18} className="text-yellow-400 shrink-0" />
+      <span className="text-sm text-yellow-400">{t('staleBanner')}</span>
+      <button
+        onClick={handleRefresh}
+        disabled={refreshing}
+        className="ml-auto flex items-center gap-1 text-sm font-medium text-yellow-300 hover:text-yellow-200 cursor-pointer disabled:opacity-50"
+      >
+        <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
+        {t('retry')}
+      </button>
+    </div>
+  ) : null
+
   const overallStatus = status?.overall || 'unknown'
   const overallCfg = statusConfig[overallStatus]
   const OverallIcon = overallCfg.icon
@@ -310,12 +428,15 @@ export default function Infra() {
           <ChevronLeft size={16} />
           {t('backToOverview')}
         </button>
-        <ModuleDetail
-          module={mod}
-          status={modStatus}
-          onRefresh={handleRefresh}
-          refreshing={refreshing}
-        />
+        {staleBanners}
+        <div className={dimmed ? 'opacity-50 transition-opacity' : 'transition-opacity'}>
+          <ModuleDetail
+            module={mod}
+            status={modStatus}
+            onRefresh={handleRefresh}
+            refreshing={refreshing}
+          />
+        </div>
       </div>
     )
   }
@@ -323,20 +444,25 @@ export default function Infra() {
   return (
     <div className="max-w-6xl mx-auto px-4 py-8">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
+      <div className="flex items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-white">{t('title')}</h1>
           <p className="text-sm text-gray-400 mt-1">{t('subtitle')}</p>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700 transition-colors cursor-pointer disabled:opacity-50"
-        >
-          <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
-          {t('actions.refresh', { ns: 'common' })}
-        </button>
+        <div className="flex flex-col items-end gap-1 sm:flex-row sm:items-center sm:gap-3">
+          {freshnessLine}
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+            {t('actions.refresh', { ns: 'common' })}
+          </button>
+        </div>
       </div>
+
+      {staleBanners}
 
       {/* Error banner */}
       {error && (
@@ -353,89 +479,95 @@ export default function Infra() {
         </div>
       )}
 
-      {/* Overall status banner */}
-      <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border mb-8 ${overallCfg.bg} ${overallCfg.border}`}>
-        <OverallIcon size={20} className={overallCfg.color} />
-        <span className={`text-sm font-medium ${overallCfg.color}`}>
-          {t('overall', { label: t(`status.${overallStatus}`) })}
-        </span>
-        {status?.modules && (
-          <span className="text-xs text-gray-500 ml-auto">
-            {t('modules', { count: status.modules.length })}
+      <div
+        data-testid="infra-status-content"
+        data-stale={dimmed ? 'true' : 'false'}
+        className={dimmed ? 'opacity-50 transition-opacity' : 'transition-opacity'}
+      >
+        {/* Overall status banner */}
+        <div className={`flex items-center gap-3 px-4 py-3 rounded-lg border mb-8 ${overallCfg.bg} ${overallCfg.border}`}>
+          <OverallIcon size={20} className={overallCfg.color} />
+          <span className={`text-sm font-medium ${overallCfg.color}`}>
+            {t('overall', { label: t(`status.${overallStatus}`) })}
           </span>
+          {status?.modules && (
+            <span className="text-xs text-gray-500 ml-auto">
+              {t('modules', { count: status.modules.length })}
+            </span>
+          )}
+        </div>
+
+        {/* Module cards */}
+        {modules.length === 0 ? (
+          <div className="text-center py-16">
+            <HelpCircle size={48} className="mx-auto text-gray-600 mb-4" />
+            <h2 className="text-lg font-medium text-gray-400 mb-2">{t('noModules.heading')}</h2>
+            <p className="text-sm text-gray-500">
+              {t('noModules.description')}
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {modules.map(mod => {
+              const modStatus = statusByName.get(mod.name)
+              const cfg = modStatus ? statusConfig[modStatus.status] : statusConfig.unknown
+              const StatusIcon = cfg.icon
+              const isToggling = toggling === mod.name
+
+              return (
+                <div
+                  key={mod.name}
+                  className={`rounded-lg border p-4 transition-colors ${
+                    mod.enabled
+                      ? `${cfg.bg} ${cfg.border}`
+                      : 'bg-gray-800/50 border-gray-700/50 opacity-60'
+                  }`}
+                >
+                  <div className="flex items-start justify-between mb-2">
+                    <button
+                      onClick={() => mod.enabled && setSelectedModule(mod.name)}
+                      className={`flex items-center gap-2 ${mod.enabled ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+                    >
+                      <StatusIcon size={18} className={mod.enabled ? cfg.color : 'text-gray-500'} />
+                      <h3 className="font-medium text-white">{mod.display_name}</h3>
+                    </button>
+                    <button
+                      onClick={() => handleToggle(mod.name, mod.enabled)}
+                      disabled={isToggling}
+                      className="text-gray-400 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
+                      title={mod.enabled ? t('toggle.disable') : t('toggle.enable')}
+                      aria-label={mod.enabled ? t('toggle.disableLabel', { name: mod.display_name }) : t('toggle.enableLabel', { name: mod.display_name })}
+                    >
+                      {mod.enabled ? (
+                        <ToggleRight size={20} className="text-green-400" />
+                      ) : (
+                        <ToggleLeft size={20} />
+                      )}
+                    </button>
+                  </div>
+
+                  <p className="text-xs text-gray-400 mb-3">{mod.description}</p>
+
+                  {mod.enabled && modStatus && (
+                    <div className="text-xs text-gray-500">
+                      {modStatus.message && (
+                        <p className="mb-1">{modStatus.message}</p>
+                      )}
+                      <p>
+                        {t('lastChecked', { time: formatDateTime(modStatus.checked_at, { dateStyle: 'short', timeStyle: 'medium' }) })}
+                      </p>
+                    </div>
+                  )}
+
+                  {!mod.enabled && (
+                    <p className="text-xs text-gray-600">{t('moduleDisabled')}</p>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         )}
       </div>
-
-      {/* Module cards */}
-      {modules.length === 0 ? (
-        <div className="text-center py-16">
-          <HelpCircle size={48} className="mx-auto text-gray-600 mb-4" />
-          <h2 className="text-lg font-medium text-gray-400 mb-2">{t('noModules.heading')}</h2>
-          <p className="text-sm text-gray-500">
-            {t('noModules.description')}
-          </p>
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {modules.map(mod => {
-            const modStatus = statusByName.get(mod.name)
-            const cfg = modStatus ? statusConfig[modStatus.status] : statusConfig.unknown
-            const StatusIcon = cfg.icon
-            const isToggling = toggling === mod.name
-
-            return (
-              <div
-                key={mod.name}
-                className={`rounded-lg border p-4 transition-colors ${
-                  mod.enabled
-                    ? `${cfg.bg} ${cfg.border}`
-                    : 'bg-gray-800/50 border-gray-700/50 opacity-60'
-                }`}
-              >
-                <div className="flex items-start justify-between mb-2">
-                  <button
-                    onClick={() => mod.enabled && setSelectedModule(mod.name)}
-                    className={`flex items-center gap-2 ${mod.enabled ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
-                  >
-                    <StatusIcon size={18} className={mod.enabled ? cfg.color : 'text-gray-500'} />
-                    <h3 className="font-medium text-white">{mod.display_name}</h3>
-                  </button>
-                  <button
-                    onClick={() => handleToggle(mod.name, mod.enabled)}
-                    disabled={isToggling}
-                    className="text-gray-400 hover:text-white transition-colors cursor-pointer disabled:opacity-50"
-                    title={mod.enabled ? t('toggle.disable') : t('toggle.enable')}
-                    aria-label={mod.enabled ? t('toggle.disableLabel', { name: mod.display_name }) : t('toggle.enableLabel', { name: mod.display_name })}
-                  >
-                    {mod.enabled ? (
-                      <ToggleRight size={20} className="text-green-400" />
-                    ) : (
-                      <ToggleLeft size={20} />
-                    )}
-                  </button>
-                </div>
-
-                <p className="text-xs text-gray-400 mb-3">{mod.description}</p>
-
-                {mod.enabled && modStatus && (
-                  <div className="text-xs text-gray-500">
-                    {modStatus.message && (
-                      <p className="mb-1">{modStatus.message}</p>
-                    )}
-                    <p>
-                      {t('lastChecked', { time: formatDateTime(modStatus.checked_at, { dateStyle: 'short', timeStyle: 'medium' }) })}
-                    </p>
-                  </div>
-                )}
-
-                {!mod.enabled && (
-                  <p className="text-xs text-gray-600">{t('moduleDisabled')}</p>
-                )}
-              </div>
-            )
-          })}
-        </div>
-      )}
 
       {/* Tool Versions */}
       <ToolVersionsPanel />
