@@ -698,8 +698,10 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Get("/allowance/pending", allowance.ListPendingHandler(db))
 				r.Post("/allowance/approve/batch", allowance.BatchApproveCompletionsHandler(db))
 				r.Post("/allowance/reject/batch", allowance.BatchRejectCompletionsHandler(db))
+				r.Post("/allowance/unapprove/batch", allowance.BatchUnapproveCompletionsHandler(db))
 				r.Post("/allowance/approve/{id}", allowance.ApproveCompletionHandler(db))
 				r.Post("/allowance/reject/{id}", allowance.RejectCompletionHandler(db))
+				r.Post("/allowance/unapprove/{id}", allowance.UnapproveCompletionHandler(db))
 				r.Post("/allowance/quality-bonus/{id}", allowance.QualityBonusHandler(db))
 				// Parent: record completions on behalf of children.
 				r.Post("/allowance/chores/{id}/record", allowance.RecordCompletionHandler(db))

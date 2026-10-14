@@ -2,6 +2,7 @@ package allowance
 
 import (
 	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/Robin831/Hytte/internal/encryption"
@@ -385,5 +386,231 @@ func TestGetPendingCompletions_TeamNamesEnriched(t *testing.T) {
 	}
 	if results[0].TeamMemberNames[0] != "Oliver" {
 		t.Errorf("unexpected name: %q", results[0].TeamMemberNames[0])
+	}
+}
+
+// ---- UnapproveCompletion tests ----
+
+// unapproveTestWeek is the Monday of the week containing 2026-03-01, the date
+// seedPendingCompletions gives the first completion.
+const unapproveTestWeek = "2026-02-23"
+
+// seedApprovedCompletion creates one completion for child 2 under parent 1,
+// approves it and adds a quality bonus.
+func seedApprovedCompletion(t *testing.T, db *sql.DB) int64 {
+	t.Helper()
+	id := seedPendingCompletions(t, db, 1)[0]
+	if _, err := ApproveCompletion(db, id, 1); err != nil {
+		t.Fatalf("ApproveCompletion: %v", err)
+	}
+	if _, err := AddQualityBonus(db, id, 1, 5); err != nil {
+		t.Fatalf("AddQualityBonus: %v", err)
+	}
+	return id
+}
+
+func TestUnapproveCompletion_ResetsToPending(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	id := seedApprovedCompletion(t, db)
+
+	comp, err := UnapproveCompletion(db, id, 1)
+	if err != nil {
+		t.Fatalf("UnapproveCompletion: %v", err)
+	}
+	if comp.Status != "pending" {
+		t.Errorf("expected status pending, got %q", comp.Status)
+	}
+	if comp.QualityBonus != 0 || comp.ApprovedBy != nil || comp.ApprovedAt != nil {
+		t.Errorf("expected cleared approval fields, got bonus=%v by=%v at=%v", comp.QualityBonus, comp.ApprovedBy, comp.ApprovedAt)
+	}
+
+	var status string
+	var bonus float64
+	var approvedBy sql.NullInt64
+	var approvedAt, unapprovedAt sql.NullString
+	if err := db.QueryRow(`
+		SELECT status, quality_bonus, approved_by, approved_at, unapproved_at
+		FROM allowance_completions WHERE id = ?
+	`, id).Scan(&status, &bonus, &approvedBy, &approvedAt, &unapprovedAt); err != nil {
+		t.Fatalf("read completion: %v", err)
+	}
+	if status != "pending" || bonus != 0 || approvedBy.Valid || approvedAt.Valid {
+		t.Errorf("row not reset: status=%q bonus=%v approved_by=%v approved_at=%v", status, bonus, approvedBy, approvedAt)
+	}
+	if !unapprovedAt.Valid {
+		t.Error("expected unapproved_at to be set")
+	}
+
+	pending, err := GetPendingCompletions(db, 1)
+	if err != nil {
+		t.Fatalf("GetPendingCompletions: %v", err)
+	}
+	found := false
+	for _, p := range pending {
+		if p.ID == id {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected completion %d in pending list", id)
+	}
+}
+
+func TestUnapproveCompletion_NotImmediatelyAutoApproved(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	id := seedApprovedCompletion(t, db)
+
+	// Backdate created_at well past the auto-approve window.
+	if _, err := db.Exec(`UPDATE allowance_completions SET created_at = '2026-01-01T00:00:00Z' WHERE id = ?`, id); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+	if _, err := UnapproveCompletion(db, id, 1); err != nil {
+		t.Fatalf("UnapproveCompletion: %v", err)
+	}
+	n, err := AutoApproveStaleCompletions(db, 1, 0, 24)
+	if err != nil {
+		t.Fatalf("AutoApproveStaleCompletions: %v", err)
+	}
+	if n != 0 {
+		t.Errorf("expected no auto-approvals, got %d", n)
+	}
+	if got := completionStatus(t, db, id); got != "pending" {
+		t.Errorf("expected pending, got %q", got)
+	}
+}
+
+func TestUnapproveCompletion_EarningsAndPayoutDrop(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	id := seedApprovedCompletion(t, db)
+
+	before, err := CalculateWeeklyEarnings(db, 1, 2, unapproveTestWeek)
+	if err != nil {
+		t.Fatalf("CalculateWeeklyEarnings before: %v", err)
+	}
+	if before.TotalAmount <= 0 {
+		t.Fatalf("expected positive earnings before unapprove, got %v", before.TotalAmount)
+	}
+	if _, err := UpsertPayout(db, 1, 2, unapproveTestWeek, before.BaseAllowance, before.BonusAmount, before.TotalAmount); err != nil {
+		t.Fatalf("UpsertPayout: %v", err)
+	}
+
+	if _, err := UnapproveCompletion(db, id, 1); err != nil {
+		t.Fatalf("UnapproveCompletion: %v", err)
+	}
+
+	after, err := CalculateWeeklyEarnings(db, 1, 2, unapproveTestWeek)
+	if err != nil {
+		t.Fatalf("CalculateWeeklyEarnings after: %v", err)
+	}
+	if after.TotalAmount >= before.TotalAmount {
+		t.Errorf("expected earnings to drop, before=%v after=%v", before.TotalAmount, after.TotalAmount)
+	}
+
+	var stored float64
+	if err := db.QueryRow(`
+		SELECT total_amount FROM allowance_payouts WHERE parent_id = 1 AND child_id = 2 AND week_start = ?
+	`, unapproveTestWeek).Scan(&stored); err != nil {
+		t.Fatalf("read payout: %v", err)
+	}
+	if stored != after.TotalAmount {
+		t.Errorf("expected stored payout refreshed to %v, got %v", after.TotalAmount, stored)
+	}
+}
+
+func TestUnapproveCompletion_PaidWeekRefused(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	id := seedApprovedCompletion(t, db)
+
+	payout, err := UpsertPayout(db, 1, 2, unapproveTestWeek, 0, 0, 25)
+	if err != nil {
+		t.Fatalf("UpsertPayout: %v", err)
+	}
+	if _, err := MarkPayoutPaid(db, payout.ID, 1); err != nil {
+		t.Fatalf("MarkPayoutPaid: %v", err)
+	}
+
+	if _, err := UnapproveCompletion(db, id, 1); !errors.Is(err, ErrWeekAlreadyPaid) {
+		t.Fatalf("expected ErrWeekAlreadyPaid, got %v", err)
+	}
+	if got := completionStatus(t, db, id); got != "approved" {
+		t.Errorf("expected status to stay approved, got %q", got)
+	}
+}
+
+func TestUnapproveCompletion_TeamParticipantPaidWeekRefused(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	if _, err := db.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (3, 'sib@test.com', 'Sibling', 'gs3')`); err != nil {
+		t.Fatalf("seed sibling: %v", err)
+	}
+	id := seedApprovedCompletion(t, db)
+	insertTeamMember(t, db, id, 2, "2026-03-01T10:00:00Z")
+	insertTeamMember(t, db, id, 3, "2026-03-01T10:05:00Z")
+
+	payout, err := UpsertPayout(db, 1, 3, unapproveTestWeek, 0, 0, 10)
+	if err != nil {
+		t.Fatalf("UpsertPayout: %v", err)
+	}
+	if _, err := MarkPayoutPaid(db, payout.ID, 1); err != nil {
+		t.Fatalf("MarkPayoutPaid: %v", err)
+	}
+
+	if _, err := UnapproveCompletion(db, id, 1); !errors.Is(err, ErrWeekAlreadyPaid) {
+		t.Fatalf("expected ErrWeekAlreadyPaid, got %v", err)
+	}
+	if got := completionStatus(t, db, id); got != "approved" {
+		t.Errorf("expected status to stay approved, got %q", got)
+	}
+}
+
+func TestUnapproveCompletion_UnpaidPayoutAllowed(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	id := seedApprovedCompletion(t, db)
+
+	if _, err := UpsertPayout(db, 1, 2, unapproveTestWeek, 0, 0, 25); err != nil {
+		t.Fatalf("UpsertPayout: %v", err)
+	}
+	if _, err := UnapproveCompletion(db, id, 1); err != nil {
+		t.Fatalf("expected unpaid week to allow unapprove, got %v", err)
+	}
+}
+
+func TestUnapproveCompletion_NotFound(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	id := seedApprovedCompletion(t, db)
+
+	if _, err := UnapproveCompletion(db, 99999, 1); !errors.Is(err, ErrCompletionNotFound) {
+		t.Errorf("unknown id: expected ErrCompletionNotFound, got %v", err)
+	}
+	if _, err := UnapproveCompletion(db, id, 42); !errors.Is(err, ErrCompletionNotFound) {
+		t.Errorf("other parent: expected ErrCompletionNotFound, got %v", err)
+	}
+	if got := completionStatus(t, db, id); got != "approved" {
+		t.Errorf("expected status to stay approved, got %q", got)
+	}
+}
+
+func TestUnapproveCompletion_NotApproved(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	ids := seedPendingCompletions(t, db, 2)
+	if _, err := RejectCompletion(db, ids[1], 1, ""); err != nil {
+		t.Fatalf("RejectCompletion: %v", err)
+	}
+
+	if _, err := UnapproveCompletion(db, ids[0], 1); !errors.Is(err, ErrCompletionNotApproved) {
+		t.Errorf("pending: expected ErrCompletionNotApproved, got %v", err)
+	}
+	if _, err := UnapproveCompletion(db, ids[1], 1); !errors.Is(err, ErrCompletionNotApproved) {
+		t.Errorf("rejected: expected ErrCompletionNotApproved, got %v", err)
+	}
+	if got := completionStatus(t, db, ids[1]); got != "rejected" {
+		t.Errorf("expected rejected to stay rejected, got %q", got)
 	}
 }

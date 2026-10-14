@@ -13,21 +13,23 @@ import (
 
 // Sentinel errors.
 var (
-	ErrChoreNotFound        = errors.New("chore not found")
-	ErrCompletionNotFound   = errors.New("completion not found")
-	ErrCompletionExists     = errors.New("chore already completed for this date")
-	ErrCompletionNotPending = errors.New("completion is not in pending status")
-	ErrExtraNotFound        = errors.New("extra task not found")
-	ErrExtraNotOpen         = errors.New("extra task is not open for claiming")
-	ErrBonusRuleNotFound    = errors.New("bonus rule not found")
-	ErrPayoutNotFound       = errors.New("payout not found")
-	ErrGoalNotFound         = errors.New("savings goal not found")
-	ErrChoreNotTeamMode     = errors.New("chore is not in team completion mode")
-	ErrAlreadyJoined        = errors.New("child has already joined this team session")
-	ErrSessionNotWaiting    = errors.New("team session is not in waiting_for_team status")
-	ErrNotSessionInitiator  = errors.New("only the child who started the team session can cancel it")
-	ErrTeamTooSmall         = errors.New("not enough children for team completion")
-	ErrTeamSessionConflict  = errors.New("a conflicting team completion already exists for this chore and date")
+	ErrChoreNotFound         = errors.New("chore not found")
+	ErrCompletionNotFound    = errors.New("completion not found")
+	ErrCompletionExists      = errors.New("chore already completed for this date")
+	ErrCompletionNotPending  = errors.New("completion is not in pending status")
+	ErrExtraNotFound         = errors.New("extra task not found")
+	ErrExtraNotOpen          = errors.New("extra task is not open for claiming")
+	ErrBonusRuleNotFound     = errors.New("bonus rule not found")
+	ErrPayoutNotFound        = errors.New("payout not found")
+	ErrGoalNotFound          = errors.New("savings goal not found")
+	ErrChoreNotTeamMode      = errors.New("chore is not in team completion mode")
+	ErrAlreadyJoined         = errors.New("child has already joined this team session")
+	ErrSessionNotWaiting     = errors.New("team session is not in waiting_for_team status")
+	ErrNotSessionInitiator   = errors.New("only the child who started the team session can cancel it")
+	ErrTeamTooSmall          = errors.New("not enough children for team completion")
+	ErrTeamSessionConflict   = errors.New("a conflicting team completion already exists for this chore and date")
+	ErrCompletionNotApproved = errors.New("completion is not approved")
+	ErrWeekAlreadyPaid       = errors.New("week payout already paid")
 )
 
 // decryptOrPlaintext decrypts a stored field value. For enc:-prefixed values
@@ -552,8 +554,157 @@ func resolveCompletion(db *sql.DB, completionID, parentID int64, status, rejecti
 	return &comp, nil
 }
 
+// UnapproveCompletion moves an approved completion owned by parentID back to
+// pending, clearing approved_by, approved_at and quality_bonus. It refuses with
+// ErrWeekAlreadyPaid when the completion's week has already been paid out to
+// the initiating child or any team participant. unapproved_at is stamped so the
+// auto-approve window restarts from now instead of the original created_at;
+// otherwise a completion older than auto_approve_hours would be re-approved on
+// the next earnings read. Stored, unpaid payout rows for the affected children
+// are recalculated after the change.
+func UnapproveCompletion(db *sql.DB, completionID, parentID int64) (*Completion, error) {
+	tx, err := db.Begin()
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback() //nolint:errcheck
+
+	var comp Completion
+	var encNotes string
+	err = tx.QueryRow(`
+		SELECT comp.id, comp.chore_id, comp.child_id, comp.date, comp.status,
+		       comp.notes, comp.created_at
+		FROM allowance_completions comp
+		JOIN allowance_chores c ON c.id = comp.chore_id
+		WHERE comp.id = ? AND c.parent_id = ?
+	`, completionID, parentID).Scan(
+		&comp.ID, &comp.ChoreID, &comp.ChildID, &comp.Date, &comp.Status,
+		&encNotes, &comp.CreatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrCompletionNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if comp.Status != "approved" {
+		return nil, ErrCompletionNotApproved
+	}
+
+	date, err := time.Parse("2006-01-02", comp.Date)
+	if err != nil {
+		return nil, fmt.Errorf("parse completion date %q: %w", comp.Date, err)
+	}
+	weekStart := MondayOf(date)
+
+	// Team participants earn from the initiator's completion too, so every
+	// involved child's week must still be unpaid.
+	childIDs := []int64{comp.ChildID}
+	rows, err := tx.Query(`
+		SELECT child_id FROM allowance_team_completions
+		WHERE completion_id = ? AND child_id != ?
+		ORDER BY child_id
+	`, completionID, comp.ChildID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		childIDs = append(childIDs, id)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, err
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, childID := range childIDs {
+		paid, err := isWeekPayoutPaid(tx, parentID, childID, weekStart)
+		if err != nil {
+			return nil, err
+		}
+		if paid {
+			return nil, ErrWeekAlreadyPaid
+		}
+	}
+
+	now := nowRFC3339()
+	res, err := tx.Exec(`
+		UPDATE allowance_completions
+		SET status = 'pending', quality_bonus = 0, approved_by = NULL, approved_at = NULL,
+		    unapproved_at = ?
+		WHERE id = ? AND status = 'approved'
+	`, now, completionID)
+	if err != nil {
+		return nil, err
+	}
+	if n, err := res.RowsAffected(); err != nil {
+		return nil, err
+	} else if n == 0 {
+		return nil, ErrCompletionNotApproved
+	}
+
+	// Only refresh payout rows that already exist; current-week rows are
+	// generated on read by the payouts endpoint.
+	var stored []int64
+	for _, childID := range childIDs {
+		var n int
+		if err := tx.QueryRow(`
+			SELECT COUNT(*) FROM allowance_payouts
+			WHERE parent_id = ? AND child_id = ? AND week_start = ?
+		`, parentID, childID, weekStart).Scan(&n); err != nil {
+			return nil, err
+		}
+		if n > 0 {
+			stored = append(stored, childID)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+
+	for _, childID := range stored {
+		earnings, err := CalculateWeeklyEarnings(db, parentID, childID, weekStart)
+		if err != nil {
+			log.Printf("allowance: unapprove recalc earnings parent %d child %d week %s: %v", parentID, childID, weekStart, err)
+			continue
+		}
+		if _, err := UpsertPayout(db, parentID, childID, weekStart, earnings.BaseAllowance, earnings.BonusAmount, earnings.TotalAmount); err != nil {
+			log.Printf("allowance: unapprove upsert payout parent %d child %d week %s: %v", parentID, childID, weekStart, err)
+		}
+	}
+
+	comp.Status = "pending"
+	comp.Notes = decryptOrPlaintext(encNotes)
+	return &comp, nil
+}
+
+// isWeekPayoutPaid reports whether the stored payout for childID's week
+// starting at weekStart has been marked paid. A missing row counts as unpaid.
+func isWeekPayoutPaid(tx *sql.Tx, parentID, childID int64, weekStart string) (bool, error) {
+	var paidOut int
+	err := tx.QueryRow(`
+		SELECT paid_out FROM allowance_payouts
+		WHERE parent_id = ? AND child_id = ? AND week_start = ?
+	`, parentID, childID, weekStart).Scan(&paidOut)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return paidOut != 0, nil
+}
+
 // AutoApproveStaleCompletions sets 'approved' on all pending completions older than
-// autoApproveHours for chores owned by parentID.
+// autoApproveHours for chores owned by parentID. For completions a parent has
+// un-approved, the window is measured from unapproved_at instead of created_at.
 // When childID > 0, only completions for that specific child are auto-approved.
 // Returns the number of completions auto-approved.
 func AutoApproveStaleCompletions(db *sql.DB, parentID, childID int64, autoApproveHours int) (int64, error) {
@@ -563,7 +714,7 @@ func AutoApproveStaleCompletions(db *sql.DB, parentID, childID int64, autoApprov
 		UPDATE allowance_completions
 		SET status = 'approved', approved_at = ?
 		WHERE status = 'pending'
-		  AND created_at <= ?
+		  AND COALESCE(unapproved_at, created_at) <= ?
 		  AND chore_id IN (SELECT id FROM allowance_chores WHERE parent_id = ?)`
 	args := []any{now, cutoff, parentID}
 	if childID > 0 {

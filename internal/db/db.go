@@ -3122,6 +3122,18 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add unapproved_at column to allowance_completions (Hytte-8w9nt).
+	// Restarts the auto-approve window when a parent un-approves a completion.
+	var hasUnapprovedAt int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('allowance_completions') WHERE name = 'unapproved_at'`).Scan(&hasUnapprovedAt); err != nil {
+		return fmt.Errorf("check allowance_completions unapproved_at column: %w", err)
+	}
+	if hasUnapprovedAt == 0 {
+		if _, err := db.Exec(`ALTER TABLE allowance_completions ADD COLUMN unapproved_at TEXT`); err != nil {
+			return fmt.Errorf("add allowance_completions unapproved_at column: %w", err)
+		}
+	}
+
 	// Add description column to budget_recurring (Hytte-mro9).
 	var hasRecurringDesc int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_recurring') WHERE name = 'description'`).Scan(&hasRecurringDesc); err != nil {

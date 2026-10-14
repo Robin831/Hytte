@@ -79,6 +79,7 @@ func setupSchedulerTestDB(t *testing.T) *sql.DB {
 		quality_bonus REAL NOT NULL DEFAULT 0,
 		photo_path    TEXT NOT NULL DEFAULT '',
 		rejection_reason TEXT NOT NULL DEFAULT '',
+		unapproved_at TEXT,
 		created_at    TEXT NOT NULL DEFAULT '',
 		UNIQUE(chore_id, child_id, date)
 	);

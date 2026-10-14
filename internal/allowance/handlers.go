@@ -483,8 +483,43 @@ func RejectCompletionHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// UnapproveCompletionHandler moves an approved completion back to pending,
+// unless its week has already been paid out.
+// POST /api/allowance/unapprove/{id}
+func UnapproveCompletionHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if !requireParent(db, w, user) {
+			return
+		}
+
+		completionID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+		if err != nil {
+			writeJSON(w, http.StatusBadRequest, errResponse("invalid completion ID"))
+			return
+		}
+
+		comp, err := UnapproveCompletion(db, completionID, user.ID)
+		if err != nil {
+			switch {
+			case errors.Is(err, ErrCompletionNotFound):
+				writeJSON(w, http.StatusNotFound, errResponse("completion not found"))
+			case errors.Is(err, ErrCompletionNotApproved):
+				writeJSON(w, http.StatusConflict, errResponse("completion is not approved"))
+			case errors.Is(err, ErrWeekAlreadyPaid):
+				writeJSON(w, http.StatusConflict, errResponse("week has already been paid out"))
+			default:
+				log.Printf("allowance: unapprove completion %d parent %d: %v", completionID, user.ID, err)
+				writeJSON(w, http.StatusInternalServerError, errResponse("failed to unapprove completion"))
+			}
+			return
+		}
+		writeJSON(w, http.StatusOK, comp)
+	}
+}
+
 // maxBatchCompletionIDs caps how many completion IDs a single batch
-// approve/reject request may carry.
+// approve/reject/unapprove request may carry.
 const maxBatchCompletionIDs = 100
 
 type batchCompletionRequest struct {
@@ -495,7 +530,7 @@ type batchCompletionRequest struct {
 }
 
 // batchCompletionResult reports the outcome for a single completion ID.
-// Status is one of "approved", "rejected", "skipped" or "error".
+// Status is one of "approved", "rejected", "unapproved", "skipped" or "error".
 type batchCompletionResult struct {
 	ID     int64  `json:"id"`
 	Status string `json:"status"`
@@ -551,6 +586,10 @@ func batchCompletionFailure(id, parentID int64, action string, err error) batchC
 		return batchCompletionResult{ID: id, Status: "skipped", Error: "completion not found"}
 	case errors.Is(err, ErrCompletionNotPending):
 		return batchCompletionResult{ID: id, Status: "skipped", Error: "completion is not pending"}
+	case errors.Is(err, ErrCompletionNotApproved):
+		return batchCompletionResult{ID: id, Status: "skipped", Error: "completion is not approved"}
+	case errors.Is(err, ErrWeekAlreadyPaid):
+		return batchCompletionResult{ID: id, Status: "skipped", Error: "week has already been paid out"}
 	default:
 		log.Printf("allowance: batch %s completion %d parent %d: %v", action, id, parentID, err)
 		return batchCompletionResult{ID: id, Status: "error", Error: "failed to " + action + " completion"}
@@ -622,6 +661,41 @@ func BatchRejectCompletionsHandler(db *sql.DB) http.HandlerFunc {
 			}
 			succeeded++
 			results = append(results, batchCompletionResult{ID: id, Status: "rejected"})
+		}
+
+		writeJSON(w, http.StatusOK, batchCompletionResponse{
+			Succeeded: succeeded,
+			Failed:    len(results) - succeeded,
+			Results:   results,
+		})
+	}
+}
+
+// BatchUnapproveCompletionsHandler moves several approved completions back to
+// pending in one request. Like the other batch endpoints it reports per-ID
+// outcomes and responds 200 once the payload validates.
+// POST /api/allowance/unapprove/batch
+func BatchUnapproveCompletionsHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if !requireParent(db, w, user) {
+			return
+		}
+
+		req, ok := decodeBatchCompletionIDs(w, r)
+		if !ok {
+			return
+		}
+
+		results := make([]batchCompletionResult, 0, len(req.IDs))
+		succeeded := 0
+		for _, id := range req.IDs {
+			if _, err := UnapproveCompletion(db, id, user.ID); err != nil {
+				results = append(results, batchCompletionFailure(id, user.ID, "unapprove", err))
+				continue
+			}
+			succeeded++
+			results = append(results, batchCompletionResult{ID: id, Status: "unapproved"})
 		}
 
 		writeJSON(w, http.StatusOK, batchCompletionResponse{
