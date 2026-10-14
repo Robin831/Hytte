@@ -667,8 +667,9 @@ export default function BudgetCreditCards() {
   useLayoutEffect(() => { groupsRef.current = groups }, [groups])
 
   // Transaction awaiting delete confirmation, and the abort handle for the
-  // reload issued after a successful delete (aborted on card/month switch and
-  // unmount so a stale response can't overwrite the newly selected view).
+  // refresh issued after a successful delete (aborted on card/month switch and
+  // unmount; a switch while the DELETE itself is in flight is caught by the
+  // selection check in handleDeleteTransaction).
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
   const deleteReloadCleanupRef = useRef<(() => void) | null>(null)
   useEffect(() => () => {
@@ -945,29 +946,72 @@ export default function BudgetCreditCards() {
     }
   }, [selectedId, month, openingBalanceInput, t, loadTransactions])
 
+  // Background refresh after a delete: unlike loadTransactions/loadSummary it
+  // keeps the current rows and summary on screen until the response arrives
+  // and leaves the opening balance (and any unsaved input) alone, since a
+  // delete never changes it. Responses are dropped if the selection moved on.
+  const refreshAfterDelete = useCallback((accountId: number, m: string) => {
+    const ctrl = new AbortController()
+    const isCurrent = () =>
+      !ctrl.signal.aborted && currentSelectedIdRef.current === accountId && currentMonthRef.current === m
+    const query = `month=${encodeURIComponent(m)}`
+    fetch(`/api/credit-card/transactions?credit_card_id=${encodeURIComponent(String(accountId))}&${query}`, {
+      credentials: 'include',
+      signal: ctrl.signal,
+    })
+      .then(r => {
+        if (!r.ok) throw new Error('failed')
+        return r.json()
+      })
+      .then(data => {
+        if (!isCurrent()) return
+        setTransactions(Array.isArray(data.transactions) ? data.transactions : [])
+        setVariableBillName(data.variable_bill_name || null)
+        setVariableBillAmount(data.variable_bill_amount || 0)
+      })
+      .catch(err => {
+        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
+        if (!isAbortError && isCurrent()) setTxnsError(t('creditCards.errors.loadTransactionsFailed'))
+      })
+    fetch(`/api/budget/credit/summary?account_id=${encodeURIComponent(accountId)}&${query}`, {
+      credentials: 'include',
+      signal: ctrl.signal,
+    })
+      .then(r => {
+        if (!r.ok) throw new Error('failed')
+        return r.json()
+      })
+      .then((data: CreditCardSummary) => { if (isCurrent()) setSummary(data) })
+      .catch(err => {
+        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
+        if (!isAbortError && isCurrent()) setError(t('creditCards.errors.loadFailed'))
+      })
+    return () => ctrl.abort()
+  }, [t])
+
   const handleDeleteTransaction = useCallback(async (txId: number) => {
+    // Capture the selection the delete was issued from; the user may switch
+    // card or month while the DELETE is in flight.
+    const accountId = selectedId
+    const m = month
     try {
       const r = await fetch(`/api/credit-card/transactions/${txId}`, {
         method: 'DELETE',
         credentials: 'include',
       })
       if (!r.ok) throw new Error('failed')
-      setTransactions(prev => prev.filter(t => t.id !== txId))
-      // Reload so the closing balance, credit-limit card and monthly total
-      // (variable bill amount is resynced server-side) match the rows again.
-      if (selectedId !== null) {
-        deleteReloadCleanupRef.current?.()
-        const cleanupTxns = loadTransactions(selectedId, month)
-        const cleanupSummary = loadSummary(selectedId, month)
-        deleteReloadCleanupRef.current = () => {
-          cleanupTxns()
-          cleanupSummary()
-        }
+      if (accountId === null || currentSelectedIdRef.current !== accountId || currentMonthRef.current !== m) {
+        return
       }
+      setTransactions(prev => prev.filter(t => t.id !== txId))
+      // Refresh so the closing balance, credit-limit card and monthly total
+      // (variable bill amount is resynced server-side) match the rows again.
+      deleteReloadCleanupRef.current?.()
+      deleteReloadCleanupRef.current = refreshAfterDelete(accountId, m)
     } catch {
       setTxnsError(t('creditCards.errors.deleteFailed'))
     }
-  }, [t, selectedId, month, loadTransactions, loadSummary])
+  }, [t, selectedId, month, refreshAfterDelete])
 
   // The trash button only requests a delete; the ConfirmDialog performs it.
   const requestDeleteTransaction = useCallback((txId: number) => {

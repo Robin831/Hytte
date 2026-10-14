@@ -841,6 +841,40 @@ describe('BudgetCreditCards – delete transaction', () => {
     const dialog = screen.getByRole('dialog')
     expect(dialog.textContent).toContain('Delete transaction?')
     expect(dialog.textContent).toContain('Rema 1000')
+    const amount = (-250).toLocaleString('en', {
+      style: 'currency',
+      currency: 'NOK',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })
+    expect(dialog.textContent).toContain(`"Rema 1000" (${amount})`)
+  })
+
+  it('falls back to the generic message when the transaction has no description', async () => {
+    const txns = {
+      ...BEFORE_TXNS,
+      transactions: BEFORE_TXNS.transactions.map(tx => (tx.id === 1 ? { ...tx, beskrivelse: '' } : tx)),
+    }
+    const fn = vi.fn((url: string) => {
+      const respond = (data: unknown) =>
+        Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(data) } as Response)
+      if (url.includes('/api/budget/accounts')) return respond({ accounts: [ACCOUNT] })
+      if (url.includes('/api/credit-card/groups')) return respond(GROUPS)
+      if (url.includes('/api/budget/credit/summary')) return respond(BEFORE_SUMMARY)
+      if (url.includes('/api/credit-card/transactions?')) return respond(txns)
+      return respond({})
+    })
+    vi.stubGlobal('fetch', fn)
+    renderComponent()
+    await waitFor(() => {
+      expect(screen.getByText('Pending Charge')).toBeInTheDocument()
+    })
+    // Transaction 1 is the first row with a trash button.
+    fireEvent.click(document.querySelector('button[title="Delete transaction"]')!)
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+    expect(screen.getByRole('dialog').textContent).toContain('Delete this transaction? This cannot be undone.')
   })
 
   it('cancel button closes the dialog without deleting', async () => {
@@ -910,6 +944,64 @@ describe('BudgetCreditCards – delete transaction', () => {
       expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && textOf(el) === `Used: ${fmt(5000)}`)).toBeInTheDocument()
     })
     expect(screen.getByText('Pending Charge')).toBeInTheDocument()
+  })
+
+  it('keeps the list and opening-balance input on screen while refreshing after delete', async () => {
+    const { fn } = makeDeleteFetchMock(true)
+    vi.stubGlobal('fetch', fn)
+    await openDeleteDialogForRema()
+
+    const input = screen.getByDisplayValue('1000') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '1234' } })
+
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole('dialog')).getByText('Delete'))
+    })
+
+    await waitFor(() => {
+      expect(textOf(screen.getByText('Closing balance').nextElementSibling)).toBe(fmt(5000))
+    })
+    expect(screen.getByText('Pending Charge')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('1234')).toBeInTheDocument()
+  })
+
+  it('does not reload the old month when the month changes while DELETE is in flight', async () => {
+    const calls: Call[] = []
+    let resolveDelete: (r: Response) => void = () => {}
+    const fn = vi.fn((url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET'
+      calls.push({ url, method })
+      const respond = (data: unknown) =>
+        Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(data) } as Response)
+      if (method === 'DELETE') return new Promise<Response>(res => { resolveDelete = res })
+      if (url.includes('/api/budget/accounts')) return respond({ accounts: [ACCOUNT] })
+      if (url.includes('/api/credit-card/groups')) return respond(GROUPS)
+      if (url.includes('/api/budget/credit/summary')) return respond(BEFORE_SUMMARY)
+      if (url.includes('/api/credit-card/transactions?')) return respond(BEFORE_TXNS)
+      return respond({})
+    })
+    vi.stubGlobal('fetch', fn)
+    await openDeleteDialogForRema()
+    const firstMonthUrl = calls.find(c => c.url.includes('/api/credit-card/transactions?'))!.url
+
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole('dialog')).getByText('Delete'))
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByLabelText('Previous month'))
+    })
+    await waitFor(() => {
+      expect(calls.filter(c => c.url.includes('/api/credit-card/transactions?') && c.url !== firstMonthUrl).length).toBe(1)
+    })
+    const getsBefore = calls.filter(c => c.method === 'GET').length
+
+    await act(async () => {
+      resolveDelete({ ok: true, status: 200, json: () => Promise.resolve({}) } as Response)
+    })
+
+    expect(calls.filter(c => c.method === 'GET').length).toBe(getsBefore)
+    // The new month's rows stay; the old month's response never replaces them.
+    expect(screen.getByText('Rema 1000')).toBeInTheDocument()
   })
 
   it('shows the delete error and does not reload when DELETE fails', async () => {
