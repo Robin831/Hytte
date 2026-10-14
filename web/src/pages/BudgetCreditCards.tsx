@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { ChevronLeft, ChevronRight, Upload, X, Link2, CreditCard, Plus, Trash2, Settings, History } from 'lucide-react'
 import { List, type RowComponentProps } from 'react-window'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -607,6 +608,44 @@ function MonthlyHistoryView({ creditCardId, currency, t }: MonthlyHistoryViewPro
 
 // ── Main Component ─────────────────────────────────────────────────────────────
 
+// Shared GET helpers for the card's month view. Both the full reload and the
+// background refresh after a delete go through these so the URLs and response
+// parsing stay in one place.
+interface CardTransactionsResult {
+  transactions: Transaction[]
+  variableBillName: string | null
+  variableBillAmount: number
+  openingBalance: number
+}
+
+async function fetchCardTransactions(accountId: number, m: string, signal: AbortSignal): Promise<CardTransactionsResult> {
+  const r = await fetch(`/api/credit-card/transactions?credit_card_id=${encodeURIComponent(String(accountId))}&month=${encodeURIComponent(m)}`, {
+    credentials: 'include',
+    signal,
+  })
+  if (!r.ok) throw new Error('failed')
+  const data = await r.json()
+  return {
+    transactions: Array.isArray(data.transactions) ? data.transactions : [],
+    variableBillName: data.variable_bill_name || null,
+    variableBillAmount: data.variable_bill_amount || 0,
+    openingBalance: typeof data.opening_balance === 'number' ? data.opening_balance : 0,
+  }
+}
+
+async function fetchCardSummary(accountId: number, m: string, signal: AbortSignal): Promise<CreditCardSummary> {
+  const r = await fetch(`/api/budget/credit/summary?account_id=${encodeURIComponent(String(accountId))}&month=${encodeURIComponent(m)}`, {
+    credentials: 'include',
+    signal,
+  })
+  if (!r.ok) throw new Error('failed')
+  return r.json()
+}
+
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError'
+}
+
 export default function BudgetCreditCards() {
   const { t } = useTranslation('budget')
 
@@ -665,6 +704,17 @@ export default function BudgetCreditCards() {
   useLayoutEffect(() => { transactionsRef.current = transactions }, [transactions])
   useLayoutEffect(() => { groupsRef.current = groups }, [groups])
 
+  // Transaction awaiting delete confirmation, and the abort handle for the
+  // refresh issued after a successful delete (aborted on card/month switch and
+  // unmount; a switch while the DELETE itself is in flight is caught by the
+  // selection check in handleDeleteTransaction).
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
+  const deleteReloadCleanupRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => {
+    deleteReloadCleanupRef.current?.()
+    deleteReloadCleanupRef.current = null
+  }, [selectedId, month])
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset result when selection changes
     setReapplyResult(null)
@@ -713,18 +763,10 @@ export default function BudgetCreditCards() {
     setLoadingSummary(true)
     setSummary(null)
     setError(null)
-    fetch(`/api/budget/credit/summary?account_id=${encodeURIComponent(accountId)}&month=${encodeURIComponent(m)}`, {
-      credentials: 'include',
-      signal: ctrl.signal,
-    })
-      .then(r => {
-        if (!r.ok) throw new Error('failed')
-        return r.json()
-      })
-      .then((data: CreditCardSummary) => setSummary(data))
+    fetchCardSummary(accountId, m, ctrl.signal)
+      .then(setSummary)
       .catch(err => {
-        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
-        if (!isAbortError) setError(t('creditCards.errors.loadFailed'))
+        if (!isAbortError(err)) setError(t('creditCards.errors.loadFailed'))
       })
       .finally(() => { if (!ctrl.signal.aborted) setLoadingSummary(false) })
     return () => ctrl.abort()
@@ -740,26 +782,16 @@ export default function BudgetCreditCards() {
     setVariableBillAmount(0)
     setOpeningBalance(0)
     setOpeningBalanceInput('')
-    const cardId = String(accountId)
-    fetch(`/api/credit-card/transactions?credit_card_id=${encodeURIComponent(cardId)}&month=${encodeURIComponent(m)}`, {
-      credentials: 'include',
-      signal: ctrl.signal,
-    })
-      .then(r => {
-        if (!r.ok) throw new Error('failed')
-        return r.json()
-      })
-      .then(data => {
-        setTransactions(Array.isArray(data.transactions) ? data.transactions : [])
-        setVariableBillName(data.variable_bill_name || null)
-        setVariableBillAmount(data.variable_bill_amount || 0)
-        const ob = typeof data.opening_balance === 'number' ? data.opening_balance : 0
-        setOpeningBalance(ob)
-        setOpeningBalanceInput(String(ob === 0 ? '' : ob))
+    fetchCardTransactions(accountId, m, ctrl.signal)
+      .then(res => {
+        setTransactions(res.transactions)
+        setVariableBillName(res.variableBillName)
+        setVariableBillAmount(res.variableBillAmount)
+        setOpeningBalance(res.openingBalance)
+        setOpeningBalanceInput(String(res.openingBalance === 0 ? '' : res.openingBalance))
       })
       .catch(err => {
-        const isAbortError = err instanceof DOMException && err.name === 'AbortError'
-        if (!isAbortError) setTxnsError(t('creditCards.errors.loadTransactionsFailed'))
+        if (!isAbortError(err)) setTxnsError(t('creditCards.errors.loadTransactionsFailed'))
       })
       .finally(() => { if (!ctrl.signal.aborted) setLoadingTxns(false) })
     return () => ctrl.abort()
@@ -934,18 +966,72 @@ export default function BudgetCreditCards() {
     }
   }, [selectedId, month, openingBalanceInput, t, loadTransactions])
 
+  // Background refresh after a delete: unlike loadTransactions/loadSummary it
+  // keeps the current rows and summary on screen until the response arrives
+  // and leaves the opening balance (and any unsaved input) alone, since a
+  // delete never changes it. Responses are dropped if the selection moved on.
+  // A failed refresh is only logged: the delete itself succeeded and the
+  // locally filtered rows are still correct, so they stay visible.
+  const refreshAfterDelete = useCallback((accountId: number, m: string) => {
+    const ctrl = new AbortController()
+    const isCurrent = () =>
+      !ctrl.signal.aborted && currentSelectedIdRef.current === accountId && currentMonthRef.current === m
+    fetchCardTransactions(accountId, m, ctrl.signal)
+      .then(res => {
+        if (!isCurrent()) return
+        setTransactions(res.transactions)
+        setVariableBillName(res.variableBillName)
+        setVariableBillAmount(res.variableBillAmount)
+      })
+      .catch(err => {
+        if (!isAbortError(err)) console.error('Failed to refresh transactions after delete:', err)
+      })
+    fetchCardSummary(accountId, m, ctrl.signal)
+      .then(data => { if (isCurrent()) setSummary(data) })
+      .catch(err => {
+        if (!isAbortError(err)) console.error('Failed to refresh summary after delete:', err)
+      })
+    return () => ctrl.abort()
+  }, [])
+
   const handleDeleteTransaction = useCallback(async (txId: number) => {
+    // Capture the selection the delete was issued from; the user may switch
+    // card or month while the DELETE is in flight.
+    const accountId = selectedId
+    const m = month
     try {
       const r = await fetch(`/api/credit-card/transactions/${txId}`, {
         method: 'DELETE',
         credentials: 'include',
       })
       if (!r.ok) throw new Error('failed')
+      if (accountId === null || currentSelectedIdRef.current !== accountId || currentMonthRef.current !== m) {
+        return
+      }
       setTransactions(prev => prev.filter(t => t.id !== txId))
+      // Refresh so the closing balance, credit-limit card and monthly total
+      // (variable bill amount is resynced server-side) match the rows again.
+      deleteReloadCleanupRef.current?.()
+      deleteReloadCleanupRef.current = refreshAfterDelete(accountId, m)
     } catch {
       setTxnsError(t('creditCards.errors.deleteFailed'))
     }
-  }, [t])
+  }, [t, selectedId, month, refreshAfterDelete])
+
+  // The trash button only requests a delete; the ConfirmDialog performs it.
+  const requestDeleteTransaction = useCallback((txId: number) => {
+    setPendingDeleteId(txId)
+  }, [])
+
+  const cancelDeleteTransaction = useCallback(() => {
+    setPendingDeleteId(null)
+  }, [])
+
+  const confirmDeleteTransaction = useCallback(() => {
+    const txId = pendingDeleteId
+    setPendingDeleteId(null)
+    if (txId !== null) handleDeleteTransaction(txId)
+  }, [pendingDeleteId, handleDeleteTransaction])
 
   const handleDeferTransaction = useCallback(async (txId: number) => {
     // Optimistic toggle
@@ -1076,6 +1162,16 @@ export default function BudgetCreditCards() {
     ? Math.min(100, (summary.used_amount / summary.credit_limit) * 100)
     : 0
   const usedColor = usedPct >= 90 ? 'bg-red-500' : usedPct >= 70 ? 'bg-yellow-500' : 'bg-blue-500'
+
+  const pendingDeleteTx = pendingDeleteId !== null
+    ? transactions.find(tx => tx.id === pendingDeleteId)
+    : undefined
+  const confirmDeleteMessage = pendingDeleteTx && pendingDeleteTx.beskrivelse
+    ? t('creditCards.confirmDeleteMessage', {
+      merchant: pendingDeleteTx.beskrivelse,
+      amount: formatAmount(pendingDeleteTx.belop, selectedAccount.currency),
+    })
+    : t('creditCards.confirmDeleteMessageGeneric')
 
   // ── Group management ───────────────────────────────────────────────────────
 
@@ -1514,7 +1610,7 @@ export default function BudgetCreditCards() {
                         currency={selectedAccount.currency}
                         t={t}
                         onAssign={handleAssignGroup}
-                        onDelete={handleDeleteTransaction}
+                        onDelete={requestDeleteTransaction}
                         onDefer={handleDeferTransaction}
                       />
                     )
@@ -1529,7 +1625,7 @@ export default function BudgetCreditCards() {
                       currency={selectedAccount.currency}
                       t={t}
                       onAssign={handleAssignGroup}
-                      onDelete={handleDeleteTransaction}
+                      onDelete={requestDeleteTransaction}
                       onDefer={handleDeferTransaction}
                     />
                   )}
@@ -1573,6 +1669,17 @@ export default function BudgetCreditCards() {
           }}
         />
       )}
+
+      {/* Transaction delete confirmation */}
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        title={t('creditCards.confirmDeleteTitle')}
+        message={confirmDeleteMessage}
+        confirmLabel={t('creditCards.confirmDeleteConfirm')}
+        destructive
+        onConfirm={confirmDeleteTransaction}
+        onCancel={cancelDeleteTransaction}
+      />
     </div>
   )
 }

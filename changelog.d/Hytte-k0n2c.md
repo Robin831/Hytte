@@ -1,0 +1,2 @@
+category: Fixed
+- **Credit card totals refresh after deleting a transaction** - Deleting a credit card transaction now reloads the transaction list and summary, so the closing balance, credit-limit used/available figures and monthly total update immediately instead of showing pre-delete amounts until the month or card is switched. The trash button now asks for confirmation before deleting, since deletion cannot be undone. (Hytte-k0n2c)
