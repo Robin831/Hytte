@@ -988,6 +988,9 @@ describe('Chat – rename and delete', () => {
   })
 
   const conv = makeConv()
+  const transcript = [
+    { id: 300, conversation_id: conv.id, role: 'user', content: 'Earlier question', created_at: '2026-05-01T03:00:00Z' },
+  ]
 
   // Dispatches by URL + method; `put` / `del` decide the PUT and DELETE
   // responses for the conversation.
@@ -999,10 +1002,18 @@ describe('Chat – rename and delete', () => {
       if (url === `/api/chat/conversations/${conv.id}`) {
         if (init?.method === 'PUT') return Promise.resolve(handlers.put?.(init))
         if (init?.method === 'DELETE') return Promise.resolve(handlers.del?.())
-        return Promise.resolve({ ok: true, json: () => Promise.resolve({ conversation: conv, messages: [] }) })
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ conversation: conv, messages: transcript }) })
       }
       return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
     })
+  }
+
+  // Opens the conversation so rename/delete hit the active-conversation branches.
+  async function openConversation() {
+    await waitFor(() => screen.getByText('Existing chat'))
+    fireEvent.click(screen.getByText('Existing chat'))
+    await waitFor(() => expect(screen.getByText('Earlier question')).toBeInTheDocument())
+    expect(screen.getByRole('heading', { level: 2, name: 'Existing chat' })).toBeInTheDocument()
   }
 
   function callsWith(fetchMock: ReturnType<typeof mockFetch>, method: string) {
@@ -1010,14 +1021,12 @@ describe('Chat – rename and delete', () => {
   }
 
   async function startRename() {
-    await waitFor(() => screen.getByText('Existing chat'))
-    fireEvent.click(screen.getByTitle('Rename'))
+    fireEvent.click(await screen.findByTitle('Rename'))
     return screen.getByLabelText('Rename conversation') as HTMLInputElement
   }
 
   async function startDelete() {
-    await waitFor(() => screen.getByText('Existing chat'))
-    fireEvent.click(screen.getByTitle('Delete'))
+    fireEvent.click(await screen.findByTitle('Delete'))
     const confirmRow = screen.getByText('Delete?').parentElement as HTMLElement
     return confirmRow.querySelectorAll('button')
   }
@@ -1041,6 +1050,27 @@ describe('Chat – rename and delete', () => {
     const puts = callsWith(fetchMock, 'PUT')
     expect(puts).toHaveLength(1)
     expect(JSON.parse((puts[0][1] as RequestInit).body as string)).toEqual({ title: 'Renamed chat' })
+  })
+
+  it('renaming the open conversation updates the header title', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      put: init => ({
+        ok: true,
+        json: () => Promise.resolve({ conversation: { ...conv, ...JSON.parse(init.body as string) } }),
+      }),
+    }))
+    renderChat()
+    await openConversation()
+
+    const input = await startRename()
+    fireEvent.change(input, { target: { value: 'Renamed chat' } })
+    fireEvent.submit(input.closest('form') as HTMLFormElement)
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 2, name: 'Renamed chat' })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('heading', { level: 2, name: 'Existing chat' })).not.toBeInTheDocument()
+    expect(screen.getByText('Earlier question')).toBeInTheDocument()
   })
 
   it('a blank title closes the editor without sending a PUT', async () => {
@@ -1096,6 +1126,19 @@ describe('Chat – rename and delete', () => {
 
     await waitFor(() => expect(screen.queryByText('Existing chat')).not.toBeInTheDocument())
     expect(screen.queryByText('Delete?')).not.toBeInTheDocument()
+  })
+
+  it('deleting the open conversation clears the transcript and header', async () => {
+    vi.stubGlobal('fetch', mockFetch({ del: () => ({ ok: true, json: () => Promise.resolve({}) }) }))
+    renderChat()
+    await openConversation()
+
+    const [confirm] = await startDelete()
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(screen.queryByText('Earlier question')).not.toBeInTheDocument())
+    expect(screen.queryByText('Existing chat')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Select or start a conversation' })).toBeInTheDocument()
   })
 
   it('a failed delete keeps the confirmation open and shows the error', async () => {
