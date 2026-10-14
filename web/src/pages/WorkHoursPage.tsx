@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Settings } from 'lucide-react'
 import { buildNavHolidaySet, getInitialDate, localDateStr, prevWeekday, nextWeekday } from './workhours/dateUtils'
@@ -7,6 +7,8 @@ import DayView from './workhours/views/DayView'
 import WeekView from './workhours/views/WeekView'
 import MonthView from './workhours/views/MonthView'
 import SettingsView from './workhours/views/SettingsView'
+import { usePunchClock } from './workhours/usePunchClock'
+import type { PunchOutResult } from './workhours/useWorkHoursApi'
 import { WorkHoursShortcutsDialog } from '../components/WorkHoursShortcutsDialog'
 
 export default function WorkHoursPage() {
@@ -16,8 +18,19 @@ export default function WorkHoursPage() {
     getInitialDate(buildNavHolidaySet(new Date().getFullYear()))
   )
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
-  const [pendingPunch, setPendingPunch] = useState(false)
-  const punchToggleRef = useRef<(() => void) | null>(null)
+  // The latest punch-out response; DayView shows its saved day and reloads flex.
+  const [lastPunchOut, setLastPunchOut] = useState<PunchOutResult | null>(null)
+  // Whether DayView has a day edit in flight; the punch shortcut waits for it
+  // just like the punch buttons do.
+  const dayBusyRef = useRef(false)
+  const setDayBusy = useCallback((busy: boolean) => { dayBusyRef.current = busy }, [])
+  const punch = usePunchClock({
+    date: currentDate,
+    setDate: setCurrentDate,
+    onChanged: setLastPunchOut,
+    blocked: () => dayBusyRef.current,
+  })
+  const punchToggle = punch.toggle
 
   function handleSelectDay(date: string) {
     setCurrentDate(date)
@@ -52,12 +65,8 @@ export default function WorkHoursPage() {
         case 'P':
           if (e.repeat) return
           e.preventDefault()
-          if (punchToggleRef.current) {
-            punchToggleRef.current()
-          } else {
-            setActiveTab('day')
-            setPendingPunch(true)
-          }
+          setActiveTab('day')
+          punchToggle()
           break
         case 'j':
         case 'J':
@@ -102,7 +111,7 @@ export default function WorkHoursPage() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [punchToggle])
 
   return (
     <div className="max-w-3xl mx-auto p-4 space-y-4">
@@ -161,7 +170,7 @@ export default function WorkHoursPage() {
       </div>
 
       {activeTab === 'day' && (
-        <DayView currentDate={currentDate} setCurrentDate={setCurrentDate} onNavigateToSettings={() => setActiveTab('settings')} punchToggleRef={punchToggleRef} pendingPunch={pendingPunch} onPunchConsumed={() => setPendingPunch(false)} />
+        <DayView currentDate={currentDate} setCurrentDate={setCurrentDate} onNavigateToSettings={() => setActiveTab('settings')} punch={punch} lastPunchOut={lastPunchOut} onBusyChange={setDayBusy} />
       )}
       {activeTab === 'week' && (
         <WeekView currentDate={currentDate} setCurrentDate={setCurrentDate} onSelectDay={handleSelectDay} />
