@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, type ReactNode } from 'react'
 import { Link } from 'react-router'
 import { useTranslation, Trans } from 'react-i18next'
 import { formatDate, formatDateTime, formatNumber } from '../utils/formatDate'
 import { useAuth } from '../auth'
+import { formatRelativeTime } from '../utils/stars'
 import { ConfirmDialog, Dialog, DialogHeader, DialogBody, DialogFooter } from '../components/ui/dialog'
 
 import {
@@ -106,7 +107,7 @@ export const STALE_AFTER_FAILURES = 2
 const FRESHNESS_TICK_MS = 30_000
 
 // Thrown by the infra loaders so callers can branch on the HTTP status
-// (e.g. 401/403 means the session expired rather than the server failing).
+// (e.g. 401 means the session expired rather than the server failing).
 class InfraFetchError extends Error {
   status: number
   constructor(status: number, message: string) {
@@ -116,12 +117,15 @@ class InfraFetchError extends Error {
   }
 }
 
+// Only 401 means the session is gone. A 403 from RequireFeature means the
+// session is valid but the infra feature is not enabled, so signing in again
+// would not help; it goes down the normal failure path instead.
 function isAuthError(err: unknown): boolean {
-  return err instanceof InfraFetchError && (err.status === 401 || err.status === 403)
+  return err instanceof InfraFetchError && err.status === 401
 }
 
-function isAbortError(err: unknown, signal: AbortSignal): boolean {
-  return signal.aborted || (err instanceof DOMException && err.name === 'AbortError')
+function isAbortError(err: unknown): boolean {
+  return err instanceof DOMException && err.name === 'AbortError'
 }
 
 type LoadResult = 'ok' | 'failed' | 'auth' | 'aborted'
@@ -129,12 +133,8 @@ type LoadResult = 'ok' | 'failed' | 'auth' | 'aborted'
 // Relative age of the last successful load, coarse to the minute since the
 // line only re-renders every FRESHNESS_TICK_MS.
 function formatAge(then: number, now: number, language: string, justNow: string): string {
-  const diffSec = Math.max(0, Math.floor((now - then) / 1000))
-  if (diffSec < 60) return justNow
-  const rtf = new Intl.RelativeTimeFormat(language, { numeric: 'auto' })
-  if (diffSec < 60 * 60) return rtf.format(-Math.floor(diffSec / 60), 'minute')
-  if (diffSec < 60 * 60 * 24) return rtf.format(-Math.floor(diffSec / 3600), 'hour')
-  return rtf.format(-Math.floor(diffSec / 86400), 'day')
+  if (now - then < 60_000) return justNow
+  return formatRelativeTime(then, language, now)
 }
 
 export default function Infra() {
@@ -148,7 +148,7 @@ export default function Infra() {
   const [selectedModule, setSelectedModule] = useState<string | null>(null)
   // Freshness tracking: when the data on screen was last loaded successfully,
   // how many background polls in a row have failed since, and whether the
-  // server rejected us with 401/403 (session expired).
+  // server rejected us with 401 (session expired).
   const [lastSuccessAt, setLastSuccessAt] = useState<number | null>(null)
   const [consecutiveFailures, setConsecutiveFailures] = useState(0)
   const [authExpired, setAuthExpired] = useState(false)
@@ -215,7 +215,7 @@ export default function Infra() {
       // The loaders return early (without throwing) when aborted after the
       // response arrived, so check the signal too; a superseded load is
       // neither a success nor a failure.
-      if (signal.aborted || failures.some(err => isAbortError(err, signal))) return 'aborted'
+      if (signal.aborted || failures.some(isAbortError)) return 'aborted'
       if (failures.length === 0) {
         // Any successful load (poll, manual refresh, retry, toggle) makes the
         // data fresh again and restores the normal poll cadence.
@@ -228,15 +228,15 @@ export default function Infra() {
       // Prefer the auth failure when both endpoints fail so an expired
       // session is never masked by an unrelated error.
       const err = failures.find(isAuthError) ?? failures[0]
-      if (!opts?.suppressErrors) {
-        setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
-      }
       if (isAuthError(err)) {
+        // The session-expired prompt replaces the red error banner.
         setAuthExpired(true)
         return 'auth'
       }
       if (opts?.suppressErrors) {
         setConsecutiveFailures(n => n + 1)
+      } else {
+        setError(err instanceof Error ? err.message : t('errors.failedToLoad'))
       }
       return 'failed'
     } finally {
@@ -359,26 +359,16 @@ export default function Infra() {
   )
 
   const staleBanners = authExpired ? (
-    <div
-      role="alert"
-      className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-lg border mb-4 bg-yellow-400/10 border-yellow-400/20"
-    >
-      <AlertTriangle size={18} className="text-yellow-400 shrink-0" />
-      <span className="text-sm text-yellow-400">{t('sessionExpired')}</span>
+    <StaleBanner message={t('sessionExpired')}>
       <a
         href="/api/auth/google/login"
         className="ml-auto text-sm font-medium text-yellow-300 hover:text-yellow-200 underline"
       >
         {t('signIn')}
       </a>
-    </div>
+    </StaleBanner>
   ) : isStale ? (
-    <div
-      role="alert"
-      className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-lg border mb-4 bg-yellow-400/10 border-yellow-400/20"
-    >
-      <AlertTriangle size={18} className="text-yellow-400 shrink-0" />
-      <span className="text-sm text-yellow-400">{t('staleBanner')}</span>
+    <StaleBanner message={t('staleBanner')}>
       <button
         onClick={handleRefresh}
         disabled={refreshing}
@@ -387,7 +377,7 @@ export default function Infra() {
         <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
         {t('retry')}
       </button>
-    </div>
+    </StaleBanner>
   ) : null
 
   const overallStatus = status?.overall || 'unknown'
@@ -429,7 +419,11 @@ export default function Infra() {
           {t('backToOverview')}
         </button>
         {staleBanners}
-        <div className={dimmed ? 'opacity-50 transition-opacity' : 'transition-opacity'}>
+        <div
+          data-testid="infra-detail-content"
+          data-stale={dimmed ? 'true' : 'false'}
+          className={dimmed ? 'opacity-50 transition-opacity' : 'transition-opacity'}
+        >
           <ModuleDetail
             module={mod}
             status={modStatus}
@@ -1146,6 +1140,21 @@ function ToolVersionsPanel() {
 }
 
 // --- Module Detail Views ---
+
+// Yellow banner shared by the stale-data and session-expired states; only the
+// message and the trailing action differ.
+function StaleBanner({ message, children }: { message: string; children: ReactNode }) {
+  return (
+    <div
+      role="alert"
+      className="flex flex-wrap items-center gap-3 px-4 py-3 rounded-lg border mb-4 bg-yellow-400/10 border-yellow-400/20"
+    >
+      <AlertTriangle size={18} className="text-yellow-400 shrink-0" />
+      <span className="text-sm text-yellow-400">{message}</span>
+      {children}
+    </div>
+  )
+}
 
 function ModuleDetail({ module, status, onRefresh, refreshing }: {
   module: ModuleInfo

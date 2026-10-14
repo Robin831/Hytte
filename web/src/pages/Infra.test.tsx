@@ -96,11 +96,11 @@ async function setVis(state: DocumentVisibilityState) {
   await flushAsync()
 }
 
-function releaseHungPolls() {
+function releaseHungPolls(status = 200) {
   const resolvers = hangResolvers
   hangResolvers = []
   for (const r of resolvers) {
-    r({ ok: true, status: 200, json: () => Promise.resolve(statusPayload) })
+    r({ ok: status < 400, status, json: () => Promise.resolve(status < 400 ? statusPayload : {}) })
   }
 }
 
@@ -375,10 +375,10 @@ describe('Infra background polling', () => {
       expect(capturedTimers[0].delay).toBe(POLL_BASE_MS * 2)
     })
 
-    it.each([401, 403])('shows the session-expired prompt after one %i from status', async code => {
+    it('shows the session-expired prompt after one 401 from status', async () => {
       await renderInfra()
       failStatus = true
-      failStatusCode = code
+      failStatusCode = 401
       await triggerPoll()
       expect(screen.getByText('sessionExpired')).toBeInTheDocument()
       expect(screen.getByRole('link', { name: 'signIn' })).toHaveAttribute('href', '/api/auth/google/login')
@@ -386,6 +386,30 @@ describe('Infra background polling', () => {
       expect(statusContent()).toHaveAttribute('data-stale', 'true')
       // Auth failures do not double the backoff.
       expect(capturedTimers[0].delay).toBe(POLL_BASE_MS)
+    })
+
+    it('treats a 403 (feature not enabled) as a normal failure, not an expired session', async () => {
+      await renderInfra()
+      failStatus = true
+      failStatusCode = 403
+      await triggerPoll()
+      expect(screen.queryByText('sessionExpired')).not.toBeInTheDocument()
+      // It backs off like any other failure instead of polling at the base rate.
+      expect(capturedTimers[0].delay).toBe(POLL_BASE_MS * 2)
+
+      await triggerPoll()
+      expect(screen.queryByText('sessionExpired')).not.toBeInTheDocument()
+      expect(screen.getByText('staleBanner')).toBeInTheDocument()
+    })
+
+    it('does not show the red error banner for a 401 on manual refresh', async () => {
+      await renderInfra()
+      failStatus = true
+      failStatusCode = 401
+      fireEvent.click(screen.getByText('actions.refresh'))
+      await flushAsync()
+      expect(screen.getByText('sessionExpired')).toBeInTheDocument()
+      expect(screen.queryByText('Failed to load status (401)')).not.toBeInTheDocument()
     })
 
     it('shows the session-expired prompt when the modules endpoint returns 401', async () => {
@@ -427,22 +451,56 @@ describe('Infra background polling', () => {
       expect(statusContent()).toHaveAttribute('data-stale', 'false')
     })
 
-    it('does not count a poll superseded by a manual refresh as a failure', async () => {
+    it('does not count a poll superseded by a module toggle as a failure', async () => {
       await renderInfra()
       failStatus = true
       await triggerPoll()
 
-      // Next poll hangs and is then aborted by a manual refresh that fails.
+      // Next poll hangs and is then aborted by a module toggle whose reload
+      // fails. (The refresh button is disabled while the poll is in flight.)
       hangStatus = true
       await triggerPoll()
+      const pollSignal = statusCalls[statusCalls.length - 1].signal
       hangStatus = false
-      fireEvent.click(screen.getByText('actions.refresh'))
+      fireEvent.click(screen.getByRole('button', { name: 'toggle.disableLabel' }))
       await flushAsync()
-      releaseHungPolls()
+      expect(pollSignal?.aborted).toBe(true)
+      // The superseded poll then fails too; it must not count as a failure.
+      releaseHungPolls(500)
       await flushAsync()
 
       // Only one background failure was recorded, so no stale banner.
       expect(screen.queryByText('staleBanner')).not.toBeInTheDocument()
+      expect(statusContent()).toHaveAttribute('data-stale', 'false')
+    })
+
+    describe('module detail view', () => {
+      const detailContent = () => screen.getByTestId('infra-detail-content')
+
+      async function openDetail() {
+        await renderInfra()
+        fireEvent.click(screen.getByText('Health Checks'))
+        await waitFor(() => expect(screen.getByText('backToOverview')).toBeInTheDocument())
+        expect(detailContent()).toHaveAttribute('data-stale', 'false')
+      }
+
+      it('shows the stale banner and dims the detail after consecutive failed polls', async () => {
+        await openDetail()
+        failStatus = true
+        for (let i = 0; i < STALE_AFTER_FAILURES; i++) await triggerPoll()
+        expect(screen.getByText('staleBanner')).toBeInTheDocument()
+        expect(detailContent()).toHaveAttribute('data-stale', 'true')
+        expect(detailContent().className).toContain('opacity-50')
+      })
+
+      it('shows the session-expired prompt and dims the detail after a 401', async () => {
+        await openDetail()
+        failStatus = true
+        failStatusCode = 401
+        await triggerPoll()
+        expect(screen.getByText('sessionExpired')).toBeInTheDocument()
+        expect(detailContent()).toHaveAttribute('data-stale', 'true')
+      })
     })
   })
 })
