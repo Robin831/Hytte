@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { findSessionOverlaps } from '../../workHoursUtils'
+import { findSessionOverlaps } from '../workHoursUtils'
 import {
   applyRedemption,
   calculateDay,
   DEFAULT_WORK_SETTINGS,
   parseWorkSettings,
   type DaySummaryCalc,
-} from '../calculateDay'
-import type { DaySummary, LeaveDay, LeaveType, WorkDay, WorkDeductionPreset, WorkSession, WorkSettings } from '../types'
-import { buildNavHolidaySet, prevWeekday } from '../dateUtils'
-import { SessionConflict, useWorkHoursApi, type PunchOutResult } from '../useWorkHoursApi'
+} from './calculateDay'
+import type { DaySummary, LeaveDay, LeaveType, WorkDay, WorkDeductionPreset, WorkSession, WorkSettings } from './types'
+import { buildNavHolidaySet, prevWeekday } from './dateUtils'
+import { SessionConflict, useWorkHoursApi, type PunchOutResult } from './useWorkHoursApi'
 
 export type ConflictCause = 'save' | 'toggle' | 'copy'
 
@@ -138,21 +138,21 @@ export function useDayEntry({ date, openPunchStart, lastPunchOut, onFlexChanged 
 
   const loadFlex = useCallback(() => onFlexChangedRef.current(), [])
 
-  const loadDay = useCallback(async (date: string, signal?: AbortSignal) => {
+  const loadDay = useCallback(async (targetDate: string, signal?: AbortSignal) => {
     setLoading(true)
     try {
-      const data = await api.getDay(date, signal)
-      if (signal?.aborted || currentDateRef.current !== date) return
+      const data = await api.getDay(targetDate, signal)
+      if (signal?.aborted || currentDateRef.current !== targetDate) return
       if (data) {
-        if (currentDateRef.current === date) setDayData(data)
+        if (currentDateRef.current === targetDate) setDayData(data)
       } else {
-        if (currentDateRef.current === date) setDayData({ day: null, summary: null })
+        if (currentDateRef.current === targetDate) setDayData({ day: null, summary: null })
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
-      if (currentDateRef.current === date) setDayData({ day: null, summary: null })
+      if (currentDateRef.current === targetDate) setDayData({ day: null, summary: null })
     } finally {
-      if (!signal?.aborted && currentDateRef.current === date) {
+      if (!signal?.aborted && currentDateRef.current === targetDate) {
         setLoading(false)
       }
     }
@@ -175,30 +175,30 @@ export function useDayEntry({ date, openPunchStart, lastPunchOut, onFlexChanged 
       .catch(() => {})
   }, [api])
 
-  const loadLeaveDay = useCallback(async (date: string, signal?: AbortSignal) => {
+  const loadLeaveDay = useCallback(async (targetDate: string, signal?: AbortSignal) => {
     try {
-      const year = date.slice(0, 4)
+      const year = targetDate.slice(0, 4)
       const cached = leaveDaysCacheRef.current.get(year)
       if (cached) {
-        if (currentDateRef.current === date) {
-          setLeaveDay(cached.find(d => d.date === date) ?? null)
+        if (currentDateRef.current === targetDate) {
+          setLeaveDay(cached.find(d => d.date === targetDate) ?? null)
         }
         return
       }
       const data = await api.getLeaveForYear(year, signal)
-      if (signal?.aborted || currentDateRef.current !== date) return
+      if (signal?.aborted || currentDateRef.current !== targetDate) return
       if (data) {
         leaveDaysCacheRef.current.set(year, data.leave_days)
-        if (currentDateRef.current === date) {
-          setLeaveDay(data.leave_days.find(d => d.date === date) ?? null)
+        if (currentDateRef.current === targetDate) {
+          setLeaveDay(data.leave_days.find(d => d.date === targetDate) ?? null)
         }
       } else {
-        if (currentDateRef.current === date) setLeaveDay(null)
+        if (currentDateRef.current === targetDate) setLeaveDay(null)
       }
     } catch (err) {
       if (err instanceof Error && err.name === 'AbortError') return
       console.error('workhours: load leave day:', err)
-      if (currentDateRef.current === date) setLeaveDay(null)
+      if (currentDateRef.current === targetDate) setLeaveDay(null)
     }
   }, [api])
 
@@ -655,5 +655,3 @@ export function useDayEntry({ date, openPunchStart, lastPunchOut, onFlexChanged 
     setLeave,
   }
 }
-
-export type DayEntry = ReturnType<typeof useDayEntry>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { FlexState } from '../types'
-import { useWorkHoursApi } from '../useWorkHoursApi'
+import type { FlexState } from './types'
+import { useWorkHoursApi } from './useWorkHoursApi'
 
 /**
  * Flex-pool state for the day view: the running total and redeeming a rounding
@@ -50,5 +50,3 @@ export function useFlex() {
 
   return { flex, redeeming, reload, redeem }
 }
-
-export type FlexPool = ReturnType<typeof useFlex>

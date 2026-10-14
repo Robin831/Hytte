@@ -4,7 +4,7 @@ import { Select, type SelectOption } from '../../../components/ui/select'
 import { formatMins } from '../dateUtils'
 import { normalizePresetIcon } from '../presetIcons'
 import type { WorkDeduction, WorkDeductionPreset } from '../types'
-import type { DeductionDraft } from '../hooks/useDayEntry'
+import type { DeductionDraft } from '../useDayEntry'
 
 export interface DeductionListProps {
   deductions: WorkDeduction[]

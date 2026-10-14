@@ -270,3 +270,78 @@ describe('WorkHoursPage live estimate with redeemed flex', () => {
     expect(screen.queryByText(/over standard/)).not.toBeInTheDocument()
   })
 })
+
+describe('WorkHoursPage flex redeem', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(FIXED_NOW)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.useRealTimers()
+  })
+
+  // buildFetch with a 45-minute pool and the redeem POST answered by `redeem`.
+  function redeemFetch(redeem: { status: number; body: unknown }) {
+    const base = buildFetch({ sessions: [], summary: serverSummary({}), prefs: PREFS })
+    const flexBody = { flex: { total_minutes: 45, to_next_interval: 15 }, reset_date: '2026-01-01', days_in_pool: 1 }
+    return vi.fn((url: string, _init?: RequestInit) => {
+      const path = url.toString().split('?')[0]
+      if (path === '/api/workhours/flex/redeem') {
+        return Promise.resolve({
+          ok: redeem.status >= 200 && redeem.status < 300,
+          status: redeem.status,
+          json: () => Promise.resolve(redeem.body),
+        } as Response)
+      }
+      if (path === '/api/workhours/flex') {
+        return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(flexBody) } as Response)
+      }
+      return base(url)
+    })
+  }
+
+  const callsTo = (fetchMock: ReturnType<typeof redeemFetch>, path: string) =>
+    fetchMock.mock.calls.filter(([url]) => url.toString().split('?')[0] === path)
+
+  it('redeems onto the viewed day, then reloads the pool and the day', async () => {
+    const fetchMock = redeemFetch({ status: 200, body: {} })
+    vi.stubGlobal('fetch', fetchMock)
+    const alertMock = vi.fn()
+    vi.stubGlobal('alert', alertMock)
+    renderPage()
+
+    const button = await screen.findByRole('button', { name: 'Redeem 30 min' })
+    await waitFor(() => expect(callsTo(fetchMock, '/api/workhours/day')).toHaveLength(1))
+    expect(callsTo(fetchMock, '/api/workhours/flex')).toHaveLength(1)
+
+    await act(async () => { button.click() })
+
+    const posts = callsTo(fetchMock, '/api/workhours/flex/redeem')
+    expect(posts).toHaveLength(1)
+    expect(JSON.parse(posts[0][1]?.body as string)).toEqual({ date: TODAY })
+    await waitFor(() => expect(callsTo(fetchMock, '/api/workhours/flex')).toHaveLength(2))
+    await waitFor(() => expect(callsTo(fetchMock, '/api/workhours/day')).toHaveLength(2))
+    expect(callsTo(fetchMock, '/api/workhours/day')[1][0]).toContain(`date=${TODAY}`)
+    expect(alertMock).not.toHaveBeenCalled()
+  })
+
+  it('alerts the server error and reloads neither the pool nor the day', async () => {
+    const fetchMock = redeemFetch({ status: 400, body: { error: 'not enough flex' } })
+    vi.stubGlobal('fetch', fetchMock)
+    const alertMock = vi.fn()
+    vi.stubGlobal('alert', alertMock)
+    renderPage()
+
+    const button = await screen.findByRole('button', { name: 'Redeem 30 min' })
+    await waitFor(() => expect(callsTo(fetchMock, '/api/workhours/day')).toHaveLength(1))
+
+    await act(async () => { button.click() })
+
+    await waitFor(() => expect(alertMock).toHaveBeenCalledWith('not enough flex'))
+    expect(callsTo(fetchMock, '/api/workhours/flex')).toHaveLength(1)
+    expect(callsTo(fetchMock, '/api/workhours/day')).toHaveLength(1)
+    expect(button).not.toBeDisabled()
+  })
+})

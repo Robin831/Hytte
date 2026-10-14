@@ -4,7 +4,7 @@ import { TimePicker } from '../../../components/ui/time-picker'
 import { sessionMinutes } from '../calculateDay'
 import { formatMins } from '../dateUtils'
 import type { WorkSession } from '../types'
-import type { ActiveSessionConflict, ConflictCause, SessionDraft, SessionEdit } from '../hooks/useDayEntry'
+import type { ActiveSessionConflict, ConflictCause, SessionDraft, SessionEdit } from '../useDayEntry'
 
 const CONFLICT_MESSAGE_KEYS = {
   save: 'workhours:sessionConflict',
