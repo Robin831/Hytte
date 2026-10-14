@@ -178,9 +178,9 @@ function makeHarness(initial?: { sending?: Set<number> }) {
     addSendingConversation: (id: number) => state.sending.add(id),
     removeSendingConversation: (id: number) => state.sending.delete(id),
     deletedConversationIds: state.deleted,
-    setInput: (v: string) => {
-      state.input = v
-    },
+    setInput: ((u: SetStateAction<string>) => {
+      state.input = typeof u === 'function' ? u(state.input) : u
+    }) as Dispatch<SetStateAction<string>>,
     pinToBottom: () => {},
     focusInput: () => {},
   }
@@ -629,13 +629,106 @@ describe('useChatStream', () => {
       expect(result.current.error).toBe('')
       expect(state.sending.has(1)).toBe(false)
 
-      // Returning to A shows the persisted user row, the error and the draft.
+      // Returning to A shows the persisted user row and the error, but the
+      // text typed in B is not overwritten by A's failed draft.
       await act(async () => {
         viewConversation(CONV, result.current.reconcileLoaded(1, [persistedUser]))
       })
       expect(state.messages).toEqual([persistedUser])
       expect(result.current.error).toBe('Claude failed to respond')
-      expect(state.input).toBe('hi')
+      expect(state.input).toBe('typing in b')
+    })
+
+    it('a refetch before user_message that already holds the saved user row does not duplicate it', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { conversations: [CONV, CONV_B] })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+      // The server saved the user row, but its frame is still unread.
+      await act(async () => {
+        viewConversation(CONV, result.current.reconcileLoaded(1, [persistedUser]))
+      })
+      expect(state.messages).toEqual([
+        persistedUser,
+        expect.objectContaining({ role: 'assistant', content: '' }),
+      ])
+
+      await act(async () => {
+        stream.push(userFrame())
+        stream.push(frame('token', { text: 'Hel' }))
+        stream.push(frame('token', { text: 'lo' }))
+        stream.push(doneFrame('Hello'))
+        stream.close()
+        await pending
+      })
+      expect(state.messages).toEqual([persistedUser, persistedAssistant])
+    })
+
+    it('a refetch before user_message that lacks the user row shows the placeholders, then swaps them', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { conversations: [CONV, CONV_B] })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+      await act(async () => {
+        viewConversation(CONV, result.current.reconcileLoaded(1, []))
+      })
+      expect(state.messages).toHaveLength(2)
+      expect(state.messages[0]).toMatchObject({ role: 'user', content: 'hi' })
+      expect(state.messages[0].id).toBeLessThan(0)
+      expect(state.messages[1]).toMatchObject({ role: 'assistant', content: '' })
+      expect(state.messages[1].id).toBeLessThan(0)
+
+      await act(async () => {
+        stream.push(userFrame())
+        stream.push(frame('token', { text: 'Hello' }))
+        stream.push(doneFrame('Hello'))
+        stream.close()
+        await pending
+      })
+      expect(state.messages).toEqual([persistedUser, persistedAssistant])
+    })
+
+    it('does not drop the new message when the previous unanswered turn had the same text', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { conversations: [CONV, CONV_B] })
+      const { state, result, viewConversation } = renderSwitchable()
+      const earlierUser: Message = { ...persistedUser, id: 5 }
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+      // The refetch read the DB before the new row was saved; its last row is
+      // an earlier, unanswered 'hi' that looks like the saved copy.
+      await act(async () => {
+        viewConversation(CONV, result.current.reconcileLoaded(1, [earlierUser]))
+      })
+
+      await act(async () => {
+        stream.push(userFrame())
+        stream.push(frame('token', { text: 'Hello' }))
+        stream.push(doneFrame('Hello'))
+        stream.close()
+        await pending
+      })
+      expect(state.messages).toEqual([earlierUser, persistedUser, persistedAssistant])
     })
 
     it('a background stream cut off before done surfaces a stream error on return', async () => {

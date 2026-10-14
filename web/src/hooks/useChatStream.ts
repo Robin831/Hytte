@@ -32,7 +32,7 @@ interface UseChatStreamParams {
   /** Locally deleted conversation ids so a late response can't resurrect them. */
   deletedConversationIds: RefObject<Set<number>>
   /** Clears the input on send start; restores the draft on recoverable failure. */
-  setInput: (value: string) => void
+  setInput: Dispatch<SetStateAction<string>>
   /** Re-pins the messages view to the bottom when a send begins (UI concern). */
   pinToBottom?: () => void
   /** Returns focus to the input once a send settles (UI concern). */
@@ -173,7 +173,9 @@ export function useChatStream({
       const failure = missedFailuresRef.current.get(conversationId)
       if (failure) {
         missedFailuresRef.current.delete(conversationId)
-        setInput(failure.content)
+        // The composer is shared across conversations: never overwrite text
+        // the user typed elsewhere meanwhile; the error banner still shows.
+        setInput(current => (current ? current : failure.content))
         setError(failure.error)
       }
       const live = liveRepliesRef.current.get(conversationId)
@@ -385,9 +387,17 @@ export function useChatStream({
               // instead of swapping in a second copy of the same id.
               const swap = (m: Message, canonical: Message | null) =>
                 !canonical ? [m] : ids.has(canonical.id) ? [] : [canonical]
+              // A refetch that landed before `user_message` may have mistaken
+              // an earlier user row with the same text for this one and left
+              // the user placeholder out: put the canonical row back in.
+              const userDropped =
+                finalUserMsg !== null && !ids.has(tempUserId) && !ids.has(finalUserMsg.id)
               return prev.flatMap(m => {
                 if (m.id === tempUserId) return swap(m, finalUserMsg)
-                if (m.id === tempAssistantId) return swap(m, finalAssistantMsg)
+                if (m.id === tempAssistantId) {
+                  const assistant = swap(m, finalAssistantMsg)
+                  return userDropped ? [finalUserMsg, ...assistant] : assistant
+                }
                 return [m]
               })
             }
