@@ -72,6 +72,24 @@ vi.mock('react-syntax-highlighter/dist/esm/styles/prism', () => ({
   vscDarkPlus: {},
 }))
 
+// Wraps the real MessageRow in a memo'd counter with the same props and the
+// same shallow comparison, so a call means MessageRow itself would have
+// re-rendered: it only fires when Chat / ChatPageMessageList hand a row a
+// prop that changed.
+const { messageRowRenderSpy } = vi.hoisted(() => ({ messageRowRenderSpy: vi.fn() }))
+
+vi.mock('../components/chat/MessageRow', async importOriginal => {
+  const actual = await importOriginal<typeof import('../components/chat/MessageRow')>()
+  const { memo, createElement } = await import('react')
+  type Props = React.ComponentProps<typeof actual.default>
+  return {
+    default: memo((props: Props) => {
+      messageRowRenderSpy(props.message.id)
+      return createElement(actual.default, props)
+    }),
+  }
+})
+
 interface ConversationFixture {
   id: number
   user_id: number
@@ -903,5 +921,247 @@ describe('Chat – regenerate and edit', () => {
     await waitFor(() => expect(screen.getByText('message not found')).toBeInTheDocument())
     expect(screen.getByText('Second answer')).toBeInTheDocument()
     expect(screen.getAllByText('Second question')).toHaveLength(1)
+  })
+})
+
+describe('Chat – message row memoization', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('re-renders only the streaming row when a token arrives', async () => {
+    const conv = makeConv()
+    const history = [
+      { id: 1, conversation_id: conv.id, role: 'user', content: 'First question', created_at: '2026-05-01T01:00:00Z' },
+      { id: 2, conversation_id: conv.id, role: 'assistant', content: 'First answer', created_at: '2026-05-01T01:00:01Z' },
+      { id: 3, conversation_id: conv.id, role: 'user', content: 'Second question', created_at: '2026-05-01T01:00:02Z' },
+      { id: 4, conversation_id: conv.id, role: 'assistant', content: 'Second answer', created_at: '2026-05-01T01:00:03Z' },
+    ]
+    const stream = manualSSEResponse()
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url === '/api/chat/conversations') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ conversations: [conv] }) })
+      }
+      if (url === `/api/chat/conversations/${conv.id}`) {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ conversation: conv, messages: history }) })
+      }
+      if (url.endsWith('/messages/stream')) return Promise.resolve(stream.response)
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    }))
+
+    renderChat()
+    await waitFor(() => screen.getByText('Existing chat'))
+    fireEvent.click(screen.getByText('Existing chat'))
+    await waitFor(() => expect(screen.getByText('Second answer')).toBeInTheDocument())
+
+    fireEvent.change(screen.getByPlaceholderText('Type a message...'), { target: { value: 'Third question' } })
+    fireEvent.click(screen.getByTestId('chat-send-button'))
+    await screen.findByText('Streaming…')
+
+    await act(async () => {
+      stream.push(frame('user_message', { id: 5, conversation_id: conv.id, role: 'user', content: 'Third question', created_at: '2026-05-01T01:00:04Z' }))
+      stream.push(frame('token', { text: 'Third ' }))
+    })
+    await waitFor(() => expect(screen.getByText(/Third$/)).toBeInTheDocument())
+
+    // The first token was the last thing rendered, so the last row to render
+    // is the streaming assistant bubble.
+    const streamingId = messageRowRenderSpy.mock.lastCall?.[0]
+    expect(history.some(m => m.id === streamingId)).toBe(false)
+    messageRowRenderSpy.mockClear()
+
+    await act(async () => {
+      stream.push(frame('token', { text: 'answer' }))
+    })
+    await waitFor(() => expect(screen.getByText('Third answer')).toBeInTheDocument())
+
+    expect(messageRowRenderSpy.mock.calls.length).toBeGreaterThan(0)
+    expect(new Set(messageRowRenderSpy.mock.calls.map(([id]) => id))).toEqual(new Set([streamingId]))
+  })
+})
+
+describe('Chat – rename and delete', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  const conv = makeConv()
+  const transcript = [
+    { id: 300, conversation_id: conv.id, role: 'user', content: 'Earlier question', created_at: '2026-05-01T03:00:00Z' },
+  ]
+
+  // Dispatches by URL + method; `put` / `del` decide the PUT and DELETE
+  // responses for the conversation.
+  function mockFetch(handlers: { put?: (init: RequestInit) => unknown; del?: () => unknown } = {}) {
+    return vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/chat/conversations') {
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ conversations: [conv] }) })
+      }
+      if (url === `/api/chat/conversations/${conv.id}`) {
+        if (init?.method === 'PUT') return Promise.resolve(handlers.put?.(init))
+        if (init?.method === 'DELETE') return Promise.resolve(handlers.del?.())
+        return Promise.resolve({ ok: true, json: () => Promise.resolve({ conversation: conv, messages: transcript }) })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
+  }
+
+  // Opens the conversation so rename/delete hit the active-conversation branches.
+  async function openConversation() {
+    await waitFor(() => screen.getByText('Existing chat'))
+    fireEvent.click(screen.getByText('Existing chat'))
+    await waitFor(() => expect(screen.getByText('Earlier question')).toBeInTheDocument())
+    expect(screen.getByRole('heading', { level: 2, name: 'Existing chat' })).toBeInTheDocument()
+  }
+
+  function callsWith(fetchMock: ReturnType<typeof mockFetch>, method: string) {
+    return fetchMock.mock.calls.filter(([, init]) => (init as RequestInit | undefined)?.method === method)
+  }
+
+  async function startRename() {
+    fireEvent.click(await screen.findByTitle('Rename'))
+    return screen.getByLabelText('Rename conversation') as HTMLInputElement
+  }
+
+  async function startDelete() {
+    fireEvent.click(await screen.findByTitle('Delete'))
+    const confirmRow = screen.getByText('Delete?').parentElement as HTMLElement
+    return confirmRow.querySelectorAll('button')
+  }
+
+  it('a successful rename closes the editor and shows the new title', async () => {
+    const fetchMock = mockFetch({
+      put: init => ({
+        ok: true,
+        json: () => Promise.resolve({ conversation: { ...conv, ...JSON.parse(init.body as string) } }),
+      }),
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    renderChat()
+
+    const input = await startRename()
+    fireEvent.change(input, { target: { value: '  Renamed chat  ' } })
+    fireEvent.submit(input.closest('form') as HTMLFormElement)
+
+    await waitFor(() => expect(screen.getByText('Renamed chat')).toBeInTheDocument())
+    expect(screen.queryByLabelText('Rename conversation')).not.toBeInTheDocument()
+    const puts = callsWith(fetchMock, 'PUT')
+    expect(puts).toHaveLength(1)
+    expect(JSON.parse((puts[0][1] as RequestInit).body as string)).toEqual({ title: 'Renamed chat' })
+  })
+
+  it('renaming the open conversation updates the header title', async () => {
+    vi.stubGlobal('fetch', mockFetch({
+      put: init => ({
+        ok: true,
+        json: () => Promise.resolve({ conversation: { ...conv, ...JSON.parse(init.body as string) } }),
+      }),
+    }))
+    renderChat()
+    await openConversation()
+
+    const input = await startRename()
+    fireEvent.change(input, { target: { value: 'Renamed chat' } })
+    fireEvent.submit(input.closest('form') as HTMLFormElement)
+
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { level: 2, name: 'Renamed chat' })).toBeInTheDocument(),
+    )
+    expect(screen.queryByRole('heading', { level: 2, name: 'Existing chat' })).not.toBeInTheDocument()
+    expect(screen.getByText('Earlier question')).toBeInTheDocument()
+  })
+
+  it('a blank title closes the editor without sending a PUT', async () => {
+    const fetchMock = mockFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    renderChat()
+
+    const input = await startRename()
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.submit(input.closest('form') as HTMLFormElement)
+
+    await waitFor(() => expect(screen.queryByLabelText('Rename conversation')).not.toBeInTheDocument())
+    expect(screen.getByText('Existing chat')).toBeInTheDocument()
+    expect(callsWith(fetchMock, 'PUT')).toHaveLength(0)
+  })
+
+  it('a failed rename keeps the editor open and shows the error', async () => {
+    vi.stubGlobal('fetch', mockFetch({ put: () => ({ ok: false, json: () => Promise.resolve(null) }) }))
+    renderChat()
+
+    const input = await startRename()
+    fireEvent.change(input, { target: { value: 'Renamed chat' } })
+    fireEvent.submit(input.closest('form') as HTMLFormElement)
+
+    await waitFor(() => expect(screen.getByText('Failed to rename conversation')).toBeInTheDocument())
+    expect(screen.getByLabelText('Rename conversation')).toHaveValue('Renamed chat')
+  })
+
+  it('Escape and the X button cancel the rename', async () => {
+    const fetchMock = mockFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    renderChat()
+
+    const input = await startRename()
+    fireEvent.keyDown(input, { key: 'Escape' })
+    expect(screen.queryByLabelText('Rename conversation')).not.toBeInTheDocument()
+
+    const again = await startRename()
+    const buttons = (again.closest('form') as HTMLFormElement).querySelectorAll('button[type="button"]')
+    fireEvent.click(buttons[0])
+    expect(screen.queryByLabelText('Rename conversation')).not.toBeInTheDocument()
+
+    expect(screen.getByText('Existing chat')).toBeInTheDocument()
+    expect(callsWith(fetchMock, 'PUT')).toHaveLength(0)
+  })
+
+  it('a successful delete removes the conversation', async () => {
+    vi.stubGlobal('fetch', mockFetch({ del: () => ({ ok: true, json: () => Promise.resolve({}) }) }))
+    renderChat()
+
+    const [confirm] = await startDelete()
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(screen.queryByText('Existing chat')).not.toBeInTheDocument())
+    expect(screen.queryByText('Delete?')).not.toBeInTheDocument()
+  })
+
+  it('deleting the open conversation clears the transcript and header', async () => {
+    vi.stubGlobal('fetch', mockFetch({ del: () => ({ ok: true, json: () => Promise.resolve({}) }) }))
+    renderChat()
+    await openConversation()
+
+    const [confirm] = await startDelete()
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(screen.queryByText('Earlier question')).not.toBeInTheDocument())
+    expect(screen.queryByText('Existing chat')).not.toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 2, name: 'Select or start a conversation' })).toBeInTheDocument()
+  })
+
+  it('a failed delete keeps the confirmation open and shows the error', async () => {
+    vi.stubGlobal('fetch', mockFetch({ del: () => ({ ok: false, json: () => Promise.resolve(null) }) }))
+    renderChat()
+
+    const [confirm] = await startDelete()
+    fireEvent.click(confirm)
+
+    await waitFor(() => expect(screen.getByText('Failed to delete conversation')).toBeInTheDocument())
+    expect(screen.getByText('Delete?')).toBeInTheDocument()
+  })
+
+  it('the X button cancels the delete confirmation', async () => {
+    const fetchMock = mockFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    renderChat()
+
+    const [, cancel] = await startDelete()
+    fireEvent.click(cancel)
+
+    expect(screen.queryByText('Delete?')).not.toBeInTheDocument()
+    expect(screen.getByText('Existing chat')).toBeInTheDocument()
+    expect(callsWith(fetchMock, 'DELETE')).toHaveLength(0)
   })
 })

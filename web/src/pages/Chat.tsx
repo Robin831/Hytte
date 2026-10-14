@@ -1,61 +1,20 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react'
-import ReactMarkdown from 'react-markdown'
-import remarkGfm from 'remark-gfm'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import {
-  Plus,
-  Trash2,
-  Send,
-  Square,
-  MessageSquare,
-  Pencil,
-  Check,
-  X,
-  ChevronLeft,
-  Loader2,
-  Bot,
-  User,
-  Copy,
-  CheckCheck,
-  ArrowDown,
-  RotateCcw,
-} from 'lucide-react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
-import { formatDate, formatTime as fmtTime } from '../utils/formatDate'
 import { useChatStream } from '../hooks/useChatStream'
+import { useIdSet } from '../hooks/useIdSet'
 import type { Conversation, Message } from '../hooks/useChatStream'
+import ChatHeader from '../components/chat/ChatHeader'
+import ConversationSidebar from '../components/chat/ConversationSidebar'
+import ChatPageComposer from '../components/chat/ChatPageComposer'
+import JumpToLatest from '../components/chat/JumpToLatest'
+import ChatPageMessageList from '../components/chat/ChatPageMessageList'
+import { DEFAULT_MODEL } from '../components/chat/ModelSelect'
+import * as chatApi from './chatApi'
 
 // Distance from the bottom (px) within which the messages view is considered
 // "pinned": new streamed tokens keep the view glued to the latest message.
 // Past this, the user has scrolled up to read history and we leave them be.
 const PIN_THRESHOLD = 80
-
-// MODEL_OPTIONS is a curated subset of the models the backend allows
-// (internal/chat/handlers.go SupportedModels). The backend may accept
-// additional model IDs (e.g. older Opus variants) that we intentionally
-// omit from the UI dropdown.
-const MODEL_OPTIONS = ['claude-fable-5', 'claude-opus-5-5', 'claude-sonnet-4-6', 'claude-haiku-4-5'] as const
-const DEFAULT_MODEL = 'claude-sonnet-4-6'
-
-// modelLabelKey maps a model ID to its i18n label key by family so any
-// supported variant (e.g. an older Opus) still shows a friendly name.
-function modelLabelKey(model: string): 'models.fable' | 'models.opus' | 'models.sonnet' | 'models.haiku' | '' {
-  if (model.startsWith('claude-fable')) return 'models.fable'
-  if (model.startsWith('claude-opus')) return 'models.opus'
-  if (model.startsWith('claude-sonnet')) return 'models.sonnet'
-  if (model.startsWith('claude-haiku')) return 'models.haiku'
-  return ''
-}
-
-// modelVersionSuffix extracts the version from a model ID ("claude-opus-4-8"
-// → "4.8", "claude-opus-5" → "5") so two variants of the same family (a
-// conversation pinned to an older Opus alongside the current one) render
-// distinguishable labels.
-function modelVersionSuffix(model: string): string {
-  const m = model.match(/^claude-[a-z]+-(\d+(?:-\d+)*)$/)
-  return m ? m[1].replace(/-/g, '.') : ''
-}
 
 export default function Chat() {
   const { t } = useTranslation('chat')
@@ -67,16 +26,12 @@ export default function Chat() {
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
   // Track every conversation with an in-flight send so concurrent sends in
-  // different conversations don't clobber each other's pending state. Kept
-  // immutably (a fresh Set on each update) so React re-renders fire.
-  const [sendingConversationIds, setSendingConversationIds] = useState<Set<number>>(new Set())
+  // different conversations don't clobber each other's pending state.
+  const [sendingConversationIds, addSendingConversation, removeSendingConversation] = useIdSet()
   const [showSidebar, setShowSidebar] = useState(true)
-  const [renamingId, setRenamingId] = useState<number | null>(null)
-  const [renameTitle, setRenameTitle] = useState('')
   // Model chosen for the next new conversation (used when none is active).
   // Empty means "let the backend pick" (falls back to user's configured model).
   const [newConversationModel, setNewConversationModel] = useState<string>('')
-  const [deletingId, setDeletingId] = useState<number | null>(null)
   // Id of the user message currently being re-edited in the composer. The
   // message row is already gone (truncation happened server-side when Edit was
   // clicked); this only drives the "editing" affordance above the textarea.
@@ -84,7 +39,6 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
-  const renameInputRef = useRef<HTMLInputElement>(null)
   // Whether the messages view is glued to the bottom. `isPinned` drives the
   // "jump to latest" button; `isPinnedRef` mirrors it so the streaming-token
   // scroll effect reads the latest value without re-subscribing.
@@ -114,22 +68,6 @@ export default function Chat() {
     scrollToBottom('smooth')
   }, [scrollToBottom])
 
-  const addSendingConversation = useCallback((id: number) => {
-    setSendingConversationIds(prev => {
-      const next = new Set(prev)
-      next.add(id)
-      return next
-    })
-  }, [])
-
-  const removeSendingConversation = useCallback((id: number) => {
-    setSendingConversationIds(prev => {
-      const next = new Set(prev)
-      next.delete(id)
-      return next
-    })
-  }, [])
-
   // Re-pin the messages view to the bottom — used when a send begins so the
   // user's new message and the streamed reply stay in view.
   const pinToBottom = useCallback(() => {
@@ -156,6 +94,14 @@ export default function Chat() {
     setInput,
     pinToBottom,
     focusInput,
+  })
+
+  // Latest render's state for the event handlers below. Reading it through a
+  // ref keeps those handlers' identities stable, so the memoized message rows,
+  // sidebar and composer are not re-rendered by every streamed token.
+  const latestRef = useRef({ activeConversation, sendingConversationIds, messages, input, send })
+  useLayoutEffect(() => {
+    latestRef.current = { activeConversation, sendingConversationIds, messages, input, send }
   })
 
   // Keep the view glued to the latest message only while the user is pinned
@@ -205,13 +151,7 @@ export default function Chat() {
     const controller = new AbortController()
     ;(async () => {
       try {
-        const res = await fetch('/api/chat/conversations', {
-          credentials: 'include',
-          signal: controller.signal,
-        })
-        if (!res.ok) throw new Error(t('errors.failedToLoad'))
-        const data = await res.json()
-        setConversations(data.conversations ?? [])
+        setConversations(await chatApi.listConversations(controller.signal, t('errors.failedToLoad')))
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {
           setLocalError(err.message)
@@ -242,15 +182,10 @@ export default function Chat() {
       }
       setLoadingMessages(true)
       try {
-        const res = await fetch(`/api/chat/conversations/${activeConversationId}`, {
-          credentials: 'include',
-          signal: controller.signal,
-        })
-        if (!res.ok) throw new Error(t('errors.failedToLoadMessages'))
-        const data = await res.json()
+        const loaded = await chatApi.listMessages(activeConversationId, controller.signal, t('errors.failedToLoadMessages'))
         // Merge in a reply still streaming for this conversation, so a refetch
         // that raced the stream neither duplicates nor drops it.
-        setMessages(reconcileLoaded(activeConversationId, data.messages ?? []))
+        setMessages(reconcileLoaded(activeConversationId, loaded))
         setLocalError('')
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {
@@ -263,28 +198,11 @@ export default function Chat() {
     return () => { controller.abort() }
   }, [activeConversationId, t, clearError, reconcileLoaded])
 
-  // Resize textarea when input changes (including programmatic clears)
-  useEffect(() => {
-    const el = inputRef.current
-    if (el) {
-      el.style.height = 'auto'
-      el.style.height = Math.min(el.scrollHeight, 160) + 'px'
-    }
-  }, [input])
-
   // Abort any in-flight streaming send when the component unmounts so the
   // background fetch does not keep running with a stale state ref.
   useEffect(() => {
     return () => { stop() }
   }, [stop])
-
-  // Focus rename input when entering rename mode
-  useEffect(() => {
-    if (renamingId !== null) {
-      renameInputRef.current?.focus()
-      renameInputRef.current?.select()
-    }
-  }, [renamingId])
 
   // Focus the composer when an edit begins and put the caret at the end so the
   // user can amend the recalled message straight away.
@@ -296,20 +214,9 @@ export default function Chat() {
     el.setSelectionRange(el.value.length, el.value.length)
   }, [editingMessageId])
 
-  async function createConversation() {
+  const createConversation = useCallback(async () => {
     try {
-      const res = await fetch('/api/chat/conversations', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newConversationModel ? { model: newConversationModel } : {}),
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        throw new Error(data?.error || t('errors.failedToCreate'))
-      }
-      const data = await res.json()
-      const conv = data.conversation as Conversation
+      const conv = await chatApi.createConversation(newConversationModel, t('errors.failedToCreate'))
       setConversations(prev => [conv, ...prev])
       setActiveConversation(conv)
       setShowSidebar(false)
@@ -319,11 +226,11 @@ export default function Chat() {
     } catch (err) {
       if (err instanceof Error) setLocalError(err.message)
     }
-  }
+  }, [newConversationModel, t])
 
-  async function updateModel(id: number, model: string) {
+  const updateModel = useCallback(async (id: number, model: string) => {
     setLocalError('')
-    const prevModel = activeConversation?.model
+    const prevModel = latestRef.current.activeConversation?.model
     if (model === prevModel) return
     const seqMap = modelUpdateSeqRef.current
     const seq = (seqMap.get(id) ?? 0) + 1
@@ -331,15 +238,7 @@ export default function Chat() {
     setActiveConversation(current => (current && current.id === id ? { ...current, model } : current))
     setConversations(prev => prev.map(c => (c.id === id ? { ...c, model } : c)))
     try {
-      const res = await fetch(`/api/chat/conversations/${id}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ model }),
-      })
-      if (!res.ok) throw new Error(t('errors.failedToUpdateModel'))
-      const data = await res.json()
-      const updated = data.conversation as Conversation
+      const updated = await chatApi.updateConversation(id, { model }, t('errors.failedToUpdateModel'))
       if (seqMap.get(id) !== seq) return
       setConversations(prev => prev.map(c => (c.id === id ? updated : c)))
       setActiveConversation(current => (current?.id === id ? updated : current))
@@ -350,87 +249,67 @@ export default function Chat() {
       }
       if (err instanceof Error) setLocalError(err.message)
     }
-  }
+  }, [t])
 
-  async function deleteConversation(id: number) {
+  // Resolves true once deleted so the sidebar can close its confirmation.
+  const deleteConversation = useCallback(async (id: number): Promise<boolean> => {
     setLocalError('')
     try {
-      const res = await fetch(`/api/chat/conversations/${id}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      })
-      if (!res.ok) throw new Error(t('errors.failedToDelete'))
+      await chatApi.deleteConversation(id, t('errors.failedToDelete'))
       // A reply may still be streaming in the background for this conversation.
       stop(id)
       deletedConversationIds.current.add(id)
       setConversations(prev => prev.filter(c => c.id !== id))
-      if (activeConversation?.id === id) {
+      if (latestRef.current.activeConversation?.id === id) {
         setActiveConversation(null)
         setMessages([])
         setEditingMessageId(null)
       }
-      setDeletingId(null)
       setLocalError('')
+      return true
     } catch (err) {
       if (err instanceof Error) setLocalError(err.message)
+      return false
     }
-  }
+  }, [t, stop])
 
-  async function renameConversation(id: number, title: string) {
-    if (!title.trim()) {
-      setRenamingId(null)
-      return
-    }
+  // Resolves true when the rename settled (or the title was blank) so the
+  // sidebar can leave rename mode; false keeps the editor open after an error.
+  const renameConversation = useCallback(async (id: number, title: string): Promise<boolean> => {
+    if (!title.trim()) return true
     setLocalError('')
     try {
-      const res = await fetch(`/api/chat/conversations/${id}`, {
-        method: 'PUT',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: title.trim() }),
-      })
-      if (!res.ok) throw new Error(t('errors.failedToRename'))
-      const data = await res.json()
-      const updated = data.conversation as Conversation
+      const updated = await chatApi.updateConversation(id, { title: title.trim() }, t('errors.failedToRename'))
       setConversations(prev => prev.map(c => c.id === id ? updated : c))
-      if (activeConversation?.id === id) {
+      if (latestRef.current.activeConversation?.id === id) {
         setActiveConversation(updated)
       }
-      setRenamingId(null)
       setLocalError('')
+      return true
     } catch (err) {
       if (err instanceof Error) setLocalError(err.message)
+      return false
     }
-  }
+  }, [t])
 
   // Deletes `messageId` and every later message in the conversation, both
   // server-side and in local state, and returns the deleted message so the
   // caller can re-send (Regenerate) or recall (Edit) its content. Truncating
   // also clears the conversation's Claude CLI session so the next turn starts
   // fresh instead of resuming context that references the removed messages.
-  const truncateFrom = useCallback(
-    async (conversationId: number, messageId: number): Promise<Message> => {
-      const res = await fetch(`/api/chat/conversations/${conversationId}/messages/${messageId}`, {
-        method: 'DELETE',
-        credentials: 'include',
-      })
-      if (!res.ok) {
-        const data = await res.json().catch(() => null)
-        throw new Error(data?.error || t('errors.failedToTruncate'))
-      }
-      const data = await res.json()
-      setMessages(prev => {
-        const idx = prev.findIndex(m => m.id === messageId)
-        return idx === -1 ? prev : prev.slice(0, idx)
-      })
-      return data.message as Message
-    },
-    [t, setMessages],
-  )
+  const truncateFrom = useCallback(async (conversationId: number, messageId: number): Promise<Message> => {
+    const removed = await chatApi.truncateMessages(conversationId, messageId, t('errors.failedToTruncate'))
+    setMessages(prev => {
+      const idx = prev.findIndex(m => m.id === messageId)
+      return idx === -1 ? prev : prev.slice(0, idx)
+    })
+    return removed
+  }, [t])
 
   // Regenerate: discard this reply and the user turn that produced it, then
   // re-send that same text so a fresh reply streams in its place.
-  async function handleRegenerate(assistantMsg: Message) {
+  const handleRegenerate = useCallback(async (assistantMsg: Message) => {
+    const { activeConversation, sendingConversationIds, messages, send } = latestRef.current
     if (!activeConversation || sendingConversationIds.has(activeConversation.id)) return
     const idx = messages.findIndex(m => m.id === assistantMsg.id)
     if (idx < 0) return
@@ -448,11 +327,12 @@ export default function Chat() {
     } catch (err) {
       if (err instanceof Error) setLocalError(err.message)
     }
-  }
+  }, [clearError, truncateFrom])
 
   // Edit: drop this user message and everything after it, then recall its text
   // into the composer so the user can amend and resend.
-  async function handleEdit(userMsg: Message) {
+  const handleEdit = useCallback(async (userMsg: Message) => {
+    const { activeConversation, sendingConversationIds } = latestRef.current
     if (!activeConversation || sendingConversationIds.has(activeConversation.id)) return
     if (userMsg.id < 0) return
 
@@ -465,612 +345,114 @@ export default function Chat() {
     } catch (err) {
       if (err instanceof Error) setLocalError(err.message)
     }
-  }
+  }, [clearError, truncateFrom])
 
   // Cancelling an edit only leaves the editing mode — the truncated messages
   // stay deleted, matching what the server already persisted.
-  function cancelEdit() {
+  const cancelEdit = useCallback(() => {
     setEditingMessageId(null)
     setInput('')
     inputRef.current?.focus()
-  }
+  }, [])
 
   // Thin wrapper around the hook's send: the trimmed input is the message
   // content; the hook owns the optimistic rows, streaming, and reconciliation.
-  function handleSend() {
+  const handleSend = useCallback(() => {
+    const { send, input } = latestRef.current
     setEditingMessageId(null)
     send(input.trim())
-  }
+  }, [])
 
-  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Escape' && editingMessageId !== null) {
-      e.preventDefault()
-      cancelEdit()
-      return
-    }
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handleSend()
-    }
-  }
+  // Stops only the on-screen conversation's stream; replies running in the
+  // background for other conversations keep going.
+  const stopActive = useCallback(() => {
+    const id = latestRef.current.activeConversation?.id
+    if (id !== undefined) stop(id)
+  }, [stop])
 
-  function selectConversation(conv: Conversation) {
+  const selectConversation = useCallback((conv: Conversation) => {
     setActiveConversation(conv)
     setShowSidebar(false)
     setEditingMessageId(null)
     clearError()
     setLocalError('')
-  }
+  }, [clearError])
 
-  function formatTime(dateStr: string): string {
-    const date = new Date(dateStr)
-    const now = new Date()
+  const dismissError = useCallback(() => {
+    clearError()
+    setLocalError('')
+  }, [clearError])
 
-    // Use local dates for day comparison to avoid UTC boundary issues
-    const dateLocal = new Date(date.getFullYear(), date.getMonth(), date.getDate())
-    const nowLocal = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-    const diffDays = Math.round((nowLocal.getTime() - dateLocal.getTime()) / (1000 * 60 * 60 * 24))
+  const showConversationList = useCallback(() => setShowSidebar(true), [])
 
-    if (diffDays === 0) {
-      return fmtTime(date, { hour: '2-digit', minute: '2-digit' })
+  const onModelChange = useCallback((model: string) => {
+    const current = latestRef.current.activeConversation
+    if (current) {
+      updateModel(current.id, model)
+    } else {
+      setNewConversationModel(model)
     }
-    if (diffDays === 1) return t('yesterday')
-    if (diffDays < 7) {
-      return formatDate(date, { weekday: 'short' })
-    }
-    return formatDate(date, { month: 'short', day: 'numeric' })
-  }
-
-  const conversationTitle = (conv: Conversation) => conv.title || t('newConversation')
-
-  // Options for the header model dropdown. If the current selection isn't one
-  // of the fixed options (e.g. an existing conversation on an older variant),
-  // prepend it so the select still reflects the real value.
-  const modelOptionsFor = (current: string): string[] =>
-    MODEL_OPTIONS.includes(current as (typeof MODEL_OPTIONS)[number])
-      ? [...MODEL_OPTIONS]
-      : [current, ...MODEL_OPTIONS]
-
-  const modelLabel = (model: string): string => {
-    const key = modelLabelKey(model)
-    if (!key) return model
-    const suffix = modelVersionSuffix(model)
-    return suffix ? `${t(key)} ${suffix}` : t(key)
-  }
+  }, [updateModel])
 
   const selectedModel = activeConversation ? activeConversation.model : (newConversationModel || DEFAULT_MODEL)
   // True while the active conversation has a stream in flight — disables the
   // model selector and the per-message Regenerate/Edit actions.
-  const isSending =
-    activeConversation != null && sendingConversationIds.has(activeConversation.id)
-  const modelSelectDisabled = isSending
-  const onModelChange = (model: string) => {
-    if (activeConversation) {
-      updateModel(activeConversation.id, model)
-    } else {
-      setNewConversationModel(model)
-    }
-  }
-
-  const modelSelector = (
-    <select
-      value={selectedModel}
-      onChange={e => onModelChange(e.target.value)}
-      disabled={modelSelectDisabled}
-      aria-label={t('header.modelLabel')}
-      title={t('header.modelLabel')}
-      className="shrink-0 bg-gray-800 border border-gray-600 rounded-lg px-2 py-1 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
-    >
-      {modelOptionsFor(selectedModel).map(m => (
-        <option key={m} value={m}>
-          {modelLabel(m)}
-        </option>
-      ))}
-    </select>
-  )
-
-  // Conversation sidebar panel
-  const sidebarContent = (
-    <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between p-4 border-b border-gray-700">
-        <h2 className="text-lg font-semibold">{t('title')}</h2>
-        <button
-          onClick={createConversation}
-          className="p-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer"
-          title={t('newChat')}
-          aria-label={t('newChat')}
-        >
-          <Plus size={18} />
-        </button>
-      </div>
-
-      <div className="flex-1 overflow-y-auto">
-        {loadingConversations ? (
-          <div className="flex justify-center py-8">
-            <Loader2 size={24} className="animate-spin text-gray-400" />
-          </div>
-        ) : conversations.length === 0 ? (
-          <div className="text-center text-gray-500 py-8 px-4">
-            <MessageSquare size={32} className="mx-auto mb-3 opacity-50" />
-            <p className="text-sm">{t('empty.noConversations')}</p>
-            <p className="text-xs mt-1">{t('empty.startNew')}</p>
-          </div>
-        ) : (
-          conversations.map(conv => (
-            <div
-              key={conv.id}
-              role="button"
-              tabIndex={0}
-              className={`group flex items-center gap-2 px-3 py-3 mx-2 my-0.5 rounded-lg cursor-pointer transition-colors ${
-                activeConversation?.id === conv.id
-                  ? 'bg-gray-700 text-white'
-                  : 'text-gray-300 hover:bg-gray-800'
-              }`}
-              onClick={() => {
-                if (renamingId !== conv.id && deletingId !== conv.id) {
-                  selectConversation(conv)
-                }
-              }}
-              onKeyDown={e => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  if (renamingId !== conv.id && deletingId !== conv.id) {
-                    selectConversation(conv)
-                  }
-                }
-              }}
-            >
-              {renamingId === conv.id ? (
-                <form
-                  className="flex-1 flex items-center gap-1"
-                  onSubmit={e => {
-                    e.preventDefault()
-                    renameConversation(conv.id, renameTitle)
-                  }}
-                >
-                  <input
-                    ref={renameInputRef}
-                    value={renameTitle}
-                    onChange={e => setRenameTitle(e.target.value)}
-                    aria-label={t('conversation.renameLabel')}
-                    className="flex-1 bg-gray-600 border border-gray-500 rounded px-2 py-1 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    onKeyDown={e => {
-                      if (e.key === 'Escape') setRenamingId(null)
-                    }}
-                  />
-                  <button
-                    type="submit"
-                    className="p-1 text-green-400 hover:text-green-300 cursor-pointer"
-                  >
-                    <Check size={14} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRenamingId(null)}
-                    className="p-1 text-gray-400 hover:text-gray-300 cursor-pointer"
-                  >
-                    <X size={14} />
-                  </button>
-                </form>
-              ) : deletingId === conv.id ? (
-                <div className="flex-1 flex items-center gap-2">
-                  <span className="text-sm text-red-400 truncate">{t('conversation.confirmDelete')}</span>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation()
-                      deleteConversation(conv.id)
-                    }}
-                    className="p-1 text-red-400 hover:text-red-300 cursor-pointer"
-                  >
-                    <Check size={14} />
-                  </button>
-                  <button
-                    onClick={e => {
-                      e.stopPropagation()
-                      setDeletingId(null)
-                    }}
-                    className="p-1 text-gray-400 hover:text-gray-300 cursor-pointer"
-                  >
-                    <X size={14} />
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <MessageSquare size={16} className="shrink-0 text-gray-500" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm truncate">{conversationTitle(conv)}</p>
-                    <p className="text-xs text-gray-500">{formatTime(conv.updated_at)}</p>
-                  </div>
-                  <div className="flex sm:hidden sm:group-hover:flex sm:group-focus-within:flex items-center gap-0.5 shrink-0">
-                    <button
-                      onClick={e => {
-                        e.stopPropagation()
-                        setRenamingId(conv.id)
-                        setRenameTitle(conv.title)
-                      }}
-                      className="p-1 text-gray-400 hover:text-white cursor-pointer"
-                      title={t('conversation.rename')}
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation()
-                        setDeletingId(conv.id)
-                      }}
-                      className="p-1 text-gray-400 hover:text-red-400 cursor-pointer"
-                      title={t('conversation.delete')}
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  )
+  const isSending = activeConversation != null && sendingConversationIds.has(activeConversation.id)
 
   return (
     <div className="flex h-[calc(100vh-3.5rem)] md:h-screen">
-      {/* Conversation sidebar — desktop always visible, mobile toggled */}
-      <div
-        className={`${
-          showSidebar ? 'flex' : 'hidden'
-        } md:flex flex-col w-full md:w-72 lg:w-80 border-r border-gray-700 shrink-0 bg-gray-900`}
-      >
-        {sidebarContent}
-      </div>
+      <ConversationSidebar
+        visibleOnMobile={showSidebar}
+        conversations={conversations}
+        activeId={activeConversationId}
+        loading={loadingConversations}
+        onSelect={selectConversation}
+        onNew={createConversation}
+        onRename={renameConversation}
+        onDelete={deleteConversation}
+      />
 
-      {/* Main chat area */}
-      <div
-        className={`${
-          showSidebar ? 'hidden' : 'flex'
-        } md:flex flex-col flex-1 min-w-0`}
-      >
-        {/* Chat header */}
-        <div className="flex items-center gap-3 px-4 h-14 border-b border-gray-700 shrink-0 bg-gray-900">
-          <button
-            onClick={() => setShowSidebar(true)}
-            className="md:hidden p-1 text-gray-400 hover:text-white cursor-pointer"
-            aria-label={t('conversation.backLabel')}
-          >
-            <ChevronLeft size={20} />
-          </button>
-          <div className="min-w-0 flex-1">
-            {activeConversation ? (
-              <h2 className="text-sm font-medium truncate">
-                {conversationTitle(activeConversation)}
-              </h2>
-            ) : (
-              <h2 className="text-sm font-medium text-gray-400 truncate">{t('header.selectOrStart')}</h2>
-            )}
-          </div>
-          {modelSelector}
-        </div>
+      {/* Main chat area — hidden on mobile while the conversation list is open */}
+      <div className={`${showSidebar ? 'hidden' : 'flex'} md:flex flex-col flex-1 min-w-0`}>
+        <ChatHeader
+          title={activeConversation ? activeConversation.title : null}
+          model={selectedModel}
+          modelDisabled={isSending}
+          onModelChange={onModelChange}
+          onBack={showConversationList}
+        />
 
         {/* Messages area */}
         <div className="relative flex-1 min-h-0">
         <div ref={scrollContainerRef} className="h-full overflow-y-auto">
-          {!activeConversation ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-500">
-              <Bot size={48} className="mb-4 opacity-30" />
-              <p className="text-lg font-medium">{t('welcome.title')}</p>
-              <p className="text-sm mt-1">{t('welcome.subtitle')}</p>
-              <button
-                onClick={createConversation}
-                className="mt-4 flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg transition-colors cursor-pointer"
-              >
-                <Plus size={16} />
-                {t('newChat')}
-              </button>
-            </div>
-          ) : loadingMessages ? (
-            <div className="flex justify-center py-12">
-              <Loader2 size={32} className="animate-spin text-gray-400" />
-            </div>
-          ) : messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-gray-500">
-              <Bot size={40} className="mb-3 opacity-30" />
-              <p className="text-sm">{t('emptyMessages')}</p>
-            </div>
-          ) : (
-            <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-              {messages.map(msg => {
-                // While streaming, the assistant placeholder is the last
-                // assistant row with negative id. Show the "streaming…"
-                // indicator only when its content is still empty so once
-                // tokens arrive the user sees the live text.
-                const isStreamingPlaceholder =
-                  isSending && msg.role === 'assistant' && msg.id < 0 && msg.content === ''
-                if (isStreamingPlaceholder) {
-                  return (
-                    <div key={msg.id} className="flex items-start gap-3">
-                      <div className="w-8 h-8 rounded-full bg-purple-600/20 flex items-center justify-center shrink-0">
-                        <Bot size={16} className="text-purple-400" />
-                      </div>
-                      <div className="bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3">
-                        <div className="flex items-center gap-2 text-gray-400">
-                          <Loader2 size={14} className="animate-spin" />
-                          <span className="text-sm">{t('streamingIndicator')}</span>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                }
-                const isLast = msg.id === messages[messages.length - 1].id
-                return (
-                  <MessageBubble
-                    key={msg.id}
-                    message={msg}
-                    // Regenerate targets only the newest reply, and only once
-                    // it is a persisted row and nothing is streaming.
-                    showRegenerate={msg.role === 'assistant' && isLast && msg.id > 0 && !isSending}
-                    // Optimistic user rows (negative ids) aren't persisted yet
-                    // and so can't be truncated server-side.
-                    showEdit={msg.role === 'user' && msg.id > 0}
-                    actionsDisabled={isSending}
-                    onRegenerate={handleRegenerate}
-                    onEdit={handleEdit}
-                  />
-                )
-              })}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
+          <ChatPageMessageList
+            messages={messages}
+            hasConversation={activeConversation !== null}
+            loading={loadingMessages}
+            sending={isSending}
+            onNew={createConversation}
+            onRegenerate={handleRegenerate}
+            onEdit={handleEdit}
+            endRef={messagesEndRef}
+          />
         </div>
           {/* Jump to latest — shown only while scrolled away from the bottom */}
-          {activeConversation && messages.length > 0 && !isPinned && (
-            <button
-              onClick={jumpToLatest}
-              className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-2 rounded-full bg-gray-800 hover:bg-gray-700 text-gray-200 text-xs font-medium shadow-lg border border-gray-700 transition-colors cursor-pointer"
-              aria-label={t('jumpToLatest')}
-            >
-              <ArrowDown size={14} />
-              {t('jumpToLatest')}
-            </button>
-          )}
+          {activeConversation && messages.length > 0 && !isPinned && <JumpToLatest onClick={jumpToLatest} />}
         </div>
 
-        {/* Error banner */}
-        {(error || localError) && (
-          <div className="px-4 py-2 bg-red-900/50 border-t border-red-800 text-red-300 text-sm flex items-center justify-between">
-            <span>{error || localError}</span>
-            <button
-              onClick={() => { clearError(); setLocalError('') }}
-              className="text-red-400 hover:text-red-300 cursor-pointer"
-              aria-label={t('input.dismissError')}
-            >
-              <X size={14} />
-            </button>
-          </div>
-        )}
-
-        {/* Input area */}
-        {activeConversation && (
-          <div className="border-t border-gray-700 bg-gray-900 p-4">
-            {editingMessageId !== null && (
-              <div className="max-w-3xl mx-auto mb-2 flex items-center justify-between gap-2 text-xs text-gray-400">
-                <span className="flex items-center gap-1.5 min-w-0">
-                  <Pencil size={12} className="shrink-0" />
-                  <span className="truncate">{t('input.editingNotice')}</span>
-                </span>
-                <button
-                  onClick={cancelEdit}
-                  className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors cursor-pointer"
-                  title={t('input.cancelEdit')}
-                  aria-label={t('input.cancelEdit')}
-                  data-testid="chat-cancel-edit-button"
-                >
-                  <X size={12} />
-                  {t('input.cancelEdit')}
-                </button>
-              </div>
-            )}
-            <div className="max-w-3xl mx-auto flex gap-2">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={t('input.placeholder')}
-                rows={1}
-                className="flex-1 bg-gray-800 border border-gray-600 rounded-xl px-4 py-3 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 placeholder-gray-500 max-h-40 overflow-y-auto"
-                style={{ minHeight: '48px' }}
-                disabled={sendingConversationIds.has(activeConversation.id)}
-                onInput={e => {
-                  const el = e.currentTarget
-                  el.style.height = 'auto'
-                  el.style.height = Math.min(el.scrollHeight, 160) + 'px'
-                }}
-              />
-              {sendingConversationIds.has(activeConversation.id) ? (
-                <button
-                  onClick={() => stop(activeConversation.id)}
-                  className="self-end p-3 rounded-xl bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer shrink-0"
-                  title={t('input.stopStreaming')}
-                  aria-label={t('input.stopStreaming')}
-                  data-testid="chat-stop-button"
-                >
-                  <Square size={18} />
-                </button>
-              ) : (
-                <button
-                  onClick={handleSend}
-                  disabled={!input.trim()}
-                  className="self-end p-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
-                  title={t('input.sendLabel')}
-                  aria-label={t('input.sendLabel')}
-                  data-testid="chat-send-button"
-                >
-                  <Send size={18} />
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// Shared styling for the per-message action buttons (Copy / Regenerate / Edit):
-// always visible on touch layouts, revealed on hover or keyboard focus on
-// desktop so the bubbles stay uncluttered.
-const MESSAGE_ACTIONS_CLASS =
-  'mt-2 flex items-center gap-3 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-within:opacity-100 transition-opacity'
-
-interface MessageBubbleProps {
-  message: Message
-  /** Show Regenerate — set only for the newest assistant reply when idle. */
-  showRegenerate?: boolean
-  /** Show Edit — set for persisted user messages. */
-  showEdit?: boolean
-  /** Disables the actions while a stream is in flight. */
-  actionsDisabled?: boolean
-  onRegenerate?: (message: Message) => void
-  onEdit?: (message: Message) => void
-}
-
-function MessageBubble({
-  message,
-  showRegenerate = false,
-  showEdit = false,
-  actionsDisabled = false,
-  onRegenerate,
-  onEdit,
-}: MessageBubbleProps) {
-  const { t } = useTranslation('chat')
-  const isUser = message.role === 'user'
-  const [copied, setCopied] = useState(false)
-  const timeoutRef = useRef<number | null>(null)
-
-  useEffect(() => {
-    return () => {
-      if (timeoutRef.current !== null) {
-        clearTimeout(timeoutRef.current)
-      }
-    }
-  }, [])
-
-  async function copyContent() {
-    try {
-      await navigator.clipboard.writeText(message.content)
-      setCopied(true)
-      if (timeoutRef.current !== null) {
-        clearTimeout(timeoutRef.current)
-      }
-      timeoutRef.current = window.setTimeout(() => {
-        setCopied(false)
-        timeoutRef.current = null
-      }, 2000)
-    } catch {
-      // clipboard API may not be available
-    }
-  }
-
-  if (isUser) {
-    return (
-      <div className="flex items-start gap-3 justify-end group">
-        <div className="bg-blue-600 rounded-2xl rounded-tr-sm px-4 py-3 max-w-[85%] min-w-0">
-          <p className="text-sm text-white whitespace-pre-wrap break-words">{message.content}</p>
-          {showEdit && (
-            <div className={`${MESSAGE_ACTIONS_CLASS} justify-end`}>
-              <button
-                onClick={() => onEdit?.(message)}
-                disabled={actionsDisabled}
-                className="text-blue-200 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-blue-600 cursor-pointer"
-                title={t('input.editMessage')}
-                aria-label={t('input.editMessage')}
-              >
-                <Pencil size={14} />
-              </button>
-            </div>
-          )}
-        </div>
-        <div className="w-8 h-8 rounded-full bg-blue-600/20 flex items-center justify-center shrink-0">
-          <User size={16} className="text-blue-400" />
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="flex items-start gap-3 group">
-      <div className="w-8 h-8 rounded-full bg-purple-600/20 flex items-center justify-center shrink-0">
-        <Bot size={16} className="text-purple-400" />
-      </div>
-      <div className="bg-gray-800 rounded-2xl rounded-tl-sm px-4 py-3 max-w-[85%] min-w-0">
-        <div className="prose prose-invert prose-sm max-w-none break-words [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:break-words">
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              a({ href, children }: React.ComponentPropsWithoutRef<'a'>) {
-                return (
-                  <a
-                    href={href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-400 hover:text-blue-300 underline"
-                  >
-                    {children}
-                  </a>
-                )
-              },
-              code({ className, children }: React.ComponentPropsWithoutRef<'code'> & { node?: unknown }) {
-                const match = /language-(\S+)/.exec(className || '')
-                const codeStr = String(children).replace(/\n$/, '')
-                const isBlock = codeStr.includes('\n') || match !== null
-                if (isBlock) {
-                  return (
-                    <SyntaxHighlighter
-                      style={vscDarkPlus as unknown as { [key: string]: React.CSSProperties }}
-                      language={match?.[1] || 'text'}
-                      PreTag="div"
-                      customStyle={{
-                        margin: 0,
-                        borderRadius: '0.5rem',
-                        fontSize: '0.8125rem',
-                      }}
-                    >
-                      {codeStr}
-                    </SyntaxHighlighter>
-                  )
-                }
-                return (
-                  <code className="bg-gray-700 px-1.5 py-0.5 rounded text-sm">
-                    {children}
-                  </code>
-                )
-              },
-            }}
-          >
-            {message.content}
-          </ReactMarkdown>
-        </div>
-        <div className={MESSAGE_ACTIONS_CLASS}>
-          <button
-            onClick={copyContent}
-            className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-800 text-gray-500 hover:text-gray-300 cursor-pointer"
-            title={t('input.copyMessage')}
-            aria-label={t('input.copyMessage')}
-          >
-            {copied ? <CheckCheck size={14} className="text-green-400" /> : <Copy size={14} />}
-          </button>
-          {showRegenerate && (
-            <button
-              onClick={() => onRegenerate?.(message)}
-              disabled={actionsDisabled}
-              className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-800 text-gray-500 hover:text-gray-300 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
-              title={t('input.regenerate')}
-              aria-label={t('input.regenerate')}
-            >
-              <RotateCcw size={14} />
-            </button>
-          )}
-        </div>
+        <ChatPageComposer
+          hasConversation={activeConversation !== null}
+          value={input}
+          onChange={setInput}
+          onSend={handleSend}
+          onStop={stopActive}
+          sending={isSending}
+          isEditing={editingMessageId !== null}
+          onCancelEdit={cancelEdit}
+          error={error || localError}
+          onDismissError={dismissError}
+          textareaRef={inputRef}
+        />
       </div>
     </div>
   )
