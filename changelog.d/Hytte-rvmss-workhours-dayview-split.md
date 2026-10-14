@@ -1,0 +1,2 @@
+category: Changed
+- **Work Hours day view split into hooks and list components** - Behaviour-neutral refactor: `DayView` is now layout only, with day loading, session/deduction CRUD, presets, lunch, leave and copy-yesterday in a `useDayEntry` hook, the flex pool and redemption in `useFlex`, and the session and deduction lists in prop-driven `SessionList`/`DeductionList` components. The saved summary and the live punch estimate both use the shared, server-mirrored `calculateDay`. (Hytte-rbczr)
