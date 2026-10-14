@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent, act } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import BudgetCreditCards, { computeGroupTotals } from './BudgetCreditCards'
 import enBudget from '../../public/locales/en/budget.json'
@@ -759,5 +759,173 @@ describe('BudgetCreditCards – large transaction list', () => {
     // Virtualisation guarantee: rows far beyond the visible viewport should
     // not be mounted into the DOM.
     expect(screen.queryByText('Test Transaction 1000')).not.toBeInTheDocument()
+  })
+})
+
+describe('BudgetCreditCards – delete transaction', () => {
+  // Mirrors the page's formatCurrency (whole units, absolute value).
+  const fmt = (n: number) =>
+    Math.abs(n).toLocaleString('en', {
+      style: 'currency',
+      currency: 'NOK',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).replace(/\s+/g, ' ')
+
+  const textOf = (el: Element | null | undefined) => (el?.textContent ?? '').replace(/\s+/g, ' ')
+
+  const BEFORE_TXNS = {
+    ...TRANSACTIONS,
+    variable_bill_name: 'Visa bill',
+    variable_bill_amount: 5250,
+    opening_balance: 1000,
+  }
+  const AFTER_TXNS = {
+    ...BEFORE_TXNS,
+    transactions: TRANSACTIONS.transactions.filter(tx => tx.id !== 1),
+    variable_bill_amount: 5000,
+  }
+  const BEFORE_SUMMARY = { ...SUMMARY, used_amount: 5250, remaining: 44750 }
+  const AFTER_SUMMARY = { ...SUMMARY, used_amount: 5000, remaining: 45000 }
+
+  type Call = { url: string; method: string }
+
+  function makeDeleteFetchMock(deleteOk: boolean) {
+    const calls: Call[] = []
+    let deleted = false
+    const fn = vi.fn((url: string, init?: RequestInit) => {
+      const method = init?.method ?? 'GET'
+      calls.push({ url, method })
+      const respond = (data: unknown, ok = true) =>
+        Promise.resolve({ ok, status: ok ? 200 : 500, json: () => Promise.resolve(data) } as Response)
+
+      if (method === 'DELETE' && url.includes('/api/credit-card/transactions/')) {
+        if (deleteOk) deleted = true
+        return respond({}, deleteOk)
+      }
+      if (url.includes('/api/budget/accounts')) return respond({ accounts: [ACCOUNT] })
+      if (url.includes('/api/credit-card/groups')) return respond(GROUPS)
+      if (url.includes('/api/budget/credit/summary')) return respond(deleted ? AFTER_SUMMARY : BEFORE_SUMMARY)
+      if (url.includes('/api/credit-card/transactions?')) return respond(deleted ? AFTER_TXNS : BEFORE_TXNS)
+      return respond({})
+    })
+    return { fn, calls }
+  }
+
+  const count = (calls: Call[], fragment: string) =>
+    calls.filter(c => c.method === 'GET' && c.url.includes(fragment)).length
+
+  async function openDeleteDialogForRema() {
+    renderComponent()
+    await waitFor(() => {
+      expect(screen.getByText('Rema 1000')).toBeInTheDocument()
+    })
+    // Walk up from the description to the row that owns a trash button.
+    let row: HTMLElement | null = screen.getByText('Rema 1000')
+    while (row && !row.querySelector('button[title="Delete transaction"]')) row = row.parentElement
+    fireEvent.click(row!.querySelector('button[title="Delete transaction"]')!)
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+  }
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  it('opens a confirmation dialog naming the transaction', async () => {
+    const { fn } = makeDeleteFetchMock(true)
+    vi.stubGlobal('fetch', fn)
+    await openDeleteDialogForRema()
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.textContent).toContain('Delete transaction?')
+    expect(dialog.textContent).toContain('Rema 1000')
+  })
+
+  it('cancel button closes the dialog without deleting', async () => {
+    const { fn, calls } = makeDeleteFetchMock(true)
+    vi.stubGlobal('fetch', fn)
+    await openDeleteDialogForRema()
+
+    fireEvent.click(within(screen.getByRole('dialog')).getByText('actions.cancel'))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('Rema 1000')).toBeInTheDocument()
+    expect(calls.some(c => c.method === 'DELETE')).toBe(false)
+  })
+
+  it('Escape closes the dialog without deleting', async () => {
+    const { fn, calls } = makeDeleteFetchMock(true)
+    vi.stubGlobal('fetch', fn)
+    await openDeleteDialogForRema()
+
+    fireEvent.keyDown(document, { key: 'Escape' })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('Rema 1000')).toBeInTheDocument()
+    expect(calls.some(c => c.method === 'DELETE')).toBe(false)
+  })
+
+  it('confirming deletes and reloads transactions and summary so totals update', async () => {
+    const { fn, calls } = makeDeleteFetchMock(true)
+    vi.stubGlobal('fetch', fn)
+    await openDeleteDialogForRema()
+
+    // Pre-delete figures (variable bill linked: total = bill - opening balance)
+    expect(textOf(screen.getByText('Closing balance').nextElementSibling)).toBe(fmt(5250))
+    expect(textOf(screen.getByText('Monthly total').nextElementSibling)).toBe(fmt(4250))
+    await waitFor(() => {
+      expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && textOf(el) === `Used: ${fmt(5250)}`)).toBeInTheDocument()
+    })
+
+    const txnsBefore = count(calls, '/api/credit-card/transactions?')
+    const summaryBefore = count(calls, '/api/budget/credit/summary')
+
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole('dialog')).getByText('Delete'))
+    })
+
+    await waitFor(() => {
+      expect(screen.queryByText('Rema 1000')).not.toBeInTheDocument()
+    })
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const deleteCall = calls.find(c => c.method === 'DELETE')
+    expect(deleteCall?.url).toBe('/api/credit-card/transactions/1')
+    expect(count(calls, '/api/credit-card/transactions?')).toBe(txnsBefore + 1)
+    expect(count(calls, '/api/budget/credit/summary')).toBe(summaryBefore + 1)
+
+    await waitFor(() => {
+      expect(textOf(screen.getByText('Closing balance').nextElementSibling)).toBe(fmt(5000))
+    })
+    await waitFor(() => {
+      expect(textOf(screen.getByText('Monthly total').nextElementSibling)).toBe(fmt(4000))
+    })
+    await waitFor(() => {
+      expect(screen.getByText((_, el) => el?.tagName === 'SPAN' && textOf(el) === `Used: ${fmt(5000)}`)).toBeInTheDocument()
+    })
+    expect(screen.getByText('Pending Charge')).toBeInTheDocument()
+  })
+
+  it('shows the delete error and does not reload when DELETE fails', async () => {
+    const { fn, calls } = makeDeleteFetchMock(false)
+    vi.stubGlobal('fetch', fn)
+    await openDeleteDialogForRema()
+
+    const txnsBefore = count(calls, '/api/credit-card/transactions?')
+
+    await act(async () => {
+      fireEvent.click(within(screen.getByRole('dialog')).getByText('Delete'))
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('Failed to delete transaction.')).toBeInTheDocument()
+    })
+    expect(count(calls, '/api/credit-card/transactions?')).toBe(txnsBefore)
   })
 })

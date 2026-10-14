@@ -342,6 +342,10 @@
       "deferFailed": "Kunne ikke oppdatere utsatt status."
     },
     "deleteTransaction": "Slett transaksjon",
+    "confirmDeleteTitle": "Slette transaksjon?",
+    "confirmDeleteMessage": "Slette «{{merchant}}» ({{amount}})? Dette kan ikke angres.",
+    "confirmDeleteMessageGeneric": "Slette denne transaksjonen? Dette kan ikke angres.",
+    "confirmDeleteConfirm": "Slett",
     "deferTransaction": "Utsett til neste måned",
     "undeferTransaction": "Fjern utsettelse",
     "deferredToNextMonth": "Neste måned",

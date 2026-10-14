@@ -5,6 +5,7 @@ import { Link } from 'react-router'
 import { ChevronLeft, ChevronRight, Upload, X, Link2, CreditCard, Plus, Trash2, Settings, History } from 'lucide-react'
 import { List, type RowComponentProps } from 'react-window'
 import { formatDate as fmtDate, formatNumber } from '../utils/formatDate'
+import ConfirmDialog from '../components/ConfirmDialog'
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -665,6 +666,16 @@ export default function BudgetCreditCards() {
   useLayoutEffect(() => { transactionsRef.current = transactions }, [transactions])
   useLayoutEffect(() => { groupsRef.current = groups }, [groups])
 
+  // Transaction awaiting delete confirmation, and the abort handle for the
+  // reload issued after a successful delete (aborted on card/month switch and
+  // unmount so a stale response can't overwrite the newly selected view).
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null)
+  const deleteReloadCleanupRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => {
+    deleteReloadCleanupRef.current?.()
+    deleteReloadCleanupRef.current = null
+  }, [selectedId, month])
+
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reset result when selection changes
     setReapplyResult(null)
@@ -942,10 +953,36 @@ export default function BudgetCreditCards() {
       })
       if (!r.ok) throw new Error('failed')
       setTransactions(prev => prev.filter(t => t.id !== txId))
+      // Reload so the closing balance, credit-limit card and monthly total
+      // (variable bill amount is resynced server-side) match the rows again.
+      if (selectedId !== null) {
+        deleteReloadCleanupRef.current?.()
+        const cleanupTxns = loadTransactions(selectedId, month)
+        const cleanupSummary = loadSummary(selectedId, month)
+        deleteReloadCleanupRef.current = () => {
+          cleanupTxns()
+          cleanupSummary()
+        }
+      }
     } catch {
       setTxnsError(t('creditCards.errors.deleteFailed'))
     }
-  }, [t])
+  }, [t, selectedId, month, loadTransactions, loadSummary])
+
+  // The trash button only requests a delete; the ConfirmDialog performs it.
+  const requestDeleteTransaction = useCallback((txId: number) => {
+    setPendingDeleteId(txId)
+  }, [])
+
+  const cancelDeleteTransaction = useCallback(() => {
+    setPendingDeleteId(null)
+  }, [])
+
+  const confirmDeleteTransaction = useCallback(() => {
+    const txId = pendingDeleteId
+    setPendingDeleteId(null)
+    if (txId !== null) handleDeleteTransaction(txId)
+  }, [pendingDeleteId, handleDeleteTransaction])
 
   const handleDeferTransaction = useCallback(async (txId: number) => {
     // Optimistic toggle
@@ -1076,6 +1113,16 @@ export default function BudgetCreditCards() {
     ? Math.min(100, (summary.used_amount / summary.credit_limit) * 100)
     : 0
   const usedColor = usedPct >= 90 ? 'bg-red-500' : usedPct >= 70 ? 'bg-yellow-500' : 'bg-blue-500'
+
+  const pendingDeleteTx = pendingDeleteId !== null
+    ? transactions.find(tx => tx.id === pendingDeleteId)
+    : undefined
+  const confirmDeleteMessage = pendingDeleteTx && pendingDeleteTx.beskrivelse
+    ? t('creditCards.confirmDeleteMessage', {
+      merchant: pendingDeleteTx.beskrivelse,
+      amount: formatAmount(pendingDeleteTx.belop, selectedAccount.currency),
+    })
+    : t('creditCards.confirmDeleteMessageGeneric')
 
   // ── Group management ───────────────────────────────────────────────────────
 
@@ -1514,7 +1561,7 @@ export default function BudgetCreditCards() {
                         currency={selectedAccount.currency}
                         t={t}
                         onAssign={handleAssignGroup}
-                        onDelete={handleDeleteTransaction}
+                        onDelete={requestDeleteTransaction}
                         onDefer={handleDeferTransaction}
                       />
                     )
@@ -1529,7 +1576,7 @@ export default function BudgetCreditCards() {
                       currency={selectedAccount.currency}
                       t={t}
                       onAssign={handleAssignGroup}
-                      onDelete={handleDeleteTransaction}
+                      onDelete={requestDeleteTransaction}
                       onDefer={handleDeferTransaction}
                     />
                   )}
@@ -1573,6 +1620,17 @@ export default function BudgetCreditCards() {
           }}
         />
       )}
+
+      {/* Transaction delete confirmation */}
+      <ConfirmDialog
+        open={pendingDeleteId !== null}
+        title={t('creditCards.confirmDeleteTitle')}
+        message={confirmDeleteMessage}
+        confirmLabel={t('creditCards.confirmDeleteConfirm')}
+        destructive
+        onConfirm={confirmDeleteTransaction}
+        onCancel={cancelDeleteTransaction}
+      />
     </div>
   )
 }

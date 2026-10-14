@@ -342,6 +342,10 @@
       "deferFailed": "Failed to update deferred status."
     },
     "deleteTransaction": "Delete transaction",
+    "confirmDeleteTitle": "Delete transaction?",
+    "confirmDeleteMessage": "Delete \"{{merchant}}\" ({{amount}})? This cannot be undone.",
+    "confirmDeleteMessageGeneric": "Delete this transaction? This cannot be undone.",
+    "confirmDeleteConfirm": "Delete",
     "deferTransaction": "Defer to next month",
     "undeferTransaction": "Remove deferral",
     "deferredToNextMonth": "Next month",

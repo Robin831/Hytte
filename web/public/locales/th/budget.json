@@ -342,6 +342,10 @@
       "deferFailed": "อัปเดตสถานะเลื่อนไม่สำเร็จ"
     },
     "deleteTransaction": "ลบรายการ",
+    "confirmDeleteTitle": "ลบรายการ?",
+    "confirmDeleteMessage": "ลบ \"{{merchant}}\" ({{amount}}) หรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้",
+    "confirmDeleteMessageGeneric": "ลบรายการนี้หรือไม่? การดำเนินการนี้ไม่สามารถย้อนกลับได้",
+    "confirmDeleteConfirm": "ลบ",
     "deferTransaction": "เลื่อนไปเดือนหน้า",
     "undeferTransaction": "ยกเลิกการเลื่อน",
     "deferredToNextMonth": "เดือนหน้า",
