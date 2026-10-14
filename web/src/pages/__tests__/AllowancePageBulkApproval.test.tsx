@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import AllowancePage from '../AllowancePage'
 
 // ── Translation mock ──────────────────────────────────────────────────────────
@@ -37,6 +37,11 @@ const TRANSLATIONS: Record<string, string> = {
   'bulk.toast.rejectedPartial': '{{succeeded}} rejected, {{failed}} failed',
   'errors.loadFailed': 'Failed to load data',
   'errors.actionFailed': 'Action failed',
+  'reject.title': 'Reject completion',
+  'reject.titleBatch': 'Reject {{count}} completions',
+  'reject.reasonOptional': 'Reason (optional)',
+  'reject.cancel': 'Cancel',
+  'reject.confirm': 'Reject',
 }
 
 function mockT(key: string, opts?: Record<string, unknown>): string {
@@ -249,7 +254,7 @@ describe('AllowancePage bulk approval', () => {
     expect(rowCheckbox('Trash').checked).toBe(true)
   })
 
-  it('rejects the selection with the same empty reason as the single-item path', async () => {
+  it('rejects the selection with one shared reason from the dialog', async () => {
     fetchMock.mockImplementation((url: string) => {
       if (url.startsWith('/api/allowance/pending')) {
         return Promise.resolve(jsonResponse({ pending: PENDING.map(makeCompletion) }))
@@ -273,10 +278,15 @@ describe('AllowancePage bulk approval', () => {
     fireEvent.click(rowCheckbox('Trash'))
     fireEvent.click(screen.getByRole('button', { name: 'Reject selected' }))
 
+    const dialog = await screen.findByRole('dialog', { name: 'Reject 2 completions' })
+    expect(batchCalls('reject')).toHaveLength(0)
+    fireEvent.change(within(dialog).getByLabelText('Reason (optional)'), { target: { value: '  Not finished  ' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reject' }))
+
     await waitFor(() => expect(screen.getByText('2 rejected')).toBeInTheDocument())
 
     expect(batchCalls('reject')).toHaveLength(1)
-    expect(batchBody('reject')).toEqual({ ids: [1, 3], reason: '' })
+    expect(batchBody('reject')).toEqual({ ids: [1, 3], reason: 'Not finished' })
     expect(choreRow('Clean room')).toBeNull()
     expect(choreRow('Dishes')).toBeInTheDocument()
   })
