@@ -88,6 +88,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		quality_bonus REAL NOT NULL DEFAULT 0,
 		photo_path    TEXT NOT NULL DEFAULT '',
 		rejection_reason TEXT NOT NULL DEFAULT '',
+		unapproved_at TEXT,
 		created_at    TEXT NOT NULL DEFAULT '',
 		UNIQUE(chore_id, child_id, date)
 	);
@@ -3013,4 +3014,140 @@ func TestBatchRejectCompletionsHandlerPartialFailure(t *testing.T) {
 	if byID[rejectedID] != "skipped" || byID[unknownID] != "skipped" {
 		t.Errorf("expected skipped for already-rejected and unknown IDs, got %q and %q", byID[rejectedID], byID[unknownID])
 	}
+}
+
+// ---- Unapprove handler tests ----
+
+func serveUnapprove(t *testing.T, db *sql.DB, user *auth.User, id string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/unapprove/"+id, nil), user)
+	r = withChiParam(r, "id", id)
+	w := httptest.NewRecorder()
+	UnapproveCompletionHandler(db).ServeHTTP(w, r)
+	return w
+}
+
+func assertJSONError(t *testing.T, w *httptest.ResponseRecorder, wantCode int) {
+	t.Helper()
+	if w.Code != wantCode {
+		t.Fatalf("expected %d, got %d: %s", wantCode, w.Code, w.Body.String())
+	}
+	var body map[string]string
+	decode(t, w.Body.Bytes(), &body)
+	if body["error"] == "" {
+		t.Errorf("expected JSON error body, got %s", w.Body.String())
+	}
+}
+
+func TestUnapproveCompletionHandler_Success(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	id := seedApprovedCompletion(t, db)
+
+	w := serveUnapprove(t, db, testParent, strconv.FormatInt(id, 10))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var comp Completion
+	decode(t, w.Body.Bytes(), &comp)
+	if comp.ID != id || comp.Status != "pending" || comp.QualityBonus != 0 || comp.ApprovedBy != nil || comp.ApprovedAt != nil {
+		t.Errorf("unexpected completion in response: %+v", comp)
+	}
+}
+
+func TestUnapproveCompletionHandler_Errors(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	// A second family: parent 3 with child 4.
+	if _, err := db.Exec(`
+		INSERT INTO users (id, email, name, google_id) VALUES
+		(3, 'other@test.com', 'Other', 'go3'),
+		(4, 'otherkid@test.com', 'Other Kid', 'go4')
+	`); err != nil {
+		t.Fatalf("seed users: %v", err)
+	}
+	if _, err := db.Exec(`INSERT INTO family_links (parent_id, child_id, created_at) VALUES (3, 4, '2026-01-01T00:00:00Z')`); err != nil {
+		t.Fatalf("link other family: %v", err)
+	}
+	otherParent := &auth.User{ID: 3, Email: "other@test.com", Name: "Other"}
+
+	approvedID := seedApprovedCompletion(t, db)
+	chore, err := CreateChore(db, 1, nil, "Dishes", "", 15, "daily", "🍽", true, "solo", 2, 10.0)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	pending, err := CreateCompletion(db, chore.ID, 2, "2026-03-10", "")
+	if err != nil {
+		t.Fatalf("CreateCompletion: %v", err)
+	}
+
+	assertJSONError(t, serveUnapprove(t, db, testParent, "abc"), http.StatusBadRequest)
+	assertJSONError(t, serveUnapprove(t, db, testParent, "99999"), http.StatusNotFound)
+	assertJSONError(t, serveUnapprove(t, db, otherParent, strconv.FormatInt(approvedID, 10)), http.StatusNotFound)
+	assertJSONError(t, serveUnapprove(t, db, testParent, strconv.FormatInt(pending.ID, 10)), http.StatusConflict)
+	assertJSONError(t, serveUnapprove(t, db, testChild, strconv.FormatInt(approvedID, 10)), http.StatusForbidden)
+
+	payout, err := UpsertPayout(db, 1, 2, unapproveTestWeek, 0, 0, 25)
+	if err != nil {
+		t.Fatalf("UpsertPayout: %v", err)
+	}
+	if _, err := MarkPayoutPaid(db, payout.ID, 1); err != nil {
+		t.Fatalf("MarkPayoutPaid: %v", err)
+	}
+	assertJSONError(t, serveUnapprove(t, db, testParent, strconv.FormatInt(approvedID, 10)), http.StatusConflict)
+	if got := completionStatus(t, db, approvedID); got != "approved" {
+		t.Errorf("expected completion to stay approved, got %q", got)
+	}
+}
+
+func TestBatchUnapproveCompletionsHandler_Mixed(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	ids := seedPendingCompletions(t, db, 3)
+	for _, id := range ids[:2] {
+		if _, err := ApproveCompletion(db, id, 1); err != nil {
+			t.Fatalf("ApproveCompletion %d: %v", id, err)
+		}
+	}
+	// ids[2] stays pending; 99999 does not exist.
+	body := map[string]any{"ids": []int64{ids[0], 99999, ids[2], ids[1]}}
+
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/unapprove/batch", body), testParent)
+	w := httptest.NewRecorder()
+	BatchUnapproveCompletionsHandler(db).ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp batchCompletionResponse
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Succeeded != 2 || resp.Failed != 2 {
+		t.Fatalf("expected 2 succeeded / 2 failed, got %d/%d", resp.Succeeded, resp.Failed)
+	}
+	if len(resp.Results) != 4 {
+		t.Fatalf("expected 4 results, got %d", len(resp.Results))
+	}
+	byID := statusByID(resp.Results)
+	want := map[int64]string{ids[0]: "unapproved", ids[1]: "unapproved", ids[2]: "skipped", 99999: "skipped"}
+	for id, status := range want {
+		if byID[id] != status {
+			t.Errorf("completion %d: expected %q, got %q", id, status, byID[id])
+		}
+	}
+	for _, id := range ids {
+		if got := completionStatus(t, db, id); got != "pending" {
+			t.Errorf("completion %d: expected pending, got %q", id, got)
+		}
+	}
+}
+
+func TestBatchUnapproveCompletionsHandler_RequiresParent(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/unapprove/batch", map[string]any{"ids": []int64{1}}), testChild)
+	w := httptest.NewRecorder()
+	BatchUnapproveCompletionsHandler(db).ServeHTTP(w, r)
+	assertJSONError(t, w, http.StatusForbidden)
 }
