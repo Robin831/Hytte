@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, useRef, type RefObject } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { AlertTriangle, Building2, Calendar, Check, ChevronLeft, ChevronRight, Clock, Copy, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { formatDate } from '../../../utils/formatDate'
@@ -10,8 +10,6 @@ import {
   applyRedemption,
   calculateDay,
   DEFAULT_WORK_SETTINGS,
-  isPunchStale,
-  liveSegmentMinutes,
   parseWorkSettings,
   sessionMinutes,
   type DaySummaryCalc,
@@ -19,7 +17,6 @@ import {
 import type { DaySummary, FlexState, LeaveDay, LeaveType, WorkDay, WorkDeductionPreset, WorkSession, WorkSettings } from '../types'
 import {
   buildNavHolidaySet,
-  currentTimeHHMM,
   formatMins,
   getNorwegianHolidays,
   localDateStr,
@@ -28,6 +25,7 @@ import {
 } from '../dateUtils'
 import { normalizePresetIcon } from '../presetIcons'
 import { SessionConflict, useWorkHoursApi } from '../useWorkHoursApi'
+import type { PunchClock } from '../hooks/usePunchClock'
 
 type ConflictCause = 'save' | 'toggle' | 'copy'
 
@@ -41,16 +39,15 @@ export default function DayView({
   currentDate,
   setCurrentDate,
   onNavigateToSettings,
-  punchToggleRef,
-  pendingPunch,
-  onPunchConsumed,
+  punch,
+  punchVersion,
 }: {
   currentDate: string
   setCurrentDate: (d: string | ((prev: string) => string)) => void
   onNavigateToSettings: () => void
-  punchToggleRef?: RefObject<(() => void) | null>
-  pendingPunch?: boolean
-  onPunchConsumed?: () => void
+  punch: PunchClock
+  /** Bumped by the page after a punch-out saves a session; triggers a reload. */
+  punchVersion: number
 }) {
   const { t } = useTranslation(['workhours', 'common'])
   const api = useWorkHoursApi()
@@ -61,7 +58,6 @@ export default function DayView({
   const currentDateRef = useRef(currentDate)
   const leaveDaysCacheRef = useRef<Map<string, LeaveDay[]>>(new Map())
   const datePickerRef = useRef<HTMLInputElement>(null)
-  const punchEditAbortRef = useRef<AbortController | null>(null)
   const [dayData, setDayData] = useState<{ day: WorkDay | null; summary: DaySummary | null } | null>(null)
   const [presets, setPresets] = useState<WorkDeductionPreset[]>([])
   const [flex, setFlex] = useState<FlexState | null>(null)
@@ -85,10 +81,6 @@ export default function DayView({
   const [sessionConflict, setSessionConflict] = useState<{ date: string; target: 'add' | number; cause: ConflictCause; conflict: WorkSession } | null>(null)
   const [newDeductionName, setNewDeductionName] = useState('')
   const [newDeductionMinutes, setNewDeductionMinutes] = useState('')
-  const [punchStart, setPunchStart] = useState<string | null>(null)
-  // Calendar date the open punch-in was recorded on. Needed so the live
-  // estimate can tell a session that has run past midnight from a future start.
-  const [punchDate, setPunchDate] = useState<string | null>(null)
   const [leaveDay, setLeaveDay] = useState<LeaveDay | null>(null)
   const [leaveSaving, setLeaveSaving] = useState(false)
   const [redeemingFlex, setRedeemingFlex] = useState(false)
@@ -97,7 +89,6 @@ export default function DayView({
   // Until the user's own settings arrive the saved totals come straight from
   // the server, which already applied them; see summary below.
   const [workSettingsLoaded, setWorkSettingsLoaded] = useState(false)
-  const [now, setNow] = useState(() => new Date())
   const [recentlyUsed, setRecentlyUsed] = useState<number[]>(() => {
     try {
       const stored = localStorage.getItem('workhours_recent_presets')
@@ -109,6 +100,16 @@ export default function DayView({
       return []
     }
   })
+
+  // The add-session form starts from the open punch's start time and follows
+  // edits to it; a new punch-in or a closed punch also clears the end time.
+  const openPunchStart = punch.openPunch?.start ?? null
+  const [prefilledPunchStart, setPrefilledPunchStart] = useState<string | null>(null)
+  if (openPunchStart !== prefilledPunchStart) {
+    setPrefilledPunchStart(openPunchStart)
+    setNewStart(openPunchStart ?? '')
+    if (prefilledPunchStart === null || openPunchStart === null) setNewEnd('')
+  }
 
   const editSessionId = editSession && editSession.date === currentDate ? editSession.id : null
   const activeConflict = sessionConflict && sessionConflict.date === currentDate ? sessionConflict : null
@@ -173,20 +174,6 @@ export default function DayView({
       .then(setPresets)
       .catch(() => {})
     loadFlex()
-    // Restore any in-progress punch-in from the server.
-    api.getPunchSession()
-      .then(session => {
-        if (session) {
-          const sessionDate = session.date
-          if (sessionDate && sessionDate !== currentDateRef.current) {
-            setCurrentDate(sessionDate)
-          }
-          setPunchStart(session.start_time)
-          setPunchDate(sessionDate ?? null)
-          setNewStart(session.start_time)
-        }
-      })
-      .catch(() => {})
     api.getPreferences()
       .then(prefs => {
         if (prefs) {
@@ -195,13 +182,7 @@ export default function DayView({
         }
       })
       .catch(() => {})
-  }, [api, loadFlex, setCurrentDate])
-
-  useEffect(() => {
-    if (punchStart === null) return
-    const id = setInterval(() => setNow(new Date()), 60_000)
-    return () => clearInterval(id)
-  }, [punchStart])
+  }, [api, loadFlex])
 
   const loadLeaveDay = useCallback(async (date: string, signal?: AbortSignal) => {
     try {
@@ -237,6 +218,16 @@ export default function DayView({
     loadLeaveDay(currentDate, controller.signal)
     return () => controller.abort()
   }, [currentDate, loadDay, loadLeaveDay])
+
+  // A punch-out saved a session (possibly on this day); reload the day and flex.
+  const seenPunchVersionRef = useRef(punchVersion)
+  useEffect(() => {
+    if (seenPunchVersionRef.current === punchVersion) return
+    seenPunchVersionRef.current = punchVersion
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    loadDay(currentDateRef.current)
+    loadFlex()
+  }, [punchVersion, loadDay, loadFlex])
 
   const ensureDay = async (lunch?: boolean): Promise<WorkDay | null> => {
     const targetDate = currentDate
@@ -500,133 +491,6 @@ export default function DayView({
     setNewDeductionMinutes(String(preset.default_minutes))
   }
 
-  const handlePunchIn = async () => {
-    const startTime = currentTimeHHMM()
-    setSaving(true)
-    try {
-      const ok = await api.punchIn({ date: currentDate, start_time: startTime })
-      if (ok) {
-        setPunchStart(startTime)
-        setPunchDate(currentDate)
-        setNewStart(startTime)
-        setNewEnd('')
-      } else {
-        alert(t('workhours:punchInError'))
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleCancelPunch = async () => {
-    setSaving(true)
-    try {
-      const ok = await api.cancelPunch()
-      if (ok) {
-        setPunchStart(null)
-        setPunchDate(null)
-      } else {
-        alert(t('workhours:punchCancelError'))
-      }
-    } catch {
-      alert(t('workhours:punchCancelError'))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handlePunchOut = async () => {
-    if (!punchStart) return
-    // Abort any in-flight start-time edit so its revert path can't resurrect punchStart.
-    punchEditAbortRef.current?.abort()
-    punchEditAbortRef.current = null
-    const endTime = currentTimeHHMM()
-    // An end time at or before the start can only mean the session ran past
-    // midnight. Ask instead of dead-ending, so the shift isn't lost.
-    let crossesMidnight = false
-    if (endTime <= punchStart) {
-      if (endTime === punchStart) {
-        alert(t('workhours:punchZeroLengthError'))
-        return
-      }
-      if (!confirm(t('workhours:punchCrossesMidnightConfirm', { start: punchStart, end: endTime }))) {
-        return
-      }
-      crossesMidnight = true
-    }
-    setSaving(true)
-    try {
-      const data = await api.punchOut({ end_time: endTime, crosses_midnight: crossesMidnight })
-      if (data) {
-        setPunchStart(null)
-        setPunchDate(null)
-        setNewStart('')
-        setNewEnd('')
-        if (data.date === currentDate) {
-          setDayData({ day: data.day, summary: data.summary })
-        } else {
-          setCurrentDate(data.date)
-          await loadDay(data.date)
-        }
-        loadFlex()
-      } else {
-        alert(t('workhours:punchSaveError'))
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const latestPunchRef = useRef({ handlePunchIn, handlePunchOut, saving, punchStart })
-
-  useEffect(() => {
-    latestPunchRef.current = { handlePunchIn, handlePunchOut, saving, punchStart }
-  })
-
-  useEffect(() => {
-    if (!punchToggleRef) return
-    punchToggleRef.current = () => {
-      const { saving, punchStart, handlePunchIn, handlePunchOut } = latestPunchRef.current
-      if (saving) return
-      if (punchStart === null) handlePunchIn()
-      else handlePunchOut()
-    }
-    return () => { punchToggleRef.current = null }
-  }, [punchToggleRef])
-
-  useEffect(() => {
-    if (!pendingPunch) return
-    const { saving, punchStart, handlePunchIn, handlePunchOut } = latestPunchRef.current
-    if (saving) return
-    if (punchStart === null) handlePunchIn()
-    else handlePunchOut()
-    onPunchConsumed?.()
-  }, [pendingPunch, saving, onPunchConsumed])
-
-  const handleEditPunchStart = async (newTime: string) => {
-    if (!newTime || !punchStart || newTime === punchStart) return
-    const prev: string = punchStart
-    // Abort any previous in-flight edit and start a new one.
-    punchEditAbortRef.current?.abort()
-    const controller = new AbortController()
-    punchEditAbortRef.current = controller
-    setPunchStart(newTime)
-    setNewStart(newTime)
-    try {
-      const ok = await api.editPunchStart(newTime, controller.signal)
-      if (!ok) {
-        console.error('workhours: edit punch start failed')
-        setPunchStart(prev)
-        setNewStart(prev)
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      console.error('workhours: edit punch start:', err)
-      setPunchStart(prev)
-      setNewStart(prev)
-    }
-  }
-
   const handleCopyYesterday = async () => {
     if (sessions.length > 0) return
     const yesterday = prevWeekday(currentDate, navHolidaySet)
@@ -713,6 +577,8 @@ export default function DayView({
     )
   }
   const deductions = day?.deductions ?? []
+  // Punch actions and day edits share the form, so either one in flight locks it.
+  const busy = saving || punch.saving
 
   // Flex redeemed for this date, which the server credits into reported and
   // balance after CalculateDay; both paths below must credit it the same way.
@@ -746,6 +612,16 @@ export default function DayView({
       balance_minutes: calc.balance,
     }
   }, [serverSummary, day, workSettings, workSettingsLoaded, redeemedMinutes])
+
+  // Live "if punched out now" totals: the shared calculateDay over this day's
+  // saved data plus the open punch's elapsed time.
+  const liveEstimate = punch.liveEstimate({
+    sessions,
+    deductions,
+    settings: workSettings,
+    lunch: lunchChecked,
+    redeemedMinutes,
+  })
 
   const sortedPresets = [...presets].sort((a, b) => {
     const aIdx = recentlyUsed.indexOf(a.id)
@@ -896,7 +772,7 @@ export default function DayView({
                 <button
                   type="button"
                   onClick={handleCopyYesterday}
-                  disabled={saving || sessions.length > 0}
+                  disabled={busy || sessions.length > 0}
                   className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer disabled:opacity-40"
                   aria-label={t('workhours:copyYesterday')}
                   title={t('workhours:copyYesterday')}
@@ -905,11 +781,11 @@ export default function DayView({
                   {t('workhours:copyYesterday')}
                 </button>
                 {/* Punch clock button */}
-                {punchStart === null ? (
+                {punch.openPunch === null ? (
                   <button
                     type="button"
-                    onClick={handlePunchIn}
-                    disabled={saving}
+                    onClick={punch.punchIn}
+                    disabled={busy}
                     className="flex items-center gap-1 px-2 py-1 text-xs text-green-400 hover:text-green-300 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer disabled:opacity-40"
                     aria-label={t('workhours:punchIn')}
                   >
@@ -922,10 +798,10 @@ export default function DayView({
                       <label htmlFor="punch-start-time" className="text-gray-400">{t('workhours:punchStartLabel')}</label>
                       <input
                         id="punch-start-time"
-                        key={punchStart}
+                        key={punch.openPunch.start}
                         type="time"
-                        defaultValue={punchStart}
-                        onBlur={e => handleEditPunchStart(e.target.value)}
+                        defaultValue={punch.openPunch.start}
+                        onBlur={e => punch.editStart(e.target.value)}
                         onKeyDown={e => {
                           if (e.key === 'Enter') {
                             e.currentTarget.blur()
@@ -936,8 +812,8 @@ export default function DayView({
                     </div>
                     <button
                       type="button"
-                      onClick={handlePunchOut}
-                      disabled={saving}
+                      onClick={punch.punchOut}
+                      disabled={busy}
                       className="flex items-center gap-1 px-2 py-1 text-xs text-red-400 hover:text-red-300 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer disabled:opacity-40 animate-pulse"
                       aria-label={t('workhours:punchOut')}
                     >
@@ -946,8 +822,8 @@ export default function DayView({
                     </button>
                     <button
                       type="button"
-                      onClick={handleCancelPunch}
-                      disabled={saving}
+                      onClick={punch.cancelPunch}
+                      disabled={busy}
                       className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer disabled:opacity-40"
                       aria-label={t('workhours:cancelPunch')}
                     >
@@ -961,41 +837,22 @@ export default function DayView({
             {/* The estimate mixes the viewed day's sessions and deductions into the
                 open punch's elapsed time, so it is only meaningful on the day the
                 punch-in itself belongs to. */}
-            {punchStart !== null && (punchDate === null || punchDate === currentDate) && (() => {
-              // The live segment is null when it cannot be measured (stale
-              // punch-in, malformed or future start); calculateDay would count
-              // it as 0, so check it first to show why instead.
-              let estimate: DaySummaryCalc | null = null
-              if (liveSegmentMinutes(punchStart, now, punchDate) !== null) {
-                try {
-                  estimate = applyRedemption(
-                    calculateDay(sessions, deductions, workSettings, {
-                      lunch: lunchChecked,
-                      openPunchStart: punchStart,
-                      openPunchDate: punchDate,
-                      now,
-                    }),
-                    redeemedMinutes,
-                  )
-                } catch {
-                  estimate = null
-                }
-              }
-              if (!estimate) {
+            {liveEstimate && (() => {
+              if (liveEstimate.kind !== 'estimate') {
                 // A punch-in that has been open for longer than the allowed
                 // wrap is forgotten, not running — say so instead of claiming
                 // the start time is in the future.
-                const staleDate = isPunchStale(punchDate, now) ? punchDate : null
                 return (
                   <div className="rounded-lg border border-yellow-700/50 bg-yellow-900/20 px-3 py-2 text-xs text-yellow-400">
-                    {staleDate !== null
+                    {liveEstimate.kind === 'stale'
                       ? t('workhours:punchEstimate.stalePunch', {
-                          date: formatDate(staleDate + 'T12:00:00', { year: 'numeric', month: 'long', day: 'numeric' }),
+                          date: formatDate(liveEstimate.punchDate + 'T12:00:00', { year: 'numeric', month: 'long', day: 'numeric' }),
                         })
                       : t('workhours:punchEstimate.invalidStart')}
                   </div>
                 )
               }
+              const estimate = liveEstimate.calc
               const overStandard = estimate.balance > 0
               const atStandard = estimate.balance >= 0
               return (
@@ -1087,7 +944,7 @@ export default function DayView({
                           <button
                             type="button"
                             onClick={() => handleSaveEditSession(s)}
-                            disabled={saving || !editStart || !editEnd}
+                            disabled={busy || !editStart || !editEnd}
                             className="ml-auto text-green-400 hover:text-green-300 transition-colors disabled:opacity-40 cursor-pointer"
                             aria-label={t('workhours:saveSession')}
                             title={t('workhours:saveSession')}
@@ -1097,7 +954,7 @@ export default function DayView({
                           <button
                             type="button"
                             onClick={handleCancelEditSession}
-                            disabled={saving}
+                            disabled={busy}
                             className="text-gray-500 hover:text-white transition-colors disabled:opacity-40 cursor-pointer"
                             aria-label={t('workhours:cancelEditSession')}
                             title={t('workhours:cancelEditSession')}
@@ -1127,7 +984,7 @@ export default function DayView({
                         <button
                           type="button"
                           onClick={() => handleStartEditSession(s)}
-                          disabled={saving}
+                          disabled={busy}
                           className="text-gray-500 hover:text-blue-400 transition-colors disabled:opacity-40 cursor-pointer"
                           aria-label={t('workhours:editSession')}
                           title={t('workhours:editSession')}
@@ -1137,7 +994,7 @@ export default function DayView({
                         <button
                           type="button"
                           onClick={() => handleToggleInternal(s)}
-                          disabled={saving}
+                          disabled={busy}
                           className={`transition-colors disabled:opacity-40 cursor-pointer ${s.is_internal ? 'text-purple-400 hover:text-purple-300' : 'text-gray-500 hover:text-purple-400'}`}
                           aria-label={s.is_internal ? t('workhours:markExternal') : t('workhours:markInternal')}
                           title={s.is_internal ? t('workhours:markExternal') : t('workhours:markInternal')}
@@ -1147,7 +1004,7 @@ export default function DayView({
                         <button
                           type="button"
                           onClick={() => handleDeleteSession(s.id)}
-                          disabled={saving}
+                          disabled={busy}
                           className="text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40 cursor-pointer"
                           aria-label={t('workhours:removeSession')}
                         >
@@ -1204,7 +1061,7 @@ export default function DayView({
               <button
                 type="button"
                 onClick={handleAddSession}
-                disabled={!newStart || !newEnd || saving}
+                disabled={!newStart || !newEnd || busy}
                 className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors cursor-pointer"
               >
                 <Plus size={14} />
@@ -1226,7 +1083,7 @@ export default function DayView({
                 type="checkbox"
                 checked={lunchChecked}
                 onChange={handleLunchToggle}
-                disabled={saving}
+                disabled={busy}
                 className="w-4 h-4 rounded accent-blue-500"
               />
               <span className="text-sm text-white">{t('workhours:lunch')}</span>
@@ -1245,7 +1102,7 @@ export default function DayView({
                       key={p.id}
                       type="button"
                       onClick={() => handlePresetToggle(p)}
-                      disabled={saving}
+                      disabled={busy}
                       className={`px-3 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 ${
                         active
                           ? 'bg-blue-600 text-white'
@@ -1271,7 +1128,7 @@ export default function DayView({
                       <button
                         type="button"
                         onClick={() => handleDeleteDeduction(d.id)}
-                        disabled={saving}
+                        disabled={busy}
                         className="text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40 cursor-pointer"
                         aria-label={t('workhours:removeDeduction')}
                       >
@@ -1332,7 +1189,7 @@ export default function DayView({
                 <button
                   type="button"
                   onClick={handleAddDeduction}
-                  disabled={!newDeductionName.trim() || !newDeductionMinutes || saving}
+                  disabled={!newDeductionName.trim() || !newDeductionMinutes || busy}
                   className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors cursor-pointer"
                   aria-label={t('workhours:addDeduction')}
                 >
