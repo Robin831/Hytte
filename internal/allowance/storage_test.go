@@ -481,6 +481,55 @@ func TestUnapproveCompletion_NotImmediatelyAutoApproved(t *testing.T) {
 	}
 }
 
+func TestUnapproveCompletion_AutoApprovedAfterWindow(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+	id := seedApprovedCompletion(t, db)
+
+	if _, err := UnapproveCompletion(db, id, 1); err != nil {
+		t.Fatalf("UnapproveCompletion: %v", err)
+	}
+	// Once the un-approval itself is older than the window, the completion
+	// becomes eligible for auto-approval again.
+	if _, err := db.Exec(`UPDATE allowance_completions SET created_at = '2026-01-01T00:00:00Z', unapproved_at = '2026-01-02T00:00:00Z' WHERE id = ?`, id); err != nil {
+		t.Fatalf("backdate: %v", err)
+	}
+	n, err := AutoApproveStaleCompletions(db, 1, 0, 24)
+	if err != nil {
+		t.Fatalf("AutoApproveStaleCompletions: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("expected 1 auto-approval, got %d", n)
+	}
+	if got := completionStatus(t, db, id); got != "approved" {
+		t.Errorf("expected approved, got %q", got)
+	}
+}
+
+func TestUpsertPayout_LeavesPaidRowUntouched(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	payout, err := UpsertPayout(db, 1, 2, unapproveTestWeek, 20, 5, 25)
+	if err != nil {
+		t.Fatalf("UpsertPayout: %v", err)
+	}
+	if _, err := MarkPayoutPaid(db, payout.ID, 1); err != nil {
+		t.Fatalf("MarkPayoutPaid: %v", err)
+	}
+
+	got, err := UpsertPayout(db, 1, 2, unapproveTestWeek, 10, 0, 10)
+	if err != nil {
+		t.Fatalf("UpsertPayout after paid: %v", err)
+	}
+	if !got.PaidOut {
+		t.Error("expected payout to remain paid")
+	}
+	if got.BaseAmount != 20 || got.BonusAmount != 5 || got.TotalAmount != 25 {
+		t.Errorf("paid amounts changed: base %v bonus %v total %v", got.BaseAmount, got.BonusAmount, got.TotalAmount)
+	}
+}
+
 func TestUnapproveCompletion_EarningsAndPayoutDrop(t *testing.T) {
 	db := setupTestDB(t)
 	linkParentChild(t, db)

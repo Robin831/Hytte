@@ -578,8 +578,9 @@ func decodeBatchCompletionIDs(w http.ResponseWriter, r *http.Request) (batchComp
 	return req, true
 }
 
-// batchCompletionFailure maps a per-completion error to a result entry. Missing
-// or already-resolved completions are skipped rather than failing the batch.
+// batchCompletionFailure maps a per-completion error to a result entry.
+// Expected per-item conflicts (missing, wrong status, paid week) are skipped
+// rather than failing the batch.
 func batchCompletionFailure(id, parentID int64, action string, err error) batchCompletionResult {
 	switch {
 	case errors.Is(err, ErrCompletionNotFound):
@@ -593,6 +594,27 @@ func batchCompletionFailure(id, parentID int64, action string, err error) batchC
 	default:
 		log.Printf("allowance: batch %s completion %d parent %d: %v", action, id, parentID, err)
 		return batchCompletionResult{ID: id, Status: "error", Error: "failed to " + action + " completion"}
+	}
+}
+
+// runCompletionBatch applies fn to each ID, recording status on success and a
+// batchCompletionFailure entry otherwise. action names the operation in logs
+// and generic error messages.
+func runCompletionBatch(ids []int64, parentID int64, action, status string, fn func(id int64) error) batchCompletionResponse {
+	results := make([]batchCompletionResult, 0, len(ids))
+	succeeded := 0
+	for _, id := range ids {
+		if err := fn(id); err != nil {
+			results = append(results, batchCompletionFailure(id, parentID, action, err))
+			continue
+		}
+		succeeded++
+		results = append(results, batchCompletionResult{ID: id, Status: status})
+	}
+	return batchCompletionResponse{
+		Succeeded: succeeded,
+		Failed:    len(results) - succeeded,
+		Results:   results,
 	}
 }
 
@@ -612,23 +634,15 @@ func BatchApproveCompletionsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		results := make([]batchCompletionResult, 0, len(req.IDs))
 		approved := make([]*Completion, 0, len(req.IDs))
-		for _, id := range req.IDs {
+		writeJSON(w, http.StatusOK, runCompletionBatch(req.IDs, user.ID, "approve", "approved", func(id int64) error {
 			comp, err := ApproveCompletion(db, id, user.ID)
 			if err != nil {
-				results = append(results, batchCompletionFailure(id, user.ID, "approve", err))
-				continue
+				return err
 			}
-			results = append(results, batchCompletionResult{ID: id, Status: "approved"})
 			approved = append(approved, comp)
-		}
-
-		writeJSON(w, http.StatusOK, batchCompletionResponse{
-			Succeeded: len(approved),
-			Failed:    len(results) - len(approved),
-			Results:   results,
-		})
+			return nil
+		}))
 
 		// Same per-completion notification as the single-approve path.
 		for _, comp := range approved {
@@ -652,22 +666,10 @@ func BatchRejectCompletionsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		results := make([]batchCompletionResult, 0, len(req.IDs))
-		succeeded := 0
-		for _, id := range req.IDs {
-			if _, err := RejectCompletion(db, id, user.ID, req.Reason); err != nil {
-				results = append(results, batchCompletionFailure(id, user.ID, "reject", err))
-				continue
-			}
-			succeeded++
-			results = append(results, batchCompletionResult{ID: id, Status: "rejected"})
-		}
-
-		writeJSON(w, http.StatusOK, batchCompletionResponse{
-			Succeeded: succeeded,
-			Failed:    len(results) - succeeded,
-			Results:   results,
-		})
+		writeJSON(w, http.StatusOK, runCompletionBatch(req.IDs, user.ID, "reject", "rejected", func(id int64) error {
+			_, err := RejectCompletion(db, id, user.ID, req.Reason)
+			return err
+		}))
 	}
 }
 
@@ -687,22 +689,10 @@ func BatchUnapproveCompletionsHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 
-		results := make([]batchCompletionResult, 0, len(req.IDs))
-		succeeded := 0
-		for _, id := range req.IDs {
-			if _, err := UnapproveCompletion(db, id, user.ID); err != nil {
-				results = append(results, batchCompletionFailure(id, user.ID, "unapprove", err))
-				continue
-			}
-			succeeded++
-			results = append(results, batchCompletionResult{ID: id, Status: "unapproved"})
-		}
-
-		writeJSON(w, http.StatusOK, batchCompletionResponse{
-			Succeeded: succeeded,
-			Failed:    len(results) - succeeded,
-			Results:   results,
-		})
+		writeJSON(w, http.StatusOK, runCompletionBatch(req.IDs, user.ID, "unapprove", "unapproved", func(id int64) error {
+			_, err := UnapproveCompletion(db, id, user.ID)
+			return err
+		}))
 	}
 }
 

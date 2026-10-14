@@ -28,8 +28,8 @@ var (
 	ErrNotSessionInitiator   = errors.New("only the child who started the team session can cancel it")
 	ErrTeamTooSmall          = errors.New("not enough children for team completion")
 	ErrTeamSessionConflict   = errors.New("a conflicting team completion already exists for this chore and date")
-	ErrCompletionNotApproved = errors.New("completion is not approved")
-	ErrWeekAlreadyPaid       = errors.New("week payout already paid")
+	ErrCompletionNotApproved = errors.New("completion is not in approved status")
+	ErrWeekAlreadyPaid       = errors.New("week has already been paid out")
 )
 
 // decryptOrPlaintext decrypts a stored field value. For enc:-prefixed values
@@ -1054,7 +1054,9 @@ func GetPayouts(db *sql.DB, parentID int64, childID *int64, limit int) ([]Payout
 	return scanPayouts(rows)
 }
 
-// UpsertPayout creates or updates a weekly payout record.
+// UpsertPayout creates or updates a weekly payout record. A row that has
+// already been marked paid is left untouched so the stored amounts keep
+// matching what was actually paid out; the returned Payout reflects it.
 func UpsertPayout(db *sql.DB, parentID, childID int64, weekStart string, baseAmount, bonusAmount, totalAmount float64) (*Payout, error) {
 	now := nowRFC3339()
 	_, err := db.Exec(`
@@ -1065,6 +1067,7 @@ func UpsertPayout(db *sql.DB, parentID, childID int64, weekStart string, baseAmo
 		  SET base_amount  = excluded.base_amount,
 		      bonus_amount = excluded.bonus_amount,
 		      total_amount = excluded.total_amount
+		  WHERE allowance_payouts.paid_out = 0
 	`, parentID, childID, weekStart, baseAmount, bonusAmount, totalAmount, now)
 	if err != nil {
 		return nil, err
