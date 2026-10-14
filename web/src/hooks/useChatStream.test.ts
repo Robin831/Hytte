@@ -465,6 +465,265 @@ describe('useChatStream', () => {
       expect(result.current.error).toBe('')
     })
 
+    const persistedAssistant: Message = {
+      id: 11,
+      conversation_id: 1,
+      role: 'assistant',
+      content: 'Hello',
+      created_at: '2026-06-03T00:00:02Z',
+    }
+
+    it('merges the live reply into a refetch that lands mid-stream', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { conversations: [CONV, CONV_B] })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+        stream.push(userFrame())
+        stream.push(frame('token', { text: 'Hel' }))
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+      // The refetch read the DB before the reply was saved.
+      await act(async () => {
+        viewConversation(CONV, result.current.reconcileLoaded(1, [persistedUser]))
+      })
+      expect(state.messages).toEqual([
+        persistedUser,
+        expect.objectContaining({ role: 'assistant', content: 'Hel' }),
+      ])
+
+      await act(async () => {
+        stream.push(frame('token', { text: 'lo' }))
+        stream.push(doneFrame('Hello'))
+        stream.close()
+        await pending
+      })
+      expect(state.messages).toEqual([persistedUser, persistedAssistant])
+    })
+
+    it('does not duplicate the reply when the refetch already holds it before done', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { conversations: [CONV, CONV_B] })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+        stream.push(userFrame())
+        stream.push(frame('token', { text: 'Hel' }))
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+      // The refetch read the DB after the server saved the reply, but the
+      // last token frames and `done` are still unread.
+      await act(async () => {
+        viewConversation(CONV, result.current.reconcileLoaded(1, [persistedUser, persistedAssistant]))
+      })
+      expect(state.messages).toEqual([persistedUser, persistedAssistant])
+
+      await act(async () => {
+        stream.push(frame('token', { text: 'lo' }))
+      })
+      expect(state.messages).toEqual([persistedUser, persistedAssistant])
+
+      await act(async () => {
+        stream.push(doneFrame('Hello'))
+        stream.close()
+        await pending
+      })
+      expect(state.messages).toEqual([persistedUser, persistedAssistant])
+    })
+
+    it('does not duplicate the canonical row when a refetch lands between the last token and done', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { conversations: [CONV] })
+      const { state, result } = renderSwitchable()
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+        stream.push(userFrame())
+        stream.push(frame('token', { text: 'Hello' }))
+      })
+      // A refetch that already holds the saved rows lands next to the
+      // placeholders (e.g. a re-run of the load effect).
+      await act(async () => {
+        state.messages = [...state.messages, persistedAssistant]
+      })
+      await act(async () => {
+        stream.push(doneFrame('Hello'))
+        stream.close()
+        await pending
+      })
+      expect(state.messages.map(m => m.id)).toEqual([10, 11])
+    })
+
+    it('keeps a reply that finished before the returning refetch landed', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { conversations: [CONV, CONV_B] })
+      const { state, result, rerender, params } = renderSwitchable()
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+        stream.push(userFrame())
+        stream.push(frame('token', { text: 'Hel' }))
+      })
+      await act(async () => {
+        state.active = CONV_B
+        state.messages = [bRow]
+        rerender({ ...params, activeConversation: CONV_B })
+      })
+      // Back to A, but the refetch is still in flight: state holds B's rows
+      // when `done` arrives, so the final swap cannot apply.
+      await act(async () => {
+        state.active = CONV
+        rerender({ ...params, activeConversation: CONV })
+      })
+      await act(async () => {
+        stream.push(frame('token', { text: 'lo' }))
+        stream.push(doneFrame('Hello'))
+        stream.close()
+        await pending
+      })
+      expect(state.messages).toEqual([bRow])
+
+      // The refetch read the DB before the insert; the reply is merged in.
+      await act(async () => {
+        state.messages = result.current.reconcileLoaded(1, [persistedUser])
+      })
+      expect(state.messages).toEqual([persistedUser, persistedAssistant])
+      // The merge is one-shot: a later reload does not resurrect the rows
+      // (e.g. after a truncate).
+      expect(result.current.reconcileLoaded(1, [])).toEqual([])
+    })
+
+    it('a background error frame leaves B untouched and surfaces on return', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { conversations: [CONV, CONV_B] })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+        stream.push(userFrame())
+        stream.push(frame('token', { text: 'Hel' }))
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+        state.input = 'typing in b'
+      })
+      await act(async () => {
+        stream.push(frame('error', { error: 'Claude failed to respond' }))
+        stream.close()
+        await pending
+      })
+
+      expect(state.messages).toEqual([bRow])
+      expect(state.input).toBe('typing in b')
+      expect(result.current.error).toBe('')
+      expect(state.sending.has(1)).toBe(false)
+
+      // Returning to A shows the persisted user row, the error and the draft.
+      await act(async () => {
+        viewConversation(CONV, result.current.reconcileLoaded(1, [persistedUser]))
+      })
+      expect(state.messages).toEqual([persistedUser])
+      expect(result.current.error).toBe('Claude failed to respond')
+      expect(state.input).toBe('hi')
+    })
+
+    it('a background stream cut off before done surfaces a stream error on return', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { conversations: [CONV, CONV_B] })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+        stream.push(userFrame())
+        stream.push(frame('token', { text: 'Hel' }))
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+      await act(async () => {
+        stream.close()
+        await pending
+      })
+      expect(state.messages).toEqual([bRow])
+      expect(result.current.error).toBe('')
+      expect(state.sending.has(1)).toBe(false)
+
+      await act(async () => {
+        viewConversation(CONV, result.current.reconcileLoaded(1, [persistedUser]))
+      })
+      expect(state.messages).toEqual([persistedUser])
+      expect(result.current.error).toBe('errors.streamError')
+      expect(state.input).toBe('hi')
+    })
+
+    it('a background stream that ends before user_message restores the draft on return', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { conversations: [CONV, CONV_B] })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+      await act(async () => {
+        stream.close()
+        await pending
+      })
+      expect(state.messages).toEqual([bRow])
+      expect(state.input).toBe('')
+      expect(result.current.error).toBe('')
+      expect(state.sending.has(1)).toBe(false)
+
+      // The server never saved the message: A is empty, but the typed text
+      // comes back with an error instead of vanishing.
+      await act(async () => {
+        viewConversation(CONV, result.current.reconcileLoaded(1, []))
+      })
+      expect(state.messages).toEqual([])
+      expect(result.current.error).toBe('errors.streamError')
+      expect(state.input).toBe('hi')
+    })
+
+    it('a send rejected while away (non-OK response) restores the draft on return', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { streamError: 'Claude is not enabled' })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pending!: Promise<void>
+      // Switch away before the rejected response is processed.
+      act(() => {
+        pending = result.current.send('hi')
+        viewConversation(CONV_B, [bRow])
+      })
+      await act(async () => {
+        await pending
+      })
+      expect(state.messages).toEqual([bRow])
+      expect(result.current.error).toBe('')
+      expect(state.sending.has(1)).toBe(false)
+
+      await act(async () => {
+        viewConversation(CONV, result.current.reconcileLoaded(1, []))
+      })
+      expect(result.current.error).toBe('Claude is not enabled')
+      expect(state.input).toBe('hi')
+    })
+
     it('runs concurrent sends in two conversations into their own threads', async () => {
       const streamA = makeSSEStream()
       const streamB = makeSSEStream()

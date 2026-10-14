@@ -144,7 +144,7 @@ export default function Chat() {
   // SSE streaming state machine: optimistic placeholders, frame parsing, the
   // three error-recovery branches, abort handling, and the post-stream
   // conversation-list refetch all live in the hook. Chat keeps only UI state.
-  const { send, stop, error, clearError } = useChatStream({
+  const { send, stop, error, clearError, reconcileLoaded } = useChatStream({
     activeConversation,
     setActiveConversation,
     setMessages,
@@ -248,7 +248,9 @@ export default function Chat() {
         })
         if (!res.ok) throw new Error(t('errors.failedToLoadMessages'))
         const data = await res.json()
-        setMessages(data.messages ?? [])
+        // Merge in a reply still streaming for this conversation, so a refetch
+        // that raced the stream neither duplicates nor drops it.
+        setMessages(reconcileLoaded(activeConversationId, data.messages ?? []))
         setLocalError('')
       } catch (err) {
         if (err instanceof Error && err.name !== 'AbortError') {
@@ -259,7 +261,7 @@ export default function Chat() {
       }
     })()
     return () => { controller.abort() }
-  }, [activeConversationId, t, clearError])
+  }, [activeConversationId, t, clearError, reconcileLoaded])
 
   // Resize textarea when input changes (including programmatic clears)
   useEffect(() => {

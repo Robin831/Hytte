@@ -412,8 +412,10 @@ func truncateRunes(s string, max int) string {
 // response and forwards Claude CLI text deltas as they arrive. After the
 // stream finishes successfully the assembled assistant message is persisted
 // and a final `done` event carries the saved row. CLI errors emit a single
-// `error` event and leave no assistant row behind. A client disconnect after
+// `error` event and leave no assistant row behind. A cancelled request after
 // tokens were emitted persists the text streamed so far as the assistant row.
+// That covers both a client disconnect and the user clicking Stop (both reach
+// the server as context.Canceled), so a stopped reply is kept, not discarded.
 //
 // POST /api/chat/conversations/{id}/messages/stream
 // Body: {"content": "Hello!"}
@@ -550,12 +552,7 @@ func StreamMessageHandler(db *sql.DB) http.HandlerFunc {
 						log.Printf("Failed to insert partial assistant message: %v", err)
 						return
 					}
-					if convo.Title == "" {
-						// r.Context() is dead, so title on a fresh context.
-						titleCtx, titleCancel := context.WithTimeout(context.Background(), 5*time.Second)
-						defer titleCancel()
-						autoTitle(titleCtx, db, cfg, convo.ID, user.ID, content)
-					}
+					autoTitleInBackground(db, cfg, convo, user.ID, content)
 				}
 				return
 			}
@@ -589,15 +586,7 @@ func StreamMessageHandler(db *sql.DB) http.HandlerFunc {
 
 		// Auto-title: same logic as SendMessageHandler. autoTitle re-checks
 		// the title so we don't overwrite a user-set title.
-		if convo.Title == "" {
-			convoID := convo.ID
-			userID := user.ID
-			go func() {
-				bgCtx, bgCancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer bgCancel()
-				autoTitle(bgCtx, db, cfg, convoID, userID, content)
-			}()
-		}
+		autoTitleInBackground(db, cfg, convo, user.ID, content)
 
 		writeSSEEvent(w, flusher, "done", map[string]any{"assistant_message": assistantMsg})
 	}
@@ -612,6 +601,22 @@ func saveSessionID(db *sql.DB, convo *Conversation, userID int64, sessionID stri
 	if err := UpdateSessionID(db, convo.ID, userID, sessionID); err != nil {
 		log.Printf("Failed to save session ID: %v", err)
 	}
+}
+
+// autoTitleInBackground titles an untitled conversation from its first
+// message in a detached goroutine on a fresh 5s context, so the streaming
+// handler returns straight away and the title survives the request context
+// (already dead when the client disconnected or clicked Stop).
+func autoTitleInBackground(db *sql.DB, cfg *training.ClaudeConfig, convo *Conversation, userID int64, firstMessage string) {
+	if convo.Title != "" {
+		return
+	}
+	convoID := convo.ID
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		autoTitle(ctx, db, cfg, convoID, userID, firstMessage)
+	}()
 }
 
 // writeSSEEvent serialises payload as JSON and writes a single SSE frame.

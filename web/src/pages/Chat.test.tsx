@@ -455,6 +455,90 @@ describe('Chat – streaming send', () => {
     ).not.toBeInTheDocument()
     expect(streamAborted).toBe(false)
   })
+
+  it('deleting a conversation aborts the reply still streaming for it in the background', async () => {
+    const convA = makeConv({ id: 1, title: 'Chat A' })
+    const convB = makeConv({ id: 2, title: 'Chat B' })
+
+    const stream = manualSSEResponse()
+    let streamAborted = false
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/chat/conversations') {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversations: [convA, convB] }),
+        })
+      }
+      if (url.endsWith('/messages/stream')) {
+        const signal = init?.signal as AbortSignal | undefined
+        signal?.addEventListener('abort', () => {
+          streamAborted = true
+          try {
+            stream.close()
+          } catch {
+            // already closed
+          }
+        })
+        return Promise.resolve(stream.response)
+      }
+      const detail = url.match(/^\/api\/chat\/conversations\/(\d+)$/)
+      if (detail) {
+        if (init?.method === 'DELETE') {
+          return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+        }
+        const conv = Number(detail[1]) === convA.id ? convA : convB
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ conversation: conv, messages: [] }),
+        })
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({}) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    renderChat()
+
+    await waitFor(() => screen.getByText('Chat A'))
+    fireEvent.click(screen.getByText('Chat A'))
+    await waitFor(() => screen.getByPlaceholderText('Type a message...'))
+
+    const textarea = screen.getByPlaceholderText('Type a message...') as HTMLTextAreaElement
+    fireEvent.change(textarea, { target: { value: 'Question for A' } })
+    fireEvent.click(screen.getByTestId('chat-send-button'))
+
+    await screen.findByText('Streaming…')
+    await act(async () => {
+      stream.push(
+        frame('user_message', {
+          id: 10,
+          conversation_id: convA.id,
+          role: 'user',
+          content: 'Question for A',
+          created_at: '2026-05-01T00:00:01Z',
+        }),
+      )
+      stream.push(frame('token', { text: 'Streaming A reply' }))
+    })
+
+    fireEvent.click(screen.getByText('Chat B'))
+    await waitFor(() => {
+      expect(screen.getByText('Send a message to start the conversation')).toBeInTheDocument()
+    })
+    expect(streamAborted).toBe(false)
+
+    // Delete A from the sidebar while its reply streams in the background.
+    fireEvent.click(screen.getAllByTitle('Delete')[0])
+    const confirmRow = screen.getByText('Delete?').parentElement as HTMLElement
+    fireEvent.click(confirmRow.querySelector('button') as HTMLButtonElement)
+
+    await waitFor(() => expect(streamAborted).toBe(true))
+    await waitFor(() => expect(screen.queryByText('Chat A')).not.toBeInTheDocument())
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, init]) => url === `/api/chat/conversations/${convA.id}` && init?.method === 'DELETE',
+      ),
+    ).toBe(true)
+  })
 })
 
 describe('Chat – model selector', () => {

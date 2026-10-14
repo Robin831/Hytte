@@ -894,10 +894,12 @@ func TestStreamMessageHandler_ClientDisconnectAfterTokensPersistsPartial(t *test
 		t.Fatalf("create: %v", err)
 	}
 
-	var titleCalls int
+	// Auto-title runs in a background goroutine; the stub signals once the
+	// title prompt has returned so the test can wait for the title write.
+	titleCalls := make(chan struct{}, 2)
 	origPrompt := runPromptFn
 	runPromptFn = func(ctx context.Context, _ *training.ClaudeConfig, _ string) (string, error) {
-		titleCalls++
+		defer func() { titleCalls <- struct{}{} }()
 		if ctx.Err() != nil {
 			t.Errorf("auto-title ran on a dead context: %v", ctx.Err())
 		}
@@ -906,6 +908,12 @@ func TestStreamMessageHandler_ClientDisconnectAfterTokensPersistsPartial(t *test
 	t.Cleanup(func() { runPromptFn = origPrompt })
 
 	runStreamUntilCancel(t, d, convo.ID, []string{"Hello ", "from ", "partial"})
+
+	select {
+	case <-titleCalls:
+	case <-time.After(5 * time.Second):
+		t.Fatal("auto-title never ran after the disconnect")
+	}
 
 	msgs, err := GetMessages(d, convo.ID)
 	if err != nil {
@@ -928,11 +936,19 @@ func TestStreamMessageHandler_ClientDisconnectAfterTokensPersistsPartial(t *test
 	if updated.SessionID != "sess-disconnect" {
 		t.Errorf("expected session id 'sess-disconnect', got %q", updated.SessionID)
 	}
-	if titleCalls != 1 {
-		t.Errorf("expected auto-title to run once, ran %d times", titleCalls)
+	// The title update lands just after the prompt returns; poll briefly.
+	deadline := time.Now().Add(2 * time.Second)
+	for updated.Title == "" && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+		if updated, err = GetConversation(d, convo.ID, 1); err != nil {
+			t.Fatalf("get conversation: %v", err)
+		}
 	}
 	if updated.Title != "Partial Title" {
 		t.Errorf("expected auto-title 'Partial Title', got %q", updated.Title)
+	}
+	if extra := len(titleCalls); extra != 0 {
+		t.Errorf("expected auto-title to run once, ran %d extra times", extra)
 	}
 }
 
