@@ -1,3 +1,5 @@
+import { localDateString } from '../../lib/dates'
+
 export interface CalendarEvent {
   id: string
   calendar_id: string
@@ -39,11 +41,9 @@ export function getEventColor(event: CalendarEvent, colorMap: Map<string, string
   return event.color || colorMap.get(event.calendar_id) || '#4285f4'
 }
 
+/** Local `YYYY-MM-DD` key for a day; see localDateString. */
 export function formatDateKey(date: Date): string {
-  const y = date.getFullYear()
-  const m = String(date.getMonth() + 1).padStart(2, '0')
-  const d = String(date.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
+  return localDateString(date)
 }
 
 /** Get Monday-based start of week — shared across all calendar views. */

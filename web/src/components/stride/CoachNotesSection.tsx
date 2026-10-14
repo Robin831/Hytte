@@ -2,13 +2,10 @@ import { useState, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Pencil } from 'lucide-react'
 import { formatDate, formatDateTime } from '../../utils/formatDate'
+import { localDateString, parseLocalDate } from '../../lib/dates'
 import { EditNoteDialog } from './EditNoteDialog'
 import type { Note, NoteScope, StrideMutationResult } from '../../types/stride'
 import type { NoteInput } from '../../hooks/useStrideNotes'
-
-function localDateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-}
 
 function noteScopeBadgeClass(scope: NoteScope): string {
   switch (scope) {
@@ -40,7 +37,7 @@ export function CoachNotesSection({
 
   // Note form state
   const [noteContent, setNoteContent] = useState('')
-  const [noteTargetDate, setNoteTargetDate] = useState(() => localDateKey(new Date()))
+  const [noteTargetDate, setNoteTargetDate] = useState(() => localDateString())
   const [noteScope, setNoteScope] = useState<NoteScope>('any')
   const [noteSubmitting, setNoteSubmitting] = useState(false)
 
@@ -52,6 +49,7 @@ export function CoachNotesSection({
   const [editSubmitting, setEditSubmitting] = useState(false)
   const [editError, setEditError] = useState('')
   const [olderNotesOpen, setOlderNotesOpen] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
 
   async function handleCreateNote(e: React.FormEvent) {
     e.preventDefault()
@@ -108,19 +106,21 @@ export function CoachNotesSection({
     }
   }
 
-  function handleDeleteNote(id: number) {
-    void onDelete(id)
+  async function handleDeleteNote(id: number) {
+    setDeleteError('')
+    const result = await onDelete(id)
+    if (!result.ok) setDeleteError(result.error ?? t('notes.deleteError'))
   }
 
   // Partition notes into "active" (target_date within the last 7 days or in the future)
   // and "older" so the Coach Notes section stays compact when weeks of history accumulate.
   // Subtract 6 days so the window is exactly 7 calendar days inclusive (today + prior 6).
-  // Depend on `today` so the cutoff updates if the section stays mounted across a day boundary.
-  const today = localDateKey(new Date())
+  // Derived from `today` so the cutoff moves if the section stays mounted across a day boundary.
+  const today = localDateString()
   const noteRecentCutoff = useMemo(() => {
-    const d = new Date()
+    const d = parseLocalDate(today)
     d.setDate(d.getDate() - 6)
-    return localDateKey(d)
+    return localDateString(d)
   }, [today])
 
   const { activeNotes, olderNotes, activeConsumedNotes, olderConsumedNotes } = useMemo(() => {
@@ -262,6 +262,8 @@ export function CoachNotesSection({
           </button>
         </div>
       </form>
+
+      {deleteError && <p className="text-sm text-red-400 mb-4" role="alert">{deleteError}</p>}
 
       {loading ? (
         <p className="text-sm text-gray-400">{t('loading')}</p>

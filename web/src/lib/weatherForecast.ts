@@ -1,5 +1,6 @@
 import type { TFunction } from 'i18next'
 import { formatDate } from '../utils/formatDate'
+import { localDateString } from './dates'
 
 export interface TimeseriesEntry {
   time: string
@@ -141,10 +142,6 @@ interface DaySymbolEntry {
   symbol: string
 }
 
-function localDateKey(dt: Date): string {
-  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
-}
-
 function minutesSinceMidnight(dt: Date): number {
   return dt.getHours() * 60 + dt.getMinutes()
 }
@@ -178,7 +175,7 @@ export function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: s
 
   for (const entry of timeseries) {
     const dt = new Date(entry.time)
-    const dateKey = localDateKey(dt)
+    const dateKey = localDateString(dt)
 
     if (!dayMap.has(dateKey)) {
       dayMap.set(dateKey, { temps: [], winds: [], precip: 0, symbolEntries: [], date: dt })
@@ -208,7 +205,7 @@ export function buildDailyForecasts(timeseries: TimeseriesEntry[], todayLabel: s
     }
   }
 
-  const today = localDateKey(new Date())
+  const today = localDateString()
 
   const sortedDays = [...dayMap.entries()].sort(([a], [b]) => a.localeCompare(b))
 

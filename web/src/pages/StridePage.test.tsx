@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import StridePage from './StridePage'
-import { formatTargetTime, parseTargetTime } from './strideUtils'
+import { formatTargetTime, parseTargetTime } from '../components/stride/targetTime'
 import enStride from '../../public/locales/en/stride.json'
 import type { DayPlan } from '../types/stride'
 import { stubEventSource, type EventSourceStub } from '../test/stubEventSource'
@@ -1051,6 +1051,180 @@ describe('StridePage – Coach Notes older-bucket collapse', () => {
     await waitFor(() => {
       expect(screen.queryByRole('textbox', { name: 'Edit note' })).not.toBeInTheDocument()
     })
+  })
+
+  // Like notesFetch, but the PATCH of a note answers with `patch` instead of OK.
+  function notesFetchWithPatch(notes: unknown[], patch: () => Promise<Response>) {
+    const base = notesFetch(notes)
+    return vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/stride/notes') && init?.method === 'PATCH') return patch()
+      return base(url, init)
+    })
+  }
+
+  async function submitActiveNoteEdit() {
+    await waitFor(() => {
+      expect(screen.getByText('Feeling good this week')).toBeInTheDocument()
+    })
+    const activeNoteCard = screen.getByText('Feeling good this week').closest('div.group')!
+    const editBtn = activeNoteCard.querySelector('button[aria-label="Edit note"]') as HTMLButtonElement
+    await act(async () => {
+      fireEvent.click(editBtn)
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    })
+  }
+
+  it('keeps the edit dialog open with the consumed message when the PATCH answers 409', async () => {
+    vi.stubGlobal('fetch', notesFetchWithPatch([NOTE], () =>
+      Promise.resolve({ ok: false, status: 409, json: () => Promise.resolve({ error: 'note already consumed' }) } as Response),
+    ))
+    renderPage()
+    await submitActiveNoteEdit()
+
+    expect(await screen.findByText(enStride.notes.editError.consumed)).toBeInTheDocument()
+    expect(screen.queryByText('note already consumed')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Edit note' })).toBeInTheDocument()
+  })
+
+  it('shows the server error when the PATCH answers 500 with a message', async () => {
+    vi.stubGlobal('fetch', notesFetchWithPatch([NOTE], () =>
+      Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: 'database is locked' }) } as Response),
+    ))
+    renderPage()
+    await submitActiveNoteEdit()
+
+    expect(await screen.findByText('database is locked')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Edit note' })).toBeInTheDocument()
+  })
+
+  it('shows the generic edit error when the PATCH rejects', async () => {
+    vi.stubGlobal('fetch', notesFetchWithPatch([NOTE], () => Promise.reject(new TypeError('Failed to fetch'))))
+    renderPage()
+    await submitActiveNoteEdit()
+
+    expect(await screen.findByText(enStride.notes.editError.generic)).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Edit note' })).toBeInTheDocument()
+  })
+
+  it('shows an error and keeps the note when the DELETE fails', async () => {
+    const base = notesFetch([NOTE])
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/stride/notes') && init?.method === 'DELETE') {
+        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response)
+      }
+      return base(url, init)
+    }))
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Feeling good this week')).toBeInTheDocument()
+    })
+
+    const card = screen.getByText('Feeling good this week').closest('div.group')!
+    await act(async () => {
+      fireEvent.click(card.querySelector('button[aria-label="Delete note"]') as HTMLButtonElement)
+    })
+
+    expect(await screen.findByText(enStride.notes.deleteError)).toBeInTheDocument()
+    expect(screen.getByText('Feeling good this week')).toBeInTheDocument()
+  })
+})
+
+describe('StridePage – day re-run', () => {
+  const PLAN_DAY: DayPlan = { date: '2099-01-13', rest_day: true }
+  const PLAN = {
+    id: 1,
+    user_id: 1,
+    week_start: '2099-01-13',
+    week_end: '2099-01-19',
+    phase: 'Base',
+    model: 'test',
+    created_at: '2099-01-13T00:00:00Z',
+    plan: [PLAN_DAY],
+  }
+
+  // Resolves the re-evaluate POST once the test calls it, so the busy state is observable.
+  let rerunResponse: (res: Response) => void
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      const make = (data: unknown) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
+      if (url.includes('/reevaluate') && init?.method === 'POST') {
+        return new Promise<Response>(resolve => { rerunResponse = resolve })
+      }
+      if (url.includes('/api/stride/plans/current')) return make({ plan: PLAN })
+      if (url.includes('/api/stride/plans?limit=2')) return make({ plans: [PLAN] })
+      if (url.includes('/api/stride/evaluations')) return make({ evaluations: [] })
+      if (url.includes('/api/training/workouts')) return make({ workouts: [] })
+      if (url.includes('/api/stride/races')) return make({ races: [] })
+      if (url.includes('/api/stride/notes')) return make({ notes: [] })
+      return make({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  const callsTo = (fragment: string) =>
+    fetchMock.mock.calls.filter(([url]) => String(url).includes(fragment)).length
+
+  async function clickRerun() {
+    await waitFor(() => expect(screen.getByText('Rest')).toBeInTheDocument())
+    const button = screen.getByRole('button', { name: enStride.plan.rerunCoach })
+    act(() => { fireEvent.click(button) })
+    await waitFor(() => expect(button).toBeDisabled())
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/stride/days/2099-01-13/reevaluate',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    return button
+  }
+
+  it('re-reads evaluations and notes, highlights the day and releases the button', async () => {
+    const { container } = renderPage()
+    await waitFor(() => expect(callsTo('/api/stride/notes?status=all')).toBe(1))
+    const evalsBefore = callsTo('/api/stride/evaluations')
+    const notesBefore = callsTo('/api/stride/notes?status=all')
+
+    const button = await clickRerun()
+    await act(async () => {
+      rerunResponse({ ok: true, status: 200, json: () => Promise.resolve({}) } as Response)
+    })
+
+    await waitFor(() => expect(button).not.toBeDisabled())
+    expect(callsTo('/api/stride/evaluations')).toBeGreaterThan(evalsBefore)
+    expect(callsTo('/api/stride/notes?status=all')).toBeGreaterThan(notesBefore)
+    expect(container.querySelector('.ring-2')).not.toBeNull()
+    expect(screen.queryByText(enStride.plan.rerunError)).not.toBeInTheDocument()
+  })
+
+  it('shows the server error when the re-run fails with a message', async () => {
+    const { container } = renderPage()
+    const button = await clickRerun()
+    await act(async () => {
+      rerunResponse({ ok: false, status: 502, json: () => Promise.resolve({ error: 'coach unavailable' }) } as Response)
+    })
+
+    expect(await screen.findByText('coach unavailable')).toBeInTheDocument()
+    expect(button).not.toBeDisabled()
+    expect(container.querySelector('.ring-2')).toBeNull()
+  })
+
+  it('falls back to the generic error when the re-run fails without a message', async () => {
+    renderPage()
+    const button = await clickRerun()
+    await act(async () => {
+      rerunResponse({ ok: false, status: 500, json: () => Promise.reject(new SyntaxError('no body')) } as Response)
+    })
+
+    expect(await screen.findByText(enStride.plan.rerunError)).toBeInTheDocument()
+    expect(button).not.toBeDisabled()
   })
 })
 

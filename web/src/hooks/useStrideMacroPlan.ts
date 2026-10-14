@@ -12,12 +12,34 @@ const MACRO_ACTUALS_WEEKS = 24
 // page waits a little longer than that before giving up on the stream.
 const MACRO_OUTCOME_FALLBACK_MS = 16 * 60 * 1000
 
+export interface UseStrideMacroPlanResult {
+  /** The active macro block, or null when the athlete has none. */
+  macroPlan: MacroPlanView | null
+  /** Past weeks behind the block's target-vs-actual bars. */
+  macroHistory: WeekSummary[]
+  macroHistoryLoading: boolean
+  macroHistoryError: boolean
+  /** Which action is waiting for its outcome on the training stream, or null. */
+  macroAction: MacroAction | null
+  macroActionError: string
+  /** Re-read the block. Aborted on unmount. */
+  reloadMacroPlan: () => Promise<void>
+  /** Re-read the past weeks. Aborted on unmount. */
+  reloadMacroHistory: () => Promise<void>
+  /** Feed a stride_macro_ready / stride_macro_failed event from the training stream. */
+  handleOutcome: (kind: 'ready' | 'failed', data: unknown) => void
+  /** Regenerate the block; the outcome arrives through handleOutcome. */
+  regenerate: () => void
+  /** Extend the block; the outcome arrives through handleOutcome. */
+  extend: () => void
+}
+
 /**
  * Owns the Stride macro block: the active block, the past weeks behind its
  * target-vs-actual bars, and the Regenerate / Extend actions whose outcome
  * arrives later on the training SSE stream (fed in through handleOutcome).
  */
-export function useStrideMacroPlan() {
+export function useStrideMacroPlan(): UseStrideMacroPlanResult {
   const { t } = useTranslation('stride')
   // The active macro block, or null when the athlete has none (404) — the
   // timeline then falls back to the A-race heuristic and the long-term plan
@@ -133,7 +155,7 @@ export function useStrideMacroPlan() {
   // Regenerate / Extend the macro block. Both are minutes long — the server
   // budgets a full Claude call — so the button stays busy until the outcome
   // arrives and a failure leaves the block on screen untouched.
-  async function runMacroAction(action: MacroAction, path: string) {
+  const runMacroAction = useCallback(async (action: MacroAction, path: string) => {
     setMacroActionError('')
     setMacroAction(action)
     try {
@@ -160,15 +182,15 @@ export function useStrideMacroPlan() {
       setMacroActionError(t(`longTermPlan.actions.${action}Error`))
       setMacroAction(null)
     }
-  }
+  }, [reloadMacroPlan, reloadMacroHistory, t])
 
-  function regenerate() {
+  const regenerate = useCallback(() => {
     void runMacroAction('regenerate', '/api/stride/macro/generate')
-  }
+  }, [runMacroAction])
 
-  function extend() {
+  const extend = useCallback(() => {
     void runMacroAction('extend', '/api/stride/macro/extend')
-  }
+  }, [runMacroAction])
 
   return {
     macroPlan,

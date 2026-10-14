@@ -91,6 +91,7 @@
       "consumed": "This note has already been used and can no longer be edited.",
       "generic": "Failed to update note"
     },
+    "deleteError": "Failed to delete note",
     "activeLabel": "Active",
     "historyLabel": "History",
     "olderNotes": "Older notes ({{count}})",

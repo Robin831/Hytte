@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Trash2, Plus, Trophy, Pencil } from 'lucide-react'
 import { formatDate } from '../../utils/formatDate'
+import { localDateString } from '../../lib/dates'
 import { formatDistance, formatDuration } from '../../utils/training'
-import { formatTargetTime, parseTargetTime } from '../../pages/strideUtils'
+import { formatTargetTime, parseTargetTime } from './targetTime'
 import type { Race, StrideMutationResult } from '../../types/stride'
 import type { RaceInput } from '../../hooks/useStrideRaces'
 
@@ -152,8 +153,7 @@ export function RaceCalendarSection({ races, loading, onSave, onDelete, onReload
     }
   }
 
-  const now = new Date()
-  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  const today = localDateString()
   const upcomingRaces = races.filter(r => r.date >= today)
   const pastRaces = races.filter(r => r.date < today)
 
