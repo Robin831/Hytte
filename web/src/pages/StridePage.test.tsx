@@ -1773,6 +1773,155 @@ describe('StridePage – live evaluation refresh over SSE', () => {
   })
 })
 
+// A failed evaluations reload must leave what is on screen alone: neither an
+// empty list nor one plan's half replaces the evaluations already shown.
+describe('StridePage – failed evaluation reload keeps the current list', () => {
+  const makeDay = (date: string, mainSet: string): DayPlan => ({
+    date,
+    rest_day: false,
+    session: {
+      description: 'Easy run',
+      warmup: '',
+      main_set: mainSet,
+      cooldown: '',
+      strides: '',
+      target_hr_cap: 150,
+    },
+  })
+  const PLAN = {
+    id: 1,
+    user_id: 1,
+    week_start: '2099-01-13',
+    week_end: '2099-01-19',
+    phase: 'Base',
+    model: 'test',
+    created_at: '2099-01-13T00:00:00Z',
+    plan: [makeDay('2099-01-13', '30 min easy'), makeDay('2099-01-14', '40 min easy')],
+  }
+  const PREV_PLAN = { ...PLAN, id: 2, week_start: '2099-01-06', week_end: '2099-01-12' }
+
+  const makeEval = (id: number, planId: number, workoutId: number, notes: string) => ({
+    id,
+    user_id: 1,
+    plan_id: planId,
+    workout_id: workoutId,
+    eval: {
+      planned_type: 'easy',
+      actual_type: 'easy',
+      compliance: 'compliant',
+      notes,
+      flags: [],
+      adjustments: '',
+    },
+    created_at: '2099-01-13T20:00:00Z',
+  })
+  // Current plan's evaluation on Tuesday, previous plan's on Wednesday.
+  const CURRENT_EVAL = makeEval(1, 1, 42, 'Current plan feedback')
+  const PREVIOUS_EVAL = makeEval(2, 2, 43, 'Previous plan feedback')
+
+  // How each evaluations request answers: 'ok' serves the stored list,
+  // 'error' a 500, 'reject' a network failure.
+  let currentMode: 'ok' | 'error' | 'reject'
+  let previousMode: 'ok' | 'error' | 'reject'
+  let rerunResponse: (res: Response) => void
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    currentMode = 'ok'
+    previousMode = 'ok'
+    fetchMock = vi.fn((url: string) => {
+      const make = (data: unknown) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
+      const answer = (mode: 'ok' | 'error' | 'reject', evaluations: unknown[]) => {
+        if (mode === 'reject') return Promise.reject(new TypeError('network down'))
+        if (mode === 'error') {
+          return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response)
+        }
+        return make({ evaluations })
+      }
+      if (url.includes('/reevaluate')) {
+        return new Promise<Response>(resolve => { rerunResponse = resolve })
+      }
+      if (url.includes('/api/stride/plans/current')) return make({ plan: PLAN })
+      if (url.includes('/api/stride/plans?limit=2')) return make({ plans: [PLAN, PREV_PLAN] })
+      if (url.includes('/api/stride/evaluations?plan_id=1')) return answer(currentMode, [CURRENT_EVAL])
+      if (url.includes('/api/stride/evaluations?plan_id=2')) return answer(previousMode, [PREVIOUS_EVAL])
+      if (url.includes('/api/training/workouts')) {
+        return make({
+          workouts: [
+            { id: 42, started_at: '2099-01-13T08:00:00Z' },
+            { id: 43, started_at: '2099-01-14T08:00:00Z' },
+          ],
+        })
+      }
+      if (url.includes('/api/stride/races')) return make({ races: [] })
+      if (url.includes('/api/stride/notes')) return make({ notes: [] })
+      return make({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  const evalCalls = () =>
+    fetchMock.mock.calls.filter(([url]) => String(url).includes('/api/stride/evaluations?plan_id=')).length
+
+  async function renderWithBothEvaluations() {
+    renderPage()
+    expect(await screen.findByText('Current plan feedback')).toBeInTheDocument()
+    expect(await screen.findByText('Previous plan feedback')).toBeInTheDocument()
+  }
+
+  it('keeps the evaluations when a stride_eval_ready refetch returns an error', async () => {
+    await renderWithBothEvaluations()
+    const before = evalCalls()
+
+    currentMode = 'error'
+    previousMode = 'error'
+    act(() => sse.dispatch('stride_eval_ready', { workout_id: 42 }))
+
+    await waitFor(() => expect(evalCalls()).toBeGreaterThan(before))
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByText('Current plan feedback')).toBeInTheDocument()
+    expect(screen.getByText('Previous plan feedback')).toBeInTheDocument()
+  })
+
+  it('keeps the evaluations when the reload after a day re-run rejects', async () => {
+    await renderWithBothEvaluations()
+    const button = screen.getAllByRole('button', { name: enStride.plan.rerunCoach })[0]
+    fireEvent.click(button)
+    const before = evalCalls()
+
+    currentMode = 'reject'
+    previousMode = 'reject'
+    await act(async () => {
+      rerunResponse({ ok: true, status: 200, json: () => Promise.resolve({}) } as Response)
+    })
+
+    await waitFor(() => expect(evalCalls()).toBeGreaterThan(before))
+    await waitFor(() => expect(button).not.toBeDisabled())
+    expect(screen.getByText('Current plan feedback')).toBeInTheDocument()
+    expect(screen.getByText('Previous plan feedback')).toBeInTheDocument()
+  })
+
+  it('keeps the whole list when only the previous plan request fails', async () => {
+    await renderWithBothEvaluations()
+    const before = evalCalls()
+
+    // The current plan's half loads fine; on its own it would drop Wednesday.
+    previousMode = 'error'
+    act(() => sse.dispatch('stride_eval_ready', { workout_id: 42 }))
+
+    await waitFor(() => expect(evalCalls()).toBeGreaterThan(before + 1))
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByText('Current plan feedback')).toBeInTheDocument()
+    expect(screen.getByText('Previous plan feedback')).toBeInTheDocument()
+  })
+})
+
 // The macro block drives the timeline, the long-term plan section and the
 // wording of the generate button; without one the page keeps the A-race
 // heuristic and the original labels.
