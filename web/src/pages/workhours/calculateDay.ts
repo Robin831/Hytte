@@ -251,3 +251,18 @@ export function calculateDay(
     balance,
   }
 }
+
+/**
+ * Credits flex minutes redeemed on the day into reported and balance, as the
+ * server does after CalculateDay. Port of Go's applyRedemptionToSummary
+ * (internal/workhours/handlers.go); non-positive amounts are ignored.
+ * Gross, net and remainder are untouched: redeemed time is not worked time.
+ */
+export function applyRedemption(calc: DaySummaryCalc, redeemedMinutes: number): DaySummaryCalc {
+  if (!(redeemedMinutes > 0)) return calc
+  return {
+    ...calc,
+    reported: calc.reported + redeemedMinutes,
+    balance: calc.balance + redeemedMinutes,
+  }
+}

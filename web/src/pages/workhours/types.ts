@@ -34,6 +34,8 @@ export interface DaySummary {
   remainder_minutes: number
   standard_minutes: number
   balance_minutes: number
+  /** Flex redeemed on this day; already credited into reported and balance. */
+  redeemed_minutes?: number
 }
 
 export interface WorkDeductionPreset {

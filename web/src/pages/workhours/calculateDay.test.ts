@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest'
 import {
+  applyRedemption,
   calculateDay,
   daysSinceLocalDate,
   isPunchStale,
@@ -155,6 +156,22 @@ describe('calculateDay balance and settings', () => {
 
   it('throws on a malformed session time, where Go returns an error', () => {
     expect(() => calculateDay([session('nope', '16:00')], [], defaultSettings)).toThrow()
+  })
+})
+
+describe('applyRedemption (mirrors applyRedemptionToSummary)', () => {
+  it('credits redeemed flex into reported and balance only', () => {
+    // 08:00-15:00 = 420 gross, lunch 30 -> net 390, reported 390, balance -60.
+    const calc = calculateDay([session('08:00', '15:00')], [], defaultSettings, { lunch: true })
+    expect(calc.balance).toBe(-60)
+    const credited = applyRedemption(calc, 60)
+    expect(credited).toEqual({ ...calc, reported: 450, balance: 0 })
+  })
+
+  it('leaves the summary alone for zero or negative redemptions', () => {
+    const calc = calculateDay([session('08:00', '15:00')], [], defaultSettings, { lunch: true })
+    expect(applyRedemption(calc, 0)).toEqual(calc)
+    expect(applyRedemption(calc, -30)).toEqual(calc)
   })
 })
 

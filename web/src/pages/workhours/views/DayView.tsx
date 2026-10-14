@@ -7,6 +7,7 @@ import { Select, type SelectOption } from '../../../components/ui/select'
 import { TimePicker } from '../../../components/ui/time-picker'
 import { findSessionOverlaps } from '../../workHoursUtils'
 import {
+  applyRedemption,
   calculateDay,
   isPunchStale,
   liveSegmentMinutes,
@@ -723,6 +724,10 @@ export default function DayView({
   }
   const deductions = day?.deductions ?? []
 
+  // Flex redeemed for this date, which the server credits into reported and
+  // balance after CalculateDay; both paths below must credit it the same way.
+  const redeemedMinutes = serverSummary?.redeemed_minutes ?? 0
+
   // Saved totals go through the shared calculateDay mirror of the Go
   // calculator, so they always agree with the live estimate. The server's
   // summary is the fallback while settings load or if a stored time is
@@ -731,7 +736,10 @@ export default function DayView({
     if (!serverSummary || !day || !workSettingsLoaded) return serverSummary
     let calc: DaySummaryCalc
     try {
-      calc = calculateDay(day.sessions ?? [], day.deductions ?? [], workSettings, { lunch: day.lunch })
+      calc = applyRedemption(
+        calculateDay(day.sessions ?? [], day.deductions ?? [], workSettings, { lunch: day.lunch }),
+        redeemedMinutes,
+      )
     } catch {
       return serverSummary
     }
@@ -747,7 +755,7 @@ export default function DayView({
       standard_minutes: workSettings.standard_day_minutes,
       balance_minutes: calc.balance,
     }
-  }, [serverSummary, day, workSettings, workSettingsLoaded])
+  }, [serverSummary, day, workSettings, workSettingsLoaded, redeemedMinutes])
 
   const sortedPresets = [...presets].sort((a, b) => {
     const aIdx = recentlyUsed.indexOf(a.id)
@@ -970,12 +978,15 @@ export default function DayView({
               let estimate: DaySummaryCalc | null = null
               if (liveSegmentMinutes(punchStart, now, punchDate) !== null) {
                 try {
-                  estimate = calculateDay(sessions, deductions, workSettings, {
-                    lunch: lunchChecked,
-                    openPunchStart: punchStart,
-                    openPunchDate: punchDate,
-                    now,
-                  })
+                  estimate = applyRedemption(
+                    calculateDay(sessions, deductions, workSettings, {
+                      lunch: lunchChecked,
+                      openPunchStart: punchStart,
+                      openPunchDate: punchDate,
+                      now,
+                    }),
+                    redeemedMinutes,
+                  )
                 } catch {
                   estimate = null
                 }
