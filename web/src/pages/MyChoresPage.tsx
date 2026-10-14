@@ -5,6 +5,7 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 
 import { formatDate, formatNumber } from '../utils/formatDate'
 import Confetti from '../components/Confetti'
 import { Skeleton } from '../components/ui/skeleton'
+import RejectedLabel from '../components/allowance/RejectedLabel'
 
 interface ActiveTeamSession {
   completion_id: number
@@ -35,7 +36,7 @@ interface ChoreWithStatus {
   team_bonus_pct: number
   completion_id?: number
   completion_status?: string
-  completion_notes?: string
+  completion_rejection_reason?: string
   active_team_session?: ActiveTeamSession
 }
 
@@ -669,7 +670,7 @@ export default function MyChoresPage() {
                             </span>
                           </div>
                           {chore.completion_status === 'rejected' && (
-                            <RejectedLabel reason={chore.completion_notes} />
+                            <RejectedLabel reason={chore.completion_rejection_reason} />
                           )}
                           {chore.description && (
                             <p className="text-gray-400 text-sm mt-0.5">{chore.description}</p>
@@ -990,7 +991,7 @@ export default function MyChoresPage() {
                     <div className="flex-1 text-left">
                       <p className="text-white font-semibold text-lg leading-tight">{chore.name}</p>
                       {chore.completion_status === 'rejected' && (
-                        <RejectedLabel reason={chore.completion_notes} />
+                        <RejectedLabel reason={chore.completion_rejection_reason} />
                       )}
                       {chore.description && (
                         <p className="text-gray-400 text-sm mt-0.5">{chore.description}</p>
@@ -1468,25 +1469,6 @@ export default function MyChoresPage() {
             )
           })}
         </div>
-      )}
-    </div>
-  )
-}
-
-// Rejected status line on a chore card, plus the parent's reason when one was given.
-function RejectedLabel({ reason }: { reason?: string }) {
-  const { t } = useTranslation('allowance')
-  const trimmed = reason?.trim()
-  return (
-    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-      <XCircle size={14} className="text-red-400" />
-      <span className="text-red-400 text-sm font-medium">
-        {t('myChores.rejected')}
-      </span>
-      {trimmed && (
-        <span className="text-red-300/80 text-sm italic break-words min-w-0">
-          {t('reject.reasonDisplay', { reason: trimmed })}
-        </span>
       )}
     </div>
   )

@@ -21,17 +21,19 @@ type Chore struct {
 
 // Completion records a child's claim that a chore is done.
 type Completion struct {
-	ID           int64   `json:"id"`
-	ChoreID      int64   `json:"chore_id"`
-	ChildID      int64   `json:"child_id"`
-	Date         string  `json:"date"`   // YYYY-MM-DD
-	Status       string  `json:"status"` // pending, approved, rejected
-	ApprovedBy   *int64  `json:"approved_by,omitempty"`
-	ApprovedAt   *string `json:"approved_at,omitempty"`
-	Notes        string  `json:"notes,omitempty"`
-	QualityBonus float64 `json:"quality_bonus"`
-	PhotoURL     string  `json:"photo_url,omitempty"`
-	CreatedAt    string  `json:"created_at"`
+	ID         int64   `json:"id"`
+	ChoreID    int64   `json:"chore_id"`
+	ChildID    int64   `json:"child_id"`
+	Date       string  `json:"date"`   // YYYY-MM-DD
+	Status     string  `json:"status"` // pending, approved, rejected
+	ApprovedBy *int64  `json:"approved_by,omitempty"`
+	ApprovedAt *string `json:"approved_at,omitempty"`
+	Notes      string  `json:"notes,omitempty"`
+	// RejectionReason is the parent's reason for rejecting; empty unless status is rejected.
+	RejectionReason string  `json:"rejection_reason,omitempty"`
+	QualityBonus    float64 `json:"quality_bonus"`
+	PhotoURL        string  `json:"photo_url,omitempty"`
+	CreatedAt       string  `json:"created_at"`
 }
 
 // TeamCompletion records a child's participation in a team chore completion.
@@ -76,10 +78,12 @@ type ActiveTeamSession struct {
 // ChoreWithStatus is a chore with the child's completion status for a given date.
 type ChoreWithStatus struct {
 	Chore
-	CompletionID      *int64             `json:"completion_id,omitempty"`
-	CompletionStatus  *string            `json:"completion_status,omitempty"`
-	CompletionNotes   *string            `json:"completion_notes,omitempty"`
-	ActiveTeamSession *ActiveTeamSession `json:"active_team_session,omitempty"`
+	CompletionID     *int64  `json:"completion_id,omitempty"`
+	CompletionStatus *string `json:"completion_status,omitempty"`
+	CompletionNotes  *string `json:"completion_notes,omitempty"`
+	// CompletionRejectionReason is the parent's reason when the completion was rejected.
+	CompletionRejectionReason *string            `json:"completion_rejection_reason,omitempty"`
+	ActiveTeamSession         *ActiveTeamSession `json:"active_team_session,omitempty"`
 }
 
 // TeamParticipation records a child's participation in a team completion where they are not

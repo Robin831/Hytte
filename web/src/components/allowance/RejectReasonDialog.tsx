@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Dialog, DialogHeader, DialogBody, DialogFooter } from './ui/dialog'
+import { Dialog, DialogHeader, DialogBody, DialogFooter } from '../ui/dialog'
 
 const CHIP_KEYS = ['reject.chips.notFinished', 'reject.chips.redoProperly', 'reject.chips.wrongDay'] as const
 
@@ -8,7 +8,10 @@ interface RejectReasonDialogProps {
   open: boolean
   // Number of completions being rejected; above 1 the title switches to the batch wording.
   count?: number
+  // While true the buttons are disabled and the dialog can't be dismissed.
   submitting?: boolean
+  // Shown inside the dialog, e.g. when the reject request failed.
+  error?: string
   onCancel: () => void
   onConfirm: (reason: string) => void
 }
@@ -19,7 +22,7 @@ export default function RejectReasonDialog({ open, ...rest }: RejectReasonDialog
   return <RejectReasonForm {...rest} />
 }
 
-function RejectReasonForm({ count = 1, submitting = false, onCancel, onConfirm }: Omit<RejectReasonDialogProps, 'open'>) {
+function RejectReasonForm({ count = 1, submitting = false, error, onCancel, onConfirm }: Omit<RejectReasonDialogProps, 'open'>) {
   const { t } = useTranslation('allowance')
   const titleId = useId()
   const textareaId = useId()
@@ -70,6 +73,9 @@ function RejectReasonForm({ count = 1, submitting = false, onCancel, onConfirm }
           maxLength={500}
           className="w-full rounded-lg bg-gray-800 border border-gray-600 px-3 py-2 text-sm text-white placeholder-gray-500 focus:outline-none focus:border-red-500 resize-none"
         />
+        {error && (
+          <p role="alert" className="text-sm text-red-400">{error}</p>
+        )}
       </DialogBody>
       <DialogFooter>
         <button
