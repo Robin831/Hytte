@@ -224,7 +224,6 @@ export default function DayView({
   useEffect(() => {
     if (seenPunchVersionRef.current === punchVersion) return
     seenPunchVersionRef.current = punchVersion
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDay(currentDateRef.current)
     loadFlex()
   }, [punchVersion, loadDay, loadFlex])
