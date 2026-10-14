@@ -1,9 +1,9 @@
-import type { WorkSession, WorkDeduction } from '../workHoursUtils'
+import type { WorkSession, WorkDeduction } from './calculateDay'
 
 // Shared interfaces for the Work Hours feature.
 // Re-export the session/deduction/settings types so callers can import everything
 // work-hours related from a single module.
-export type { WorkSession, WorkDeduction, WorkSettings, LiveEstimate } from '../workHoursUtils'
+export type { WorkSession, WorkDeduction, WorkSettings } from './calculateDay'
 
 export interface WorkDay {
   id: number

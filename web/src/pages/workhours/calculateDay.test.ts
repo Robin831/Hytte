@@ -6,6 +6,8 @@ import {
   isPunchStale,
   liveSegmentMinutes,
   parseHHMM,
+  parseWorkSettings,
+  DEFAULT_WORK_SETTINGS,
   sessionMinutes,
   type WorkDeduction,
   type WorkSession,
@@ -379,5 +381,45 @@ describe('isPunchStale', () => {
       const segment = liveSegmentMinutes('08:00', makeDate(10, 0), date)
       expect(segment === null).toBe(stale)
     }
+  })
+})
+
+// Mirrors loadSettings in internal/workhours/handlers.go: Atoi parsing,
+// standard day and rounding > 0, lunch >= 0, anything else keeps the default.
+describe('parseWorkSettings', () => {
+  it('returns the defaults when no preference is set', () => {
+    expect(parseWorkSettings({})).toEqual(DEFAULT_WORK_SETTINGS)
+    expect(DEFAULT_WORK_SETTINGS).toEqual({ standard_day_minutes: 450, lunch_minutes: 30, rounding_minutes: 30 })
+  })
+
+  it('uses valid stored values', () => {
+    expect(parseWorkSettings({
+      work_hours_standard_day: '480',
+      work_hours_lunch_minutes: '45',
+      work_hours_rounding: '15',
+    })).toEqual({ standard_day_minutes: 480, lunch_minutes: 45, rounding_minutes: 15 })
+  })
+
+  it('accepts a zero lunch and a leading sign like Atoi', () => {
+    expect(parseWorkSettings({ work_hours_lunch_minutes: '0' }).lunch_minutes).toBe(0)
+    expect(parseWorkSettings({ work_hours_standard_day: '+420' }).standard_day_minutes).toBe(420)
+  })
+
+  it('rejects a negative lunch', () => {
+    expect(parseWorkSettings({ work_hours_lunch_minutes: '-15' }).lunch_minutes).toBe(30)
+  })
+
+  it.each(['0', '-30'])('rejects a non-positive standard day and rounding (%s)', v => {
+    const s = parseWorkSettings({ work_hours_standard_day: v, work_hours_rounding: v })
+    expect(s.standard_day_minutes).toBe(450)
+    expect(s.rounding_minutes).toBe(30)
+  })
+
+  it.each(['', 'abc', '45abc', '4.5', ' 45', '45 ', '1e2', '0x1f'])('rejects input Atoi rejects (%j)', v => {
+    expect(parseWorkSettings({
+      work_hours_standard_day: v,
+      work_hours_lunch_minutes: v,
+      work_hours_rounding: v,
+    })).toEqual(DEFAULT_WORK_SETTINGS)
   })
 })

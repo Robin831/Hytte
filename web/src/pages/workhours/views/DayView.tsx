@@ -9,14 +9,14 @@ import { findSessionOverlaps } from '../../workHoursUtils'
 import {
   applyRedemption,
   calculateDay,
+  DEFAULT_WORK_SETTINGS,
   isPunchStale,
   liveSegmentMinutes,
+  parseWorkSettings,
   sessionMinutes,
   type DaySummaryCalc,
-  type WorkSession,
-  type WorkSettings,
 } from '../calculateDay'
-import type { DaySummary, FlexState, LeaveDay, LeaveType, WorkDay, WorkDeductionPreset } from '../types'
+import type { DaySummary, FlexState, LeaveDay, LeaveType, WorkDay, WorkDeductionPreset, WorkSession, WorkSettings } from '../types'
 import {
   buildNavHolidaySet,
   currentTimeHHMM,
@@ -93,7 +93,7 @@ export default function DayView({
   const [leaveSaving, setLeaveSaving] = useState(false)
   const [redeemingFlex, setRedeemingFlex] = useState(false)
   const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null)
-  const [workSettings, setWorkSettings] = useState<WorkSettings>({ standard_day_minutes: 450, lunch_minutes: 30, rounding_minutes: 30 })
+  const [workSettings, setWorkSettings] = useState<WorkSettings>(DEFAULT_WORK_SETTINGS)
   // Until the user's own settings arrive the saved totals come straight from
   // the server, which already applied them; see summary below.
   const [workSettingsLoaded, setWorkSettingsLoaded] = useState(false)
@@ -190,17 +190,7 @@ export default function DayView({
     api.getPreferences()
       .then(prefs => {
         if (prefs) {
-          const parsePref = (val: string | undefined, fallback: number, requirePositive = false): number => {
-            const n = parseInt(val ?? '', 10)
-            if (!Number.isFinite(n)) return fallback
-            if (requirePositive && n <= 0) return fallback
-            return n
-          }
-          setWorkSettings({
-            standard_day_minutes: parsePref(prefs.work_hours_standard_day, 450, true),
-            lunch_minutes: parsePref(prefs.work_hours_lunch_minutes, 30),
-            rounding_minutes: parsePref(prefs.work_hours_rounding, 30, true),
-          })
+          setWorkSettings(parseWorkSettings(prefs))
           setWorkSettingsLoaded(true)
         }
       })

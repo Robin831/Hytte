@@ -4,7 +4,7 @@ import { render, screen, waitFor, fireEvent, within } from '@testing-library/rea
 import { MemoryRouter } from 'react-router'
 import WorkHoursPage from './WorkHoursPage'
 import enWorkhours from '../../public/locales/en/workhours.json'
-import type { WorkSession } from './workHoursUtils'
+import type { WorkSession } from './workhours/types'
 
 // ── Translation helper ────────────────────────────────────────────────────────
 

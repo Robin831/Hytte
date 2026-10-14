@@ -37,15 +37,6 @@ export interface WorkSettings {
   rounding_minutes: number
 }
 
-export interface LiveEstimate {
-  grossMinutes: number
-  lunchMinutes: number
-  deductionMinutes: number
-  netMinutes: number
-  reportedMinutes: number
-  standardMinutes: number
-}
-
 /** Result of {@link calculateDay}; every field is in minutes, like Go's DaySummary. */
 export interface DaySummaryCalc {
   gross: number
@@ -76,6 +67,32 @@ const MAX_LIVE_PUNCH_WRAP_DAYS = 1
 
 // Mirrors strconv.Atoi: optional sign, then decimal digits only.
 const ATOI_RE = /^[+-]?\d+$/
+
+/** Go's DefaultSettings (internal/workhours/calculator.go). */
+export const DEFAULT_WORK_SETTINGS: WorkSettings = {
+  standard_day_minutes: 450,
+  lunch_minutes: 30,
+  rounding_minutes: 30,
+}
+
+/**
+ * Builds WorkSettings from the user's preferences, mirroring Go's loadSettings
+ * (internal/workhours/handlers.go): each value must parse as strconv.Atoi
+ * would, standard day and rounding must be positive and lunch non-negative;
+ * anything else falls back to the default.
+ */
+export function parseWorkSettings(prefs: Record<string, string | undefined>): WorkSettings {
+  const parse = (val: string | undefined, fallback: number, ok: (n: number) => boolean): number => {
+    if (val === undefined || !ATOI_RE.test(val)) return fallback
+    const n = Number(val)
+    return Number.isSafeInteger(n) && ok(n) ? n : fallback
+  }
+  return {
+    standard_day_minutes: parse(prefs.work_hours_standard_day, DEFAULT_WORK_SETTINGS.standard_day_minutes, n => n > 0),
+    lunch_minutes: parse(prefs.work_hours_lunch_minutes, DEFAULT_WORK_SETTINGS.lunch_minutes, n => n >= 0),
+    rounding_minutes: parse(prefs.work_hours_rounding, DEFAULT_WORK_SETTINGS.rounding_minutes, n => n > 0),
+  }
+}
 
 /**
  * Parses "HH:MM" into minutes since midnight, mirroring Go's parseHHMM. Input

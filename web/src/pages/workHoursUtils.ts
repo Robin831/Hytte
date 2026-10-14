@@ -2,9 +2,7 @@ import { parseHHMM, type WorkSession } from './workhours/calculateDay'
 
 // The day math (durations, lunch, deductions, rounding, live punch estimate)
 // lives in ./workhours/calculateDay, the single frontend mirror of the Go
-// calculator. These re-exports keep existing imports resolving.
-export type { WorkSession, WorkDeduction, WorkSettings, LiveEstimate } from './workhours/calculateDay'
-export { daysSinceLocalDate, isPunchStale, sessionMinutes } from './workhours/calculateDay'
+// calculator. Import the work-hours types from ./workhours/types.
 
 const MINUTES_PER_DAY = 24 * 60
 

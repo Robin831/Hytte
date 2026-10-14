@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
-import { findSessionOverlaps, type WorkSession } from './workHoursUtils'
+import { findSessionOverlaps } from './workHoursUtils'
+import type { WorkSession } from './workhours/types'
 
 describe('findSessionOverlaps', () => {
   const session = (id: number, start: string, end: string, extra: Partial<WorkSession> = {}): WorkSession => ({
