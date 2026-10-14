@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent, act, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import StridePage from './StridePage'
-import { formatTargetTime, parseTargetTime } from './strideUtils'
+import { formatTargetTime, parseTargetTime } from '../components/stride/targetTime'
 import enStride from '../../public/locales/en/stride.json'
 import type { DayPlan } from '../types/stride'
 import { stubEventSource, type EventSourceStub } from '../test/stubEventSource'
@@ -1052,6 +1052,180 @@ describe('StridePage – Coach Notes older-bucket collapse', () => {
       expect(screen.queryByRole('textbox', { name: 'Edit note' })).not.toBeInTheDocument()
     })
   })
+
+  // Like notesFetch, but the PATCH of a note answers with `patch` instead of OK.
+  function notesFetchWithPatch(notes: unknown[], patch: () => Promise<Response>) {
+    const base = notesFetch(notes)
+    return vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/stride/notes') && init?.method === 'PATCH') return patch()
+      return base(url, init)
+    })
+  }
+
+  async function submitActiveNoteEdit() {
+    await waitFor(() => {
+      expect(screen.getByText('Feeling good this week')).toBeInTheDocument()
+    })
+    const activeNoteCard = screen.getByText('Feeling good this week').closest('div.group')!
+    const editBtn = activeNoteCard.querySelector('button[aria-label="Edit note"]') as HTMLButtonElement
+    await act(async () => {
+      fireEvent.click(editBtn)
+    })
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }))
+    })
+  }
+
+  it('keeps the edit dialog open with the consumed message when the PATCH answers 409', async () => {
+    vi.stubGlobal('fetch', notesFetchWithPatch([NOTE], () =>
+      Promise.resolve({ ok: false, status: 409, json: () => Promise.resolve({ error: 'note already consumed' }) } as Response),
+    ))
+    renderPage()
+    await submitActiveNoteEdit()
+
+    expect(await screen.findByText(enStride.notes.editError.consumed)).toBeInTheDocument()
+    expect(screen.queryByText('note already consumed')).not.toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Edit note' })).toBeInTheDocument()
+  })
+
+  it('shows the server error when the PATCH answers 500 with a message', async () => {
+    vi.stubGlobal('fetch', notesFetchWithPatch([NOTE], () =>
+      Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({ error: 'database is locked' }) } as Response),
+    ))
+    renderPage()
+    await submitActiveNoteEdit()
+
+    expect(await screen.findByText('database is locked')).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Edit note' })).toBeInTheDocument()
+  })
+
+  it('shows the generic edit error when the PATCH rejects', async () => {
+    vi.stubGlobal('fetch', notesFetchWithPatch([NOTE], () => Promise.reject(new TypeError('Failed to fetch'))))
+    renderPage()
+    await submitActiveNoteEdit()
+
+    expect(await screen.findByText(enStride.notes.editError.generic)).toBeInTheDocument()
+    expect(screen.getByRole('textbox', { name: 'Edit note' })).toBeInTheDocument()
+  })
+
+  it('shows an error and keeps the note when the DELETE fails', async () => {
+    const base = notesFetch([NOTE])
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url.includes('/api/stride/notes') && init?.method === 'DELETE') {
+        return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response)
+      }
+      return base(url, init)
+    }))
+    renderPage()
+    await waitFor(() => {
+      expect(screen.getByText('Feeling good this week')).toBeInTheDocument()
+    })
+
+    const card = screen.getByText('Feeling good this week').closest('div.group')!
+    await act(async () => {
+      fireEvent.click(card.querySelector('button[aria-label="Delete note"]') as HTMLButtonElement)
+    })
+
+    expect(await screen.findByText(enStride.notes.deleteError)).toBeInTheDocument()
+    expect(screen.getByText('Feeling good this week')).toBeInTheDocument()
+  })
+})
+
+describe('StridePage – day re-run', () => {
+  const PLAN_DAY: DayPlan = { date: '2099-01-13', rest_day: true }
+  const PLAN = {
+    id: 1,
+    user_id: 1,
+    week_start: '2099-01-13',
+    week_end: '2099-01-19',
+    phase: 'Base',
+    model: 'test',
+    created_at: '2099-01-13T00:00:00Z',
+    plan: [PLAN_DAY],
+  }
+
+  // Resolves the re-evaluate POST once the test calls it, so the busy state is observable.
+  let rerunResponse: (res: Response) => void
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      const make = (data: unknown) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
+      if (url.includes('/reevaluate') && init?.method === 'POST') {
+        return new Promise<Response>(resolve => { rerunResponse = resolve })
+      }
+      if (url.includes('/api/stride/plans/current')) return make({ plan: PLAN })
+      if (url.includes('/api/stride/plans?limit=2')) return make({ plans: [PLAN] })
+      if (url.includes('/api/stride/evaluations')) return make({ evaluations: [] })
+      if (url.includes('/api/training/workouts')) return make({ workouts: [] })
+      if (url.includes('/api/stride/races')) return make({ races: [] })
+      if (url.includes('/api/stride/notes')) return make({ notes: [] })
+      return make({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  const callsTo = (fragment: string) =>
+    fetchMock.mock.calls.filter(([url]) => String(url).includes(fragment)).length
+
+  async function clickRerun() {
+    await waitFor(() => expect(screen.getByText('Rest')).toBeInTheDocument())
+    const button = screen.getByRole('button', { name: enStride.plan.rerunCoach })
+    act(() => { fireEvent.click(button) })
+    await waitFor(() => expect(button).toBeDisabled())
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/stride/days/2099-01-13/reevaluate',
+      expect.objectContaining({ method: 'POST' }),
+    )
+    return button
+  }
+
+  it('re-reads evaluations and notes, highlights the day and releases the button', async () => {
+    const { container } = renderPage()
+    await waitFor(() => expect(callsTo('/api/stride/notes?status=all')).toBe(1))
+    const evalsBefore = callsTo('/api/stride/evaluations')
+    const notesBefore = callsTo('/api/stride/notes?status=all')
+
+    const button = await clickRerun()
+    await act(async () => {
+      rerunResponse({ ok: true, status: 200, json: () => Promise.resolve({}) } as Response)
+    })
+
+    await waitFor(() => expect(button).not.toBeDisabled())
+    expect(callsTo('/api/stride/evaluations')).toBeGreaterThan(evalsBefore)
+    expect(callsTo('/api/stride/notes?status=all')).toBeGreaterThan(notesBefore)
+    expect(container.querySelector('.ring-2')).not.toBeNull()
+    expect(screen.queryByText(enStride.plan.rerunError)).not.toBeInTheDocument()
+  })
+
+  it('shows the server error when the re-run fails with a message', async () => {
+    const { container } = renderPage()
+    const button = await clickRerun()
+    await act(async () => {
+      rerunResponse({ ok: false, status: 502, json: () => Promise.resolve({ error: 'coach unavailable' }) } as Response)
+    })
+
+    expect(await screen.findByText('coach unavailable')).toBeInTheDocument()
+    expect(button).not.toBeDisabled()
+    expect(container.querySelector('.ring-2')).toBeNull()
+  })
+
+  it('falls back to the generic error when the re-run fails without a message', async () => {
+    renderPage()
+    const button = await clickRerun()
+    await act(async () => {
+      rerunResponse({ ok: false, status: 500, json: () => Promise.reject(new SyntaxError('no body')) } as Response)
+    })
+
+    expect(await screen.findByText(enStride.plan.rerunError)).toBeInTheDocument()
+    expect(button).not.toBeDisabled()
+  })
 })
 
 describe('StridePage – plan history pagination', () => {
@@ -1596,6 +1770,155 @@ describe('StridePage – live evaluation refresh over SSE', () => {
     unmount()
 
     expect(sse.openCount()).toBe(0)
+  })
+})
+
+// A failed evaluations reload must leave what is on screen alone: neither an
+// empty list nor one plan's half replaces the evaluations already shown.
+describe('StridePage – failed evaluation reload keeps the current list', () => {
+  const makeDay = (date: string, mainSet: string): DayPlan => ({
+    date,
+    rest_day: false,
+    session: {
+      description: 'Easy run',
+      warmup: '',
+      main_set: mainSet,
+      cooldown: '',
+      strides: '',
+      target_hr_cap: 150,
+    },
+  })
+  const PLAN = {
+    id: 1,
+    user_id: 1,
+    week_start: '2099-01-13',
+    week_end: '2099-01-19',
+    phase: 'Base',
+    model: 'test',
+    created_at: '2099-01-13T00:00:00Z',
+    plan: [makeDay('2099-01-13', '30 min easy'), makeDay('2099-01-14', '40 min easy')],
+  }
+  const PREV_PLAN = { ...PLAN, id: 2, week_start: '2099-01-06', week_end: '2099-01-12' }
+
+  const makeEval = (id: number, planId: number, workoutId: number, notes: string) => ({
+    id,
+    user_id: 1,
+    plan_id: planId,
+    workout_id: workoutId,
+    eval: {
+      planned_type: 'easy',
+      actual_type: 'easy',
+      compliance: 'compliant',
+      notes,
+      flags: [],
+      adjustments: '',
+    },
+    created_at: '2099-01-13T20:00:00Z',
+  })
+  // Current plan's evaluation on Tuesday, previous plan's on Wednesday.
+  const CURRENT_EVAL = makeEval(1, 1, 42, 'Current plan feedback')
+  const PREVIOUS_EVAL = makeEval(2, 2, 43, 'Previous plan feedback')
+
+  // How each evaluations request answers: 'ok' serves the stored list,
+  // 'error' a 500, 'reject' a network failure.
+  let currentMode: 'ok' | 'error' | 'reject'
+  let previousMode: 'ok' | 'error' | 'reject'
+  let rerunResponse: (res: Response) => void
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    currentMode = 'ok'
+    previousMode = 'ok'
+    fetchMock = vi.fn((url: string) => {
+      const make = (data: unknown) =>
+        Promise.resolve({ ok: true, json: () => Promise.resolve(data) } as Response)
+      const answer = (mode: 'ok' | 'error' | 'reject', evaluations: unknown[]) => {
+        if (mode === 'reject') return Promise.reject(new TypeError('network down'))
+        if (mode === 'error') {
+          return Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) } as Response)
+        }
+        return make({ evaluations })
+      }
+      if (url.includes('/reevaluate')) {
+        return new Promise<Response>(resolve => { rerunResponse = resolve })
+      }
+      if (url.includes('/api/stride/plans/current')) return make({ plan: PLAN })
+      if (url.includes('/api/stride/plans?limit=2')) return make({ plans: [PLAN, PREV_PLAN] })
+      if (url.includes('/api/stride/evaluations?plan_id=1')) return answer(currentMode, [CURRENT_EVAL])
+      if (url.includes('/api/stride/evaluations?plan_id=2')) return answer(previousMode, [PREVIOUS_EVAL])
+      if (url.includes('/api/training/workouts')) {
+        return make({
+          workouts: [
+            { id: 42, started_at: '2099-01-13T08:00:00Z' },
+            { id: 43, started_at: '2099-01-14T08:00:00Z' },
+          ],
+        })
+      }
+      if (url.includes('/api/stride/races')) return make({ races: [] })
+      if (url.includes('/api/stride/notes')) return make({ notes: [] })
+      return make({})
+    })
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.clearAllMocks()
+  })
+
+  const evalCalls = () =>
+    fetchMock.mock.calls.filter(([url]) => String(url).includes('/api/stride/evaluations?plan_id=')).length
+
+  async function renderWithBothEvaluations() {
+    renderPage()
+    expect(await screen.findByText('Current plan feedback')).toBeInTheDocument()
+    expect(await screen.findByText('Previous plan feedback')).toBeInTheDocument()
+  }
+
+  it('keeps the evaluations when a stride_eval_ready refetch returns an error', async () => {
+    await renderWithBothEvaluations()
+    const before = evalCalls()
+
+    currentMode = 'error'
+    previousMode = 'error'
+    act(() => sse.dispatch('stride_eval_ready', { workout_id: 42 }))
+
+    await waitFor(() => expect(evalCalls()).toBeGreaterThan(before))
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByText('Current plan feedback')).toBeInTheDocument()
+    expect(screen.getByText('Previous plan feedback')).toBeInTheDocument()
+  })
+
+  it('keeps the evaluations when the reload after a day re-run rejects', async () => {
+    await renderWithBothEvaluations()
+    const button = screen.getAllByRole('button', { name: enStride.plan.rerunCoach })[0]
+    fireEvent.click(button)
+    const before = evalCalls()
+
+    currentMode = 'reject'
+    previousMode = 'reject'
+    await act(async () => {
+      rerunResponse({ ok: true, status: 200, json: () => Promise.resolve({}) } as Response)
+    })
+
+    await waitFor(() => expect(evalCalls()).toBeGreaterThan(before))
+    await waitFor(() => expect(button).not.toBeDisabled())
+    expect(screen.getByText('Current plan feedback')).toBeInTheDocument()
+    expect(screen.getByText('Previous plan feedback')).toBeInTheDocument()
+  })
+
+  it('keeps the whole list when only the previous plan request fails', async () => {
+    await renderWithBothEvaluations()
+    const before = evalCalls()
+
+    // The current plan's half loads fine; on its own it would drop Wednesday.
+    previousMode = 'error'
+    act(() => sse.dispatch('stride_eval_ready', { workout_id: 42 }))
+
+    await waitFor(() => expect(evalCalls()).toBeGreaterThan(before + 1))
+    await act(async () => { await Promise.resolve() })
+    expect(screen.getByText('Current plan feedback')).toBeInTheDocument()
+    expect(screen.getByText('Previous plan feedback')).toBeInTheDocument()
   })
 })
 

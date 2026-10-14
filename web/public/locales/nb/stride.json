@@ -91,6 +91,7 @@
       "consumed": "Dette notatet er allerede brukt og kan ikke redigeres lenger.",
       "generic": "Kunne ikke oppdatere notatet"
     },
+    "deleteError": "Kunne ikke slette notatet",
     "activeLabel": "Aktive",
     "historyLabel": "Historikk",
     "olderNotes": "Eldre notater ({{count}})",

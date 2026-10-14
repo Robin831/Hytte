@@ -1,0 +1,2 @@
+category: Changed
+- **Stride page split into section components and data hooks** - The Stride page's plan history, note-edit dialog, race calendar and coach notes now live in their own components, and races, notes, the weekly plan (with evaluations) and the macro block are loaded through dedicated hooks that cancel in-flight requests on unmount. The current-plus-previous-plan evaluation merge now has a single implementation shared by the initial load, live refresh and day re-run. No visible behaviour change. (Hytte-x8mir)
