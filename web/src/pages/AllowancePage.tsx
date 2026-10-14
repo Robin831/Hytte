@@ -26,11 +26,30 @@ function fetchPendingDeduped(): Promise<{ pending: CompletionWithDetails[] }> {
   return pendingInFlight
 }
 
-/** Per-ID outcome returned by the batch approve/reject endpoints. */
+/** How long approve toasts stay up so the parent has time to hit Undo. */
+const UNDO_TOAST_DURATION_MS = 10000
+
+/**
+ * Maps the stable `code` from the unapprove endpoints to a translated reason
+ * key, so nb/th parents never see raw backend strings. The codes are defined
+ * as constants in internal/allowance/handlers.go (codeWeekAlreadyPaid etc.).
+ */
+function undoFailureReasonKey(code: string) {
+  switch (code) {
+    case 'week_already_paid': return 'toast.undoReason.weekPaid' as const
+    case 'completion_not_approved': return 'toast.undoReason.notApproved' as const
+    case 'completion_not_found': return 'toast.undoReason.notFound' as const
+    default: return 'toast.undoReason.generic' as const
+  }
+}
+
+/** Per-ID outcome returned by the batch approve/reject/unapprove endpoints. */
 interface BatchCompletionResult {
   id: number
-  status: 'approved' | 'rejected' | 'skipped' | 'error'
+  status: 'approved' | 'rejected' | 'unapproved' | 'skipped' | 'error'
   error?: string
+  /** Stable machine-readable reason for skipped items (e.g. 'week_already_paid'). */
+  code?: string
 }
 
 interface BatchCompletionResponse {
@@ -244,7 +263,7 @@ export default function AllowancePage() {
   const [recordChore, setRecordChore] = useState<Chore | null>(null)
   const [familyChildren, setFamilyChildren] = useState<{ child_id: number; nickname: string; avatar_emoji: string }[]>([])
   const [familyChildrenLoaded, setFamilyChildrenLoaded] = useState(false)
-  const { toasts, showToast } = useToast()
+  const { toasts, showToast, dismissToast } = useToast()
 
   // Action error feedback
   const [actionError, setActionError] = useState('')
@@ -360,8 +379,65 @@ export default function AllowancePage() {
       if (!res.ok) throw new Error()
       setPending(prev => prev.filter(c => c.id !== id))
       payoutsFetch.invalidate()
+      showToast(t('toast.approved'), 'success', undoToastOptions([id]))
     } catch {
       setActionError(t('errors.actionFailed'))
+    }
+  }
+
+  // Toast options shared by single and batch approve so the Undo label,
+  // duration and handler can't drift apart.
+  const undoToastOptions = (ids: number[]) => ({
+    action: { label: t('toast.undo'), onClick: () => { void undoApprove(ids) } },
+    durationMs: UNDO_TOAST_DURATION_MS,
+  })
+
+  // Moves approved completions back to pending. The toast's action button
+  // dismisses the toast itself (ToastList onDismiss), so only the outcome is shown here.
+  const undoApprove = async (ids: number[]) => {
+    if (ids.length === 0) return
+    let undone = 0
+    let notUndone = 0
+    let failureCode = ''
+    try {
+      const res = ids.length === 1
+        ? await fetch(`/api/allowance/unapprove/${ids[0]}`, { method: 'POST', credentials: 'include' })
+        : await fetch('/api/allowance/unapprove/batch', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ids }),
+        })
+      const data = await res.json().catch(() => null) as
+        | (Partial<BatchCompletionResponse> & { code?: string })
+        | null
+      if (!res.ok) {
+        notUndone = ids.length
+        failureCode = data?.code ?? ''
+      } else if (ids.length === 1) {
+        undone = 1
+      } else {
+        const results = data?.results ?? []
+        undone = data?.succeeded ?? results.filter(r => r.status === 'unapproved').length
+        const failures = results.filter(r => r.status !== 'unapproved')
+        notUndone = data?.failed ?? failures.length
+        failureCode = failures.find(r => r.code)?.code ?? ''
+      }
+    } catch {
+      notUndone = ids.length
+    } finally {
+      pendingFetch.reload()
+      payoutsFetch.invalidate()
+    }
+    if (notUndone === 0) {
+      showToast(t('toast.undoSuccess', { count: undone }), 'success')
+      return
+    }
+    const reason = t(undoFailureReasonKey(failureCode))
+    if (undone > 0) {
+      showToast(t('toast.undoPartial', { undone, failed: notUndone, reason }), 'warning')
+    } else {
+      showToast(t('toast.undoFailed', { reason }), 'error')
     }
   }
 
@@ -466,12 +542,16 @@ export default function AllowancePage() {
 
       const succeeded = data.succeeded ?? resolvedIds.size
       const failed = data.failed ?? 0
+      // Undo is offered only for approvals, scoped to the IDs that actually went through.
+      const approvedIds = action === 'approve' ? [...resolvedIds] : []
+      const undoOptions = approvedIds.length > 0 ? undoToastOptions(approvedIds) : undefined
       if (failed > 0) {
         showToast(
           action === 'approve'
             ? t('bulk.toast.approvedPartial', { succeeded, failed })
             : t('bulk.toast.rejectedPartial', { succeeded, failed }),
           'warning',
+          undoOptions,
         )
       } else {
         showToast(
@@ -479,6 +559,7 @@ export default function AllowancePage() {
             ? t('bulk.toast.approved', { succeeded })
             : t('bulk.toast.rejected', { succeeded }),
           'success',
+          undoOptions,
         )
         setSelectionMode(false)
       }
@@ -1668,7 +1749,7 @@ export default function AllowancePage() {
         minTeamSize={recordChore?.min_team_size ?? 2}
         children={familyChildren}
       />
-      <ToastList toasts={toasts} />
+      <ToastList toasts={toasts} onDismiss={dismissToast} />
     </div>
   )
 }

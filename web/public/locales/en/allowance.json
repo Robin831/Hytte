@@ -33,6 +33,20 @@
     "close": "Close",
     "refresh": "Refresh"
   },
+  "toast": {
+    "approved": "Chore approved",
+    "undo": "Undo",
+    "undoSuccess_one": "Approval undone",
+    "undoSuccess_other": "{{count}} approvals undone",
+    "undoPartial": "{{undone}} undone, {{failed}} could not be undone: {{reason}}",
+    "undoFailed": "Could not undo: {{reason}}",
+    "undoReason": {
+      "weekPaid": "the week has already been paid out",
+      "notApproved": "it is no longer approved",
+      "notFound": "the completion no longer exists",
+      "generic": "something went wrong"
+    }
+  },
   "bulk": {
     "select": "Select",
     "cancelSelection": "Cancel",

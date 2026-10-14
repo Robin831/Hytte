@@ -1,0 +1,2 @@
+category: Added
+- **Undo on chore approval toasts** - Approving a chore completion, singly or in bulk, now shows a toast with an Undo button for 10 seconds that moves the approved completions (only the ones that succeeded) back to pending and refreshes the pending list and payouts. If the undo is refused, for example because the week has already been paid out, the reason is shown in the parent's language, and a partly successful bulk undo reports how many were undone and how many were not. (Hytte-feecz)

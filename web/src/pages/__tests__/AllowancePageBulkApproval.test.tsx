@@ -35,6 +35,16 @@ const TRANSLATIONS: Record<string, string> = {
   'bulk.toast.rejected': '{{succeeded}} rejected',
   'bulk.toast.approvedPartial': '{{succeeded}} approved, {{failed}} failed',
   'bulk.toast.rejectedPartial': '{{succeeded}} rejected, {{failed}} failed',
+  'toast.approved': 'Chore approved',
+  'toast.undo': 'Undo',
+  // The mock has no plural handling, so a single count-based template stands in for _one/_other.
+  'toast.undoSuccess': '{{count}} approvals undone',
+  'toast.undoPartial': '{{undone}} undone, {{failed}} could not be undone: {{reason}}',
+  'toast.undoFailed': 'Could not undo: {{reason}}',
+  'toast.undoReason.weekPaid': 'the week has already been paid out',
+  'toast.undoReason.notApproved': 'it is no longer approved',
+  'toast.undoReason.notFound': 'the completion no longer exists',
+  'toast.undoReason.generic': 'something went wrong',
   'errors.loadFailed': 'Failed to load data',
   'errors.actionFailed': 'Action failed',
   'reject.title': 'Reject completion',
@@ -405,5 +415,216 @@ describe('AllowancePage single reject', () => {
     await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('Action failed'))
     expect(field.value).toBe('Bed not made')
     expect(choreRow('Clean room')).toBeInTheDocument()
+  })
+})
+
+// ── Undo on approve toasts ────────────────────────────────────────────────────
+
+type Responder = (url: string, init?: RequestInit) => Promise<Response> | undefined
+
+/** Routes pending loads to the fixture list and everything else to `respond`. */
+function mockRoutes(respond: Responder) {
+  fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+    if (url.startsWith('/api/allowance/pending')) {
+      return Promise.resolve(jsonResponse({ pending: PENDING.map(makeCompletion) }))
+    }
+    return respond(url, init) ?? Promise.reject(new Error(`unexpected url: ${url}`))
+  })
+}
+
+function unapproveCalls() {
+  return fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/allowance/unapprove/'))
+}
+
+function pendingCalls() {
+  return fetchMock.mock.calls.filter(([url]) => String(url).startsWith('/api/allowance/pending'))
+}
+
+const approveAllResponse = jsonResponse({
+  succeeded: 3,
+  failed: 0,
+  results: PENDING.map(p => ({ id: p.id, status: 'approved' })),
+})
+
+async function approveAllInBatch() {
+  await renderTodayTab()
+  enterSelectionMode()
+  fireEvent.click(screen.getByRole('checkbox', { name: /Select all/ }))
+  fireEvent.click(screen.getByRole('button', { name: 'Approve selected' }))
+  await screen.findByText('3 approved')
+}
+
+describe('AllowancePage approve undo', () => {
+  it('single approve shows a toast whose Undo calls the single unapprove endpoint', async () => {
+    mockRoutes(url => {
+      if (url === '/api/allowance/approve/2') return Promise.resolve(jsonResponse({ id: 2, status: 'approved' }))
+      if (url === '/api/allowance/unapprove/2') return Promise.resolve(jsonResponse({ id: 2, status: 'pending' }))
+    })
+
+    await renderTodayTab()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Approve' })[1])
+    await screen.findByText('Chore approved')
+    const pendingBefore = pendingCalls().length
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    await screen.findByText('1 approvals undone')
+    // The toast closes on click so a second click can't send a duplicate request.
+    expect(screen.queryByText('Chore approved')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
+    expect(unapproveCalls()).toHaveLength(1)
+    expect(unapproveCalls()[0][0]).toBe('/api/allowance/unapprove/2')
+    // Un-approved rows come back through a pending reload.
+    expect(pendingCalls().length).toBeGreaterThan(pendingBefore)
+    await waitFor(() => expect(choreRow('Dishes')).toBeInTheDocument())
+  })
+
+  it('batch Undo sends only the IDs that were actually approved', async () => {
+    mockRoutes(url => {
+      if (url === '/api/allowance/approve/batch') {
+        return Promise.resolve(jsonResponse({
+          succeeded: 2,
+          failed: 1,
+          results: [
+            { id: 1, status: 'approved' },
+            { id: 2, status: 'approved' },
+            { id: 3, status: 'skipped', error: 'completion is not pending' },
+          ],
+        }))
+      }
+      if (url === '/api/allowance/unapprove/batch') {
+        return Promise.resolve(jsonResponse({
+          succeeded: 2,
+          failed: 0,
+          results: [{ id: 1, status: 'unapproved' }, { id: 2, status: 'unapproved' }],
+        }))
+      }
+    })
+
+    await renderTodayTab()
+    enterSelectionMode()
+    fireEvent.click(screen.getByRole('checkbox', { name: /Select all/ }))
+    fireEvent.click(screen.getByRole('button', { name: 'Approve selected' }))
+    await screen.findByText('2 approved, 1 failed')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    await screen.findByText('2 approvals undone')
+    const calls = unapproveCalls()
+    expect(calls).toHaveLength(1)
+    expect(calls[0][0]).toBe('/api/allowance/unapprove/batch')
+    expect(JSON.parse((calls[0][1] as RequestInit).body as string)).toEqual({ ids: [1, 2] })
+  })
+
+  it('uses the single unapprove endpoint when only one batch ID was approved', async () => {
+    mockRoutes(url => {
+      if (url === '/api/allowance/approve/batch') {
+        return Promise.resolve(jsonResponse({
+          succeeded: 1,
+          failed: 1,
+          results: [
+            { id: 1, status: 'skipped', error: 'completion is not pending' },
+            { id: 3, status: 'approved' },
+          ],
+        }))
+      }
+      if (url === '/api/allowance/unapprove/3') return Promise.resolve(jsonResponse({ id: 3, status: 'pending' }))
+    })
+
+    await renderTodayTab()
+    enterSelectionMode()
+    fireEvent.click(rowCheckbox('Clean room'))
+    fireEvent.click(rowCheckbox('Trash'))
+    fireEvent.click(screen.getByRole('button', { name: 'Approve selected' }))
+    await screen.findByText('1 approved, 1 failed')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    await screen.findByText('1 approvals undone')
+    expect(unapproveCalls().map(([url]) => url)).toEqual(['/api/allowance/unapprove/3'])
+  })
+
+  it('shows a warning with both counts when a batch undo partly fails', async () => {
+    mockRoutes(url => {
+      if (url === '/api/allowance/approve/batch') return Promise.resolve(approveAllResponse)
+      if (url === '/api/allowance/unapprove/batch') {
+        return Promise.resolve(jsonResponse({
+          succeeded: 2,
+          failed: 1,
+          results: [
+            { id: 1, status: 'unapproved' },
+            { id: 2, status: 'unapproved' },
+            { id: 3, status: 'skipped', error: 'week has already been paid out', code: 'week_already_paid' },
+          ],
+        }))
+      }
+    })
+
+    await approveAllInBatch()
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    await screen.findByText('2 undone, 1 could not be undone: the week has already been paid out')
+  })
+
+  it('translates the server refusal instead of showing the raw backend text', async () => {
+    mockRoutes(url => {
+      if (url === '/api/allowance/approve/1') return Promise.resolve(jsonResponse({ id: 1, status: 'approved' }))
+      if (url === '/api/allowance/unapprove/1') {
+        return Promise.resolve(jsonResponse({ error: 'week has already been paid out', code: 'week_already_paid' }, false))
+      }
+    })
+
+    await renderTodayTab()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Approve' })[0])
+    await screen.findByText('Chore approved')
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    await screen.findByText('Could not undo: the week has already been paid out')
+  })
+
+  it('keys the undo reason off the stable code, not the English error text', async () => {
+    mockRoutes(url => {
+      if (url === '/api/allowance/approve/1') return Promise.resolve(jsonResponse({ id: 1, status: 'approved' }))
+      if (url === '/api/allowance/unapprove/1') {
+        return Promise.resolve(jsonResponse({ error: 'reworded: this week was already settled', code: 'week_already_paid' }, false))
+      }
+    })
+
+    await renderTodayTab()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Approve' })[0])
+    await screen.findByText('Chore approved')
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    await screen.findByText('Could not undo: the week has already been paid out')
+  })
+
+  it('falls back to the generic reason for unknown errors and network failures', async () => {
+    mockRoutes(url => {
+      if (url === '/api/allowance/approve/batch') return Promise.resolve(approveAllResponse)
+      if (url === '/api/allowance/unapprove/batch') return Promise.reject(new Error('offline'))
+    })
+
+    await approveAllInBatch()
+    fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
+
+    await screen.findByText('Could not undo: something went wrong')
+  })
+
+  it('offers no Undo on reject toasts', async () => {
+    mockRoutes(url => {
+      if (url === '/api/allowance/reject/batch') {
+        return Promise.resolve(jsonResponse({ succeeded: 1, failed: 0, results: [{ id: 2, status: 'rejected' }] }))
+      }
+    })
+
+    await renderTodayTab()
+    enterSelectionMode()
+    fireEvent.click(rowCheckbox('Dishes'))
+    fireEvent.click(screen.getByRole('button', { name: 'Reject selected' }))
+    const dialog = await screen.findByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reject' }))
+
+    await screen.findByText('1 rejected')
+    expect(screen.queryByRole('button', { name: 'Undo' })).toBeNull()
   })
 })
