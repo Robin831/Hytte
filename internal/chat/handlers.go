@@ -412,7 +412,8 @@ func truncateRunes(s string, max int) string {
 // response and forwards Claude CLI text deltas as they arrive. After the
 // stream finishes successfully the assembled assistant message is persisted
 // and a final `done` event carries the saved row. CLI errors emit a single
-// `error` event and leave no assistant row behind.
+// `error` event and leave no assistant row behind. A client disconnect after
+// tokens were emitted persists the text streamed so far as the assistant row.
 //
 // POST /api/chat/conversations/{id}/messages/stream
 // Body: {"content": "Hello!"}
@@ -507,10 +508,15 @@ func StreamMessageHandler(db *sql.DB) http.HandlerFunc {
 
 		var newSessionID string
 		var tokensEmitted bool
+		// streamed mirrors exactly what reached the client so a disconnect
+		// after partial output can persist it; the runner's return value is
+		// not reliable once the context is cancelled.
+		var streamed strings.Builder
 		runStream := func(sessionID string) (string, error) {
 			return runPromptWithSessionStreamFn(ctx, cfg, content, sessionID,
 				func(chunk string) {
 					tokensEmitted = true
+					streamed.WriteString(chunk)
 					writeSSEEvent(w, flusher, "token", map[string]string{"text": chunk})
 				},
 				func(sid string) {
@@ -530,11 +536,27 @@ func StreamMessageHandler(db *sql.DB) http.HandlerFunc {
 
 		if err != nil {
 			ctxErr := ctx.Err()
-			// Client disconnected or user clicked Stop — leave partial text on
-			// the client and skip the assistant row. The user message stays
-			// persisted as a faithful record of what the user typed.
+			// Client disconnected or user clicked Stop. If tokens already
+			// reached the client, persist the text streamed so far (with the
+			// session id and auto-title, as on the happy path) so a user who
+			// navigated away mid-reply finds it on return. Before any token,
+			// only the user message stays persisted.
 			if ctxErr == context.Canceled {
 				log.Printf("chat stream cancelled for conversation %d", convo.ID)
+				partial := strings.TrimSpace(streamed.String())
+				if tokensEmitted && partial != "" {
+					saveSessionID(db, convo, user.ID, newSessionID)
+					if _, err := InsertMessage(db, convo.ID, "assistant", partial); err != nil {
+						log.Printf("Failed to insert partial assistant message: %v", err)
+						return
+					}
+					if convo.Title == "" {
+						// r.Context() is dead, so title on a fresh context.
+						titleCtx, titleCancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer titleCancel()
+						autoTitle(titleCtx, db, cfg, convo.ID, user.ID, content)
+					}
+				}
 				return
 			}
 			// Server-side timeout — emit an error event so the client can
@@ -550,11 +572,7 @@ func StreamMessageHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		// Save the session ID for future resumption.
-		if newSessionID != "" && newSessionID != convo.SessionID {
-			if dbErr := UpdateSessionID(db, convo.ID, user.ID, newSessionID); dbErr != nil {
-				log.Printf("Failed to save session ID: %v", dbErr)
-			}
-		}
+		saveSessionID(db, convo, user.ID, newSessionID)
 
 		full = strings.TrimSpace(full)
 		if full == "" {
@@ -582,6 +600,17 @@ func StreamMessageHandler(db *sql.DB) http.HandlerFunc {
 		}
 
 		writeSSEEvent(w, flusher, "done", map[string]any{"assistant_message": assistantMsg})
+	}
+}
+
+// saveSessionID stores the Claude CLI session id for future resumption when
+// it differs from the one already on the conversation. Failures are logged.
+func saveSessionID(db *sql.DB, convo *Conversation, userID int64, sessionID string) {
+	if sessionID == "" || sessionID == convo.SessionID {
+		return
+	}
+	if err := UpdateSessionID(db, convo.ID, userID, sessionID); err != nil {
+		log.Printf("Failed to save session ID: %v", err)
 	}
 }
 

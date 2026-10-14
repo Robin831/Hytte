@@ -99,8 +99,15 @@ interface FetchOpts {
 }
 
 function installFetch(stream: SSEStream, opts: FetchOpts = {}) {
+  return installFetchByConversation({ 1: stream }, opts)
+}
+
+// Routes each conversation's stream POST to its own hand-driven stream.
+function installFetchByConversation(streams: Record<number, SSEStream>, opts: FetchOpts = {}) {
   const fetchMock = vi.fn((url: string, options?: { signal?: AbortSignal }) => {
-    if (url.includes('/messages/stream')) {
+    const match = url.match(/\/conversations\/(\d+)\/messages\/stream$/)
+    if (match) {
+      const stream = streams[Number(match[1])]
       if (opts.streamError) {
         return Promise.resolve({
           ok: false,
@@ -325,5 +332,266 @@ describe('useChatStream', () => {
     // the concurrent send on conversation 2 is untouched.
     expect(state.sending.has(1)).toBe(false)
     expect(state.sending.has(2)).toBe(true)
+  })
+
+  describe('conversation switching', () => {
+    const CONV_B: Conversation = { ...CONV, id: 2, title: 'Other' }
+    const bRow: Message = {
+      id: 50,
+      conversation_id: 2,
+      role: 'user',
+      content: 'b history',
+      created_at: '2026-06-02T00:00:00Z',
+    }
+    const persistedUser: Message = {
+      id: 10,
+      conversation_id: 1,
+      role: 'user',
+      content: 'hi',
+      created_at: '2026-06-03T00:00:01Z',
+    }
+
+    // Renders the hook with props so a test can switch the viewed conversation.
+    function renderSwitchable() {
+      const harness = makeHarness()
+      const view = renderHook(props => useChatStream(props), { initialProps: harness.params })
+      const viewConversation = (conv: Conversation, messages: Message[]) => {
+        harness.state.active = conv
+        harness.state.messages = messages
+        view.rerender({ ...harness.params, activeConversation: conv })
+      }
+      return { ...harness, ...view, viewConversation }
+    }
+
+    it('keeps streaming in the background without bleeding tokens into another conversation', async () => {
+      const stream = makeSSEStream()
+      const fetchMock = installFetch(stream, { conversations: [CONV, CONV_B] })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+        stream.push(userFrame())
+        stream.push(frame('token', { text: 'Hel' }))
+      })
+      expect(state.messages[1]).toMatchObject({ role: 'assistant', content: 'Hel' })
+
+      // Switch to B: its refetched history replaces the messages state.
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+      const signal = (fetchMock.mock.calls[0][1] as { signal: AbortSignal }).signal
+      expect(signal.aborted).toBe(false)
+
+      await act(async () => {
+        stream.push(frame('token', { text: 'lo' }))
+        stream.push(doneFrame('Hello'))
+        stream.close()
+        await pending
+      })
+
+      // B never sees A's tokens or canonical rows.
+      expect(state.messages).toEqual([bRow])
+      expect(state.active).toEqual(CONV_B)
+      expect(result.current.error).toBe('')
+      expect(state.input).toBe('')
+      expect(state.sending.has(1)).toBe(false)
+    })
+
+    it('appends the canonical rows (deduped) when the user returns before done', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { conversations: [CONV, CONV_B] })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+        stream.push(userFrame())
+        stream.push(frame('token', { text: 'Hel' }))
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+      // Back to A: the refetch returned the persisted user row only, so the
+      // optimistic placeholders are gone.
+      await act(async () => {
+        viewConversation(CONV, [persistedUser])
+      })
+
+      await act(async () => {
+        stream.push(frame('token', { text: 'lo' }))
+      })
+      // The rest of the reply streams in view again.
+      expect(state.messages).toHaveLength(2)
+      expect(state.messages[1]).toMatchObject({ role: 'assistant', content: 'Hello' })
+
+      await act(async () => {
+        stream.push(doneFrame('Hello'))
+        stream.close()
+        await pending
+      })
+
+      expect(state.messages).toEqual([
+        persistedUser,
+        expect.objectContaining({ id: 11, role: 'assistant', content: 'Hello' }),
+      ])
+      expect(result.current.error).toBe('')
+      expect(state.sending.has(1)).toBe(false)
+    })
+
+    it('appends only missing canonical rows when the user returns without placeholders', async () => {
+      const stream = makeSSEStream()
+      installFetch(stream, { conversations: [CONV, CONV_B] })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pending!: Promise<void>
+      await act(async () => {
+        pending = result.current.send('hi')
+        stream.push(userFrame())
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+      await act(async () => {
+        viewConversation(CONV, [persistedUser])
+      })
+      await act(async () => {
+        stream.push(doneFrame('Hello'))
+        stream.close()
+        await pending
+      })
+
+      expect(state.messages.map(m => m.id)).toEqual([10, 11])
+      expect(result.current.error).toBe('')
+    })
+
+    it('runs concurrent sends in two conversations into their own threads', async () => {
+      const streamA = makeSSEStream()
+      const streamB = makeSSEStream()
+      installFetchByConversation({ 1: streamA, 2: streamB }, { conversations: [CONV, CONV_B] })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pendingA!: Promise<void>
+      await act(async () => {
+        pendingA = result.current.send('hi')
+        streamA.push(userFrame())
+        streamA.push(frame('token', { text: 'A-part' }))
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+
+      let pendingB!: Promise<void>
+      await act(async () => {
+        pendingB = result.current.send('for b')
+        streamB.push(userFrame({ id: 20, conversation_id: 2, content: 'for b' }))
+        streamB.push(frame('token', { text: 'B reply' }))
+        // A keeps streaming meanwhile.
+        streamA.push(frame('token', { text: ' more' }))
+      })
+      expect(state.sending.has(1)).toBe(true)
+      expect(state.sending.has(2)).toBe(true)
+
+      await act(async () => {
+        streamA.push(doneFrame('A-part more'))
+        streamA.close()
+        await pendingA
+      })
+      expect(state.sending.has(1)).toBe(false)
+      expect(state.sending.has(2)).toBe(true)
+
+      await act(async () => {
+        streamB.push(
+          frame('done', {
+            assistant_message: {
+              id: 21,
+              conversation_id: 2,
+              role: 'assistant',
+              content: 'B reply',
+              created_at: '2026-06-03T00:00:03Z',
+            },
+          }),
+        )
+        streamB.close()
+        await pendingB
+      })
+
+      expect(state.messages.map(m => m.id)).toEqual([50, 20, 21])
+      expect(state.messages.some(m => m.content.includes('A-part'))).toBe(false)
+      expect(state.sending.size).toBe(0)
+      expect(result.current.error).toBe('')
+    })
+
+    it('stop(id) aborts only that conversation and keeps its partial text', async () => {
+      const streamA = makeSSEStream()
+      const streamB = makeSSEStream()
+      const fetchMock = installFetchByConversation({ 1: streamA, 2: streamB })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pendingA!: Promise<void>
+      await act(async () => {
+        pendingA = result.current.send('hi')
+        streamA.push(userFrame())
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+      let pendingB!: Promise<void>
+      await act(async () => {
+        pendingB = result.current.send('for b')
+        streamB.push(userFrame({ id: 20, conversation_id: 2, content: 'for b' }))
+        streamB.push(frame('token', { text: 'Partial' }))
+      })
+
+      await act(async () => {
+        result.current.stop(2)
+        await pendingB
+      })
+
+      const signalA = (fetchMock.mock.calls[0][1] as { signal: AbortSignal }).signal
+      const signalB = (fetchMock.mock.calls[1][1] as { signal: AbortSignal }).signal
+      expect(signalB.aborted).toBe(true)
+      expect(signalA.aborted).toBe(false)
+      expect(state.messages[2]).toMatchObject({ role: 'assistant', content: 'Partial' })
+      expect(state.sending.has(2)).toBe(false)
+      expect(state.sending.has(1)).toBe(true)
+
+      // A bare stop() (unmount) aborts everything still in flight.
+      await act(async () => {
+        result.current.stop()
+        await pendingA
+      })
+      expect(signalA.aborted).toBe(true)
+      expect(state.sending.size).toBe(0)
+    })
+
+    it('unmount-style stop() aborts every in-flight stream', async () => {
+      const streamA = makeSSEStream()
+      const streamB = makeSSEStream()
+      const fetchMock = installFetchByConversation({ 1: streamA, 2: streamB })
+      const { state, result, viewConversation } = renderSwitchable()
+
+      let pendingA!: Promise<void>
+      await act(async () => {
+        pendingA = result.current.send('hi')
+      })
+      await act(async () => {
+        viewConversation(CONV_B, [bRow])
+      })
+      let pendingB!: Promise<void>
+      await act(async () => {
+        pendingB = result.current.send('for b')
+      })
+
+      await act(async () => {
+        result.current.stop()
+        await Promise.all([pendingA, pendingB])
+      })
+
+      for (const call of fetchMock.mock.calls) {
+        expect((call[1] as { signal: AbortSignal }).signal.aborted).toBe(true)
+      }
+      expect(state.sending.size).toBe(0)
+    })
   })
 })

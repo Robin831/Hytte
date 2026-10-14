@@ -226,9 +226,10 @@ export default function Chat() {
   // Load messages when conversation changes
   const activeConversationId = activeConversation?.id ?? null
   useEffect(() => {
-    // Cancel any in-flight streaming send when switching conversations so the
-    // partial tokens do not bleed into the newly selected conversation.
-    stop()
+    // Switching conversations deliberately does NOT abort an in-flight reply:
+    // the stream keeps running in the background (the hook only applies its
+    // tokens while its conversation is on screen) and the server persists the
+    // reply, so returning here shows it via the refetch below.
     clearError()
 
     const controller = new AbortController()
@@ -258,7 +259,7 @@ export default function Chat() {
       }
     })()
     return () => { controller.abort() }
-  }, [activeConversationId, t, stop, clearError])
+  }, [activeConversationId, t, clearError])
 
   // Resize textarea when input changes (including programmatic clears)
   useEffect(() => {
@@ -357,6 +358,8 @@ export default function Chat() {
         credentials: 'include',
       })
       if (!res.ok) throw new Error(t('errors.failedToDelete'))
+      // A reply may still be streaming in the background for this conversation.
+      stop(id)
       deletedConversationIds.current.add(id)
       setConversations(prev => prev.filter(c => c.id !== id))
       if (activeConversation?.id === id) {
@@ -883,7 +886,7 @@ export default function Chat() {
               />
               {sendingConversationIds.has(activeConversation.id) ? (
                 <button
-                  onClick={stop}
+                  onClick={() => stop(activeConversation.id)}
                   className="self-end p-3 rounded-xl bg-red-600 hover:bg-red-500 text-white transition-colors cursor-pointer shrink-0"
                   title={t('input.stopStreaming')}
                   aria-label={t('input.stopStreaming')}

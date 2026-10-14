@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Dispatch, RefObject, SetStateAction } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -20,7 +20,7 @@ export interface Message {
 }
 
 interface UseChatStreamParams {
-  /** The conversation a send targets and that the post-stream swap is gated on. */
+  /** The conversation a send targets; UI updates from a stream are gated on it still being viewed. */
   activeConversation: Conversation | null
   setActiveConversation: Dispatch<SetStateAction<Conversation | null>>
   setMessages: Dispatch<SetStateAction<Message[]>>
@@ -42,8 +42,11 @@ interface UseChatStreamParams {
 export interface UseChatStream {
   /** Starts an SSE send for `content` in the active conversation. */
   send: (content: string) => Promise<void>
-  /** Aborts the in-flight stream (cancel button / conversation switch / unmount). */
-  stop: () => void
+  /**
+   * Aborts the in-flight stream for `conversationId` (Stop button), or every
+   * in-flight stream when called without an id (unmount).
+   */
+  stop: (conversationId?: number) => void
   /** Id of the assistant placeholder currently streaming, or null. */
   streamingId: number | null
   /** Last send/stream error message, or '' when clear. */
@@ -74,13 +77,27 @@ export function useChatStream({
   const [error, setError] = useState('')
   const [streamingId, setStreamingId] = useState<number | null>(null)
   const clearError = useCallback(() => setError(''), [])
-  // Tracks the active streaming request so the user can cancel mid-send and so
-  // a conversation switch can abort the in-flight stream.
-  const streamAbortRef = useRef<AbortController | null>(null)
+  // In-flight streaming requests keyed by conversation id, so Stop can cancel
+  // one conversation's reply while streams in other conversations keep running
+  // in the background (switching away no longer aborts a reply).
+  const streamAbortsRef = useRef<Map<number, AbortController>>(new Map())
+  // The conversation currently on screen. Streams gate every UI mutation on
+  // this so tokens from a background stream never bleed into another thread.
+  const viewedConversationIdRef = useRef<number | null>(activeConversation?.id ?? null)
+  const viewedConversationId = activeConversation?.id ?? null
+  useEffect(() => {
+    viewedConversationIdRef.current = viewedConversationId
+  }, [viewedConversationId])
 
-  const stop = useCallback(() => {
-    streamAbortRef.current?.abort()
-    streamAbortRef.current = null
+  const stop = useCallback((conversationId?: number) => {
+    const aborts = streamAbortsRef.current
+    if (conversationId === undefined) {
+      for (const controller of aborts.values()) controller.abort()
+      aborts.clear()
+      return
+    }
+    aborts.get(conversationId)?.abort()
+    aborts.delete(conversationId)
   }, [])
 
   const send = useCallback(
@@ -89,6 +106,12 @@ export function useChatStream({
         return
       }
       const sentConversationId = activeConversation.id
+      const isViewed = () => viewedConversationIdRef.current === sentConversationId
+      // The messages state belongs to the sent conversation when every row is
+      // from it. After switching away and back, the refetch replaces the state
+      // with canonical rows, so the optimistic placeholders are gone.
+      const stateIsSentConversation = (prev: Message[]) =>
+        prev.length > 0 && prev.every(m => m.conversation_id === sentConversationId)
       setInput('')
       addSendingConversation(sentConversationId)
       setError('')
@@ -119,21 +142,31 @@ export function useChatStream({
       // message and the streamed reply stay in view, even if they had scrolled up.
       pinToBottom?.()
 
-      // Abort any earlier in-flight stream before starting this one. The
-      // conversation-switch effect in Chat also calls stop() on switches.
-      streamAbortRef.current?.abort()
+      // Abort any earlier in-flight stream for this conversation before
+      // starting this one; streams in other conversations are left alone.
+      streamAbortsRef.current.get(sentConversationId)?.abort()
       const controller = new AbortController()
-      streamAbortRef.current = controller
+      streamAbortsRef.current.set(sentConversationId, controller)
 
       // Accumulate streamed text in a local string so the placeholder row's
       // content reflects the full assistant reply on every render, even though
-      // React batches the setState calls.
+      // React batches the setState calls. Accumulation continues while the
+      // user is viewing another conversation; only the UI update is skipped.
       let accumulated = ''
       const applyAccumulated = () => {
+        if (!isViewed()) return
         const next = accumulated
-        setMessages(prev =>
-          prev.map(m => (m.id === tempAssistantId ? { ...m, content: next } : m)),
-        )
+        setMessages(prev => {
+          if (prev.some(m => m.id === tempAssistantId)) {
+            return prev.map(m => (m.id === tempAssistantId ? { ...m, content: next } : m))
+          }
+          // The user came back mid-reply and the refetch dropped the
+          // placeholder: re-add it so the rest of the reply streams in view.
+          if (stateIsSentConversation(prev)) {
+            return [...prev, { ...tempAssistantMsg, content: next }]
+          }
+          return prev
+        })
       }
 
       let sawToken = false
@@ -222,28 +255,42 @@ export function useChatStream({
         }
 
         // Final swap: replace optimistic rows with the canonical ones the
-        // server returned. Skip if the user navigated away from this
-        // conversation while the stream was running.
-        setActiveConversation(current => {
-          if (current?.id !== sentConversationId) return current
+        // server returned. Skip while the user is viewing another
+        // conversation; the messages refetch on return shows persisted rows.
+        if (isViewed()) {
+          // Both are assigned inside handleFrame, which TS's control-flow
+          // analysis can't see, so restate their declared types.
+          const finalUserMsg = canonicalUserMsg as Message | null
+          const finalAssistantMsg = canonicalAssistantMsg as Message | null
           setMessages(prev => {
             // Drop the assistant placeholder if Claude returned an empty body
             // and we never saw a token; otherwise replace with canonical.
-            if (!canonicalAssistantMsg && !sawToken) {
+            if (!finalAssistantMsg && !sawToken) {
               return prev.filter(m => m.id !== tempUserId && m.id !== tempAssistantId)
             }
-            return prev.flatMap(m => {
-              if (m.id === tempUserId) {
-                return canonicalUserMsg ? [canonicalUserMsg] : [m]
-              }
-              if (m.id === tempAssistantId) {
-                return canonicalAssistantMsg ? [canonicalAssistantMsg] : [m]
-              }
-              return [m]
-            })
+            const hasPlaceholders = prev.some(m => m.id === tempUserId || m.id === tempAssistantId)
+            if (hasPlaceholders) {
+              return prev.flatMap(m => {
+                if (m.id === tempUserId) {
+                  return finalUserMsg ? [finalUserMsg] : [m]
+                }
+                if (m.id === tempAssistantId) {
+                  return finalAssistantMsg ? [finalAssistantMsg] : [m]
+                }
+                return [m]
+              })
+            }
+            // The user switched away and back: the refetch replaced the state
+            // and dropped the placeholders. Append the canonical rows that
+            // the refetch did not already include (deduped by id).
+            if (!stateIsSentConversation(prev)) return prev
+            const ids = new Set(prev.map(m => m.id))
+            const missing = [finalUserMsg, finalAssistantMsg].filter(
+              (m): m is Message => m !== null && !ids.has(m.id),
+            )
+            return missing.length > 0 ? [...prev, ...missing] : prev
           })
-          return current
-        })
+        }
 
         // Refresh conversation list to pick up auto-title updates (non-fatal).
         try {
@@ -265,7 +312,10 @@ export function useChatStream({
           console.error('Failed to refresh conversations after sending message', refreshErr)
         }
       } catch (err) {
-        if (err instanceof DOMException && err.name === 'AbortError') {
+        if (!isViewed()) {
+          // The user is in another conversation: leave its messages, input and
+          // error banner untouched. Returning here refetches the persisted rows.
+        } else if (err instanceof DOMException && err.name === 'AbortError') {
           if (sawToken) {
             // Stop semantics: keep the partial assistant text on screen at
             // whatever was already streamed. The placeholder rows stay in
@@ -312,12 +362,12 @@ export function useChatStream({
           else setError(t('errors.streamError'))
         }
       } finally {
-        if (streamAbortRef.current === controller) {
-          streamAbortRef.current = null
+        if (streamAbortsRef.current.get(sentConversationId) === controller) {
+          streamAbortsRef.current.delete(sentConversationId)
         }
         setStreamingId(current => (current === tempAssistantId ? null : current))
         removeSendingConversation(sentConversationId)
-        focusInput?.()
+        if (isViewed()) focusInput?.()
       }
     },
     [

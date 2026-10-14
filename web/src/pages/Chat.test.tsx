@@ -346,14 +346,17 @@ describe('Chat – streaming send', () => {
     expect(screen.queryByTestId('chat-stop-button')).not.toBeInTheDocument()
   })
 
-  it('switching conversations aborts the in-flight stream', async () => {
+  it('switching conversations keeps the in-flight stream alive without leaking tokens', async () => {
     const convA = makeConv({ id: 1, title: 'Chat A' })
     const convB = makeConv({ id: 2, title: 'Chat B' })
 
     const stream = manualSSEResponse()
+    let streamAborted = false
+    // Rows conversation A's detail endpoint returns; updated once the server
+    // would have persisted the reply.
+    let aMessages: unknown[] = []
 
-    // Route fetches by URL so post-abort cleanup fetches don't disturb the
-    // mock chain. We rely on URL pattern matching rather than ordering.
+    // Route fetches by URL rather than ordering.
     const fetchMock = vi.fn((url: string, init?: RequestInit) => {
       if (url === '/api/chat/conversations') {
         return Promise.resolve({
@@ -364,7 +367,7 @@ describe('Chat – streaming send', () => {
       if (url === `/api/chat/conversations/${convA.id}`) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ conversation: convA, messages: [] }),
+          json: () => Promise.resolve({ conversation: convA, messages: aMessages }),
         })
       }
       if (url === `/api/chat/conversations/${convB.id}`) {
@@ -376,6 +379,7 @@ describe('Chat – streaming send', () => {
       if (url.endsWith('/messages/stream')) {
         const signal = init?.signal as AbortSignal | undefined
         signal?.addEventListener('abort', () => {
+          streamAborted = true
           try {
             stream.close()
           } catch {
@@ -399,21 +403,57 @@ describe('Chat – streaming send', () => {
     fireEvent.click(screen.getByTestId('chat-send-button'))
 
     await screen.findByText('Streaming…')
+    const userRow = {
+      id: 10,
+      conversation_id: convA.id,
+      role: 'user',
+      content: 'Question for A',
+      created_at: '2026-05-01T00:00:01Z',
+    }
     await act(async () => {
+      stream.push(frame('user_message', userRow))
       stream.push(frame('token', { text: 'Streaming A reply' }))
     })
 
-    // Switch to B via the sidebar (mobile: re-open via back; here desktop
-    // — the conversation row is still clickable).
+    // Switch to B via the sidebar.
     fireEvent.click(screen.getByText('Chat B'))
 
-    // The stream should be aborted and the partial text should NOT leak into
-    // conversation B's view.
     await waitFor(() => {
       // The empty-messages placeholder belongs to the newly-loaded conv B.
       expect(screen.getByText('Send a message to start the conversation')).toBeInTheDocument()
     })
-    expect(screen.queryByText('Streaming A reply')).not.toBeInTheDocument()
+    // Tokens that keep arriving for A never reach B's view.
+    await act(async () => {
+      stream.push(frame('token', { text: ' and more' }))
+    })
+    expect(screen.queryByText(/Streaming A reply/)).not.toBeInTheDocument()
+    expect(streamAborted).toBe(false)
+    // B's composer is usable while A streams in the background.
+    expect(screen.getByPlaceholderText('Type a message...')).not.toBeDisabled()
+
+    // A's reply completes in the background and is persisted server-side.
+    const assistantRow = {
+      id: 11,
+      conversation_id: convA.id,
+      role: 'assistant',
+      content: 'Streaming A reply and more',
+      created_at: '2026-05-01T00:00:02Z',
+    }
+    aMessages = [userRow, assistantRow]
+    await act(async () => {
+      stream.push(frame('done', { assistant_message: assistantRow }))
+      stream.close()
+    })
+    expect(screen.queryByText(/Streaming A reply/)).not.toBeInTheDocument()
+
+    // Returning to A shows the completed reply exactly once, with no error.
+    fireEvent.click(screen.getByText('Chat A'))
+    await screen.findByText('Streaming A reply and more')
+    expect(screen.getAllByText('Question for A')).toHaveLength(1)
+    expect(
+      screen.queryByText('The response stream was interrupted. Please try again.'),
+    ).not.toBeInTheDocument()
+    expect(streamAborted).toBe(false)
   })
 })
 
