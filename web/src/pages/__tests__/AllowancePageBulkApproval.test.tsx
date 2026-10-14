@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import AllowancePage from '../AllowancePage'
 
 // ── Translation mock ──────────────────────────────────────────────────────────
@@ -37,6 +37,14 @@ const TRANSLATIONS: Record<string, string> = {
   'bulk.toast.rejectedPartial': '{{succeeded}} rejected, {{failed}} failed',
   'errors.loadFailed': 'Failed to load data',
   'errors.actionFailed': 'Action failed',
+  'reject.title': 'Reject completion',
+  'reject.titleBatch': 'Reject {{count}} completions',
+  'reject.reasonOptional': 'Reason (optional)',
+  'reject.cancel': 'Cancel',
+  'reject.confirm': 'Reject',
+  'reject.chips.notFinished': 'Not finished',
+  'reject.chips.redoProperly': 'Do it again properly',
+  'reject.chips.wrongDay': 'Wrong day',
 }
 
 function mockT(key: string, opts?: Record<string, unknown>): string {
@@ -209,6 +217,8 @@ describe('AllowancePage bulk approval', () => {
 
     await waitFor(() => expect(screen.getByText('3 approved')).toBeInTheDocument())
 
+    // Approving never asks for a reason.
+    expect(screen.queryByRole('dialog')).toBeNull()
     expect(batchCalls('approve')).toHaveLength(1)
     expect(batchBody('approve')).toEqual({ ids: [1, 2, 3] })
     // Approved rows disappear, so the pending badge count drops with them.
@@ -249,7 +259,7 @@ describe('AllowancePage bulk approval', () => {
     expect(rowCheckbox('Trash').checked).toBe(true)
   })
 
-  it('rejects the selection with the same empty reason as the single-item path', async () => {
+  it('rejects the selection with one shared reason from the dialog', async () => {
     fetchMock.mockImplementation((url: string) => {
       if (url.startsWith('/api/allowance/pending')) {
         return Promise.resolve(jsonResponse({ pending: PENDING.map(makeCompletion) }))
@@ -273,11 +283,30 @@ describe('AllowancePage bulk approval', () => {
     fireEvent.click(rowCheckbox('Trash'))
     fireEvent.click(screen.getByRole('button', { name: 'Reject selected' }))
 
+    const dialog = await screen.findByRole('dialog', { name: 'Reject 2 completions' })
+    expect(batchCalls('reject')).toHaveLength(0)
+    fireEvent.change(within(dialog).getByLabelText('Reason (optional)'), { target: { value: '  Not finished  ' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reject' }))
+
     await waitFor(() => expect(screen.getByText('2 rejected')).toBeInTheDocument())
 
     expect(batchCalls('reject')).toHaveLength(1)
-    expect(batchBody('reject')).toEqual({ ids: [1, 3], reason: '' })
+    expect(batchBody('reject')).toEqual({ ids: [1, 3], reason: 'Not finished' })
     expect(choreRow('Clean room')).toBeNull()
+    expect(choreRow('Dishes')).toBeInTheDocument()
+  })
+
+  it('sends no batch request when the reject dialog is cancelled', async () => {
+    await renderTodayTab()
+    enterSelectionMode()
+    fireEvent.click(rowCheckbox('Dishes'))
+    fireEvent.click(screen.getByRole('button', { name: 'Reject selected' }))
+
+    const dialog = await screen.findByRole('dialog', { name: 'Reject completion' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(batchCalls('reject')).toHaveLength(0)
     expect(choreRow('Dishes')).toBeInTheDocument()
   })
 
@@ -310,5 +339,71 @@ describe('AllowancePage bulk approval', () => {
 
     expect(screen.queryByRole('checkbox')).toBeNull()
     expect(screen.getAllByRole('button', { name: 'Reject' })).toHaveLength(3)
+  })
+})
+
+function singleRejectCalls() {
+  return fetchMock.mock.calls.filter(([url]) => /^\/api\/allowance\/reject\/\d+$/.test(url))
+}
+
+describe('AllowancePage single reject', () => {
+  it('opens the reason dialog and sends nothing when cancelled', async () => {
+    await renderTodayTab()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Reject' })[1])
+
+    const dialog = await screen.findByRole('dialog', { name: 'Reject completion' })
+    expect(singleRejectCalls()).toHaveLength(0)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(singleRejectCalls()).toHaveLength(0)
+    expect(choreRow('Dishes')).toBeInTheDocument()
+  })
+
+  it('sends the picked chip as the reason', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.startsWith('/api/allowance/pending')) {
+        return Promise.resolve(jsonResponse({ pending: PENDING.map(makeCompletion) }))
+      }
+      if (url === '/api/allowance/reject/2') {
+        return Promise.resolve(jsonResponse({ id: 2, status: 'rejected' }))
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`))
+    })
+
+    await renderTodayTab()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Reject' })[1])
+    const dialog = await screen.findByRole('dialog', { name: 'Reject completion' })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Not finished' }))
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reject' }))
+
+    await waitFor(() => expect(choreRow('Dishes')).toBeNull())
+    expect(screen.queryByRole('dialog')).toBeNull()
+    const calls = singleRejectCalls()
+    expect(calls).toHaveLength(1)
+    expect(JSON.parse((calls[0][1] as RequestInit).body as string)).toEqual({ reason: 'Not finished' })
+  })
+
+  it('keeps the dialog and typed reason open when the request fails', async () => {
+    fetchMock.mockImplementation((url: string) => {
+      if (url.startsWith('/api/allowance/pending')) {
+        return Promise.resolve(jsonResponse({ pending: PENDING.map(makeCompletion) }))
+      }
+      if (url === '/api/allowance/reject/1') {
+        return Promise.resolve(jsonResponse({ error: 'nope' }, false))
+      }
+      return Promise.reject(new Error(`unexpected url: ${url}`))
+    })
+
+    await renderTodayTab()
+    fireEvent.click(screen.getAllByRole('button', { name: 'Reject' })[0])
+    const dialog = await screen.findByRole('dialog', { name: 'Reject completion' })
+    const field = within(dialog).getByLabelText('Reason (optional)') as HTMLTextAreaElement
+    fireEvent.change(field, { target: { value: 'Bed not made' } })
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Reject' }))
+
+    await waitFor(() => expect(within(dialog).getByRole('alert')).toHaveTextContent('Action failed'))
+    expect(field.value).toBe('Bed not made')
+    expect(choreRow('Clean room')).toBeInTheDocument()
   })
 })

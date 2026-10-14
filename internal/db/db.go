@@ -3110,6 +3110,18 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add rejection_reason column to allowance_completions (Hytte-hd4iq).
+	// Kept apart from notes so a kid's own note is never shown as the parent's reason.
+	var hasRejectionReason int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('allowance_completions') WHERE name = 'rejection_reason'`).Scan(&hasRejectionReason); err != nil {
+		return fmt.Errorf("check allowance_completions rejection_reason column: %w", err)
+	}
+	if hasRejectionReason == 0 {
+		if _, err := db.Exec(`ALTER TABLE allowance_completions ADD COLUMN rejection_reason TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add allowance_completions rejection_reason column: %w", err)
+		}
+	}
+
 	// Add description column to budget_recurring (Hytte-mro9).
 	var hasRecurringDesc int
 	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('budget_recurring') WHERE name = 'description'`).Scan(&hasRecurringDesc); err != nil {

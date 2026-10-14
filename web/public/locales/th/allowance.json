@@ -223,6 +223,20 @@
     "successToast": "บันทึกแล้วสำหรับ {{names}}",
     "skippedWarning": "บันทึกแล้วสำหรับวันที่นี้สำหรับ {{name}}"
   },
+  "reject": {
+    "title": "ปฏิเสธงานที่ทำเสร็จ",
+    "titleBatch": "ปฏิเสธงาน {{count}} รายการ",
+    "reasonOptional": "เหตุผล (ไม่บังคับ)",
+    "placeholder": "บอกว่าต้องแก้ไขอะไร…",
+    "cancel": "ยกเลิก",
+    "confirm": "ปฏิเสธ",
+    "reasonDisplay": "“{{reason}}”",
+    "chips": {
+      "notFinished": "ยังทำไม่เสร็จ",
+      "redoProperly": "ทำใหม่ให้เรียบร้อย",
+      "wrongDay": "ผิดวัน"
+    }
+  },
   "errors": {
     "loadFailed": "โหลดข้อมูลไม่สำเร็จ กรุณาลองอีกครั้ง",
     "actionFailed": "การดำเนินการล้มเหลว กรุณาลองอีกครั้ง",

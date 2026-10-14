@@ -87,6 +87,7 @@ func setupTestDB(t *testing.T) *sql.DB {
 		notes         TEXT NOT NULL DEFAULT '',
 		quality_bonus REAL NOT NULL DEFAULT 0,
 		photo_path    TEXT NOT NULL DEFAULT '',
+		rejection_reason TEXT NOT NULL DEFAULT '',
 		created_at    TEXT NOT NULL DEFAULT '',
 		UNIQUE(chore_id, child_id, date)
 	);
@@ -409,20 +410,23 @@ func TestRejectCompletion(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateChore: %v", err)
 	}
-	comp, err := CreateCompletion(db, chore.ID, 2, "2026-03-28", "")
+	comp, err := CreateCompletion(db, chore.ID, 2, "2026-03-28", "Cleaned under the bed too")
 	if err != nil {
 		t.Fatalf("CreateCompletion: %v", err)
 	}
 
-	rejected, err := RejectCompletion(db, comp.ID, 1, "Not done properly")
+	rejected, err := RejectCompletion(db, comp.ID, 1, "  Not done properly  ")
 	if err != nil {
 		t.Fatalf("RejectCompletion: %v", err)
 	}
 	if rejected.Status != "rejected" {
 		t.Errorf("expected status rejected, got %q", rejected.Status)
 	}
-	if rejected.Notes != "Not done properly" {
-		t.Errorf("expected rejection reason in notes, got %q", rejected.Notes)
+	if rejected.RejectionReason != "Not done properly" {
+		t.Errorf("expected trimmed rejection reason, got %q", rejected.RejectionReason)
+	}
+	if rejected.Notes != "Cleaned under the bed too" {
+		t.Errorf("expected kid's note to be kept, got %q", rejected.Notes)
 	}
 }
 
@@ -2832,7 +2836,7 @@ func TestBatchRejectCompletionsHandler(t *testing.T) {
 	ids := seedPendingCompletions(t, db, 2)
 
 	handler := BatchRejectCompletionsHandler(db)
-	// The UI sends an empty reason, matching the single-item reject payload.
+	// An empty reason is still supported: the reject dialog keeps the reason optional.
 	body := map[string]any{"ids": ids, "reason": ""}
 	r := withUser(newRequest(http.MethodPost, "/api/allowance/reject/batch", body), testParent)
 	w := httptest.NewRecorder()
@@ -2856,13 +2860,124 @@ func TestBatchRejectCompletionsHandler(t *testing.T) {
 		if got := completionStatus(t, db, id); got != "rejected" {
 			t.Errorf("completion %d: expected DB status rejected, got %q", id, got)
 		}
-		var notes string
-		if err := db.QueryRow(`SELECT notes FROM allowance_completions WHERE id = ?`, id).Scan(&notes); err != nil {
+		var notes, reason string
+		if err := db.QueryRow(`SELECT notes, rejection_reason FROM allowance_completions WHERE id = ?`, id).Scan(&notes, &reason); err != nil {
 			t.Fatalf("read notes for completion %d: %v", id, err)
 		}
-		if notes != "" {
-			t.Errorf("completion %d: expected notes to stay empty with an empty reason, got %q", id, notes)
+		if notes != "" || reason != "" {
+			t.Errorf("completion %d: expected notes and reason to stay empty with an empty reason, got %q / %q", id, notes, reason)
 		}
+	}
+}
+
+// seedChoreWithKidNotes creates one chore and n pending completions for child 2,
+// each carrying a note written by the kid.
+func seedChoreWithKidNotes(t *testing.T, db *sql.DB, n int) []int64 {
+	t.Helper()
+	chore, err := CreateChore(db, 1, nil, "Clean room", "", 20, "daily", "🧹", true, "solo", 2, 10.0)
+	if err != nil {
+		t.Fatalf("CreateChore: %v", err)
+	}
+	ids := make([]int64, 0, n)
+	for i := 0; i < n; i++ {
+		comp, err := CreateCompletion(db, chore.ID, 2, fmt.Sprintf("2026-03-%02d", i+1), "Done, cleaned under the bed too")
+		if err != nil {
+			t.Fatalf("CreateCompletion %d: %v", i, err)
+		}
+		ids = append(ids, comp.ID)
+	}
+	return ids
+}
+
+func TestBatchRejectCompletionsHandlerWithReason(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	ids := seedChoreWithKidNotes(t, db, 2)
+
+	handler := BatchRejectCompletionsHandler(db)
+	body := map[string]any{"ids": ids, "reason": "Not finished"}
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/reject/batch", body), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	var resp batchCompletionResponse
+	decode(t, w.Body.Bytes(), &resp)
+	if resp.Succeeded != 2 || resp.Failed != 0 {
+		t.Fatalf("expected 2 succeeded / 0 failed, got %d/%d", resp.Succeeded, resp.Failed)
+	}
+
+	for i, id := range ids {
+		var encNotes, encReason string
+		if err := db.QueryRow(`SELECT notes, rejection_reason FROM allowance_completions WHERE id = ?`, id).Scan(&encNotes, &encReason); err != nil {
+			t.Fatalf("read completion %d: %v", id, err)
+		}
+		if encReason == "Not finished" {
+			t.Errorf("completion %d: rejection reason stored as plaintext", id)
+		}
+		reason, err := encryption.DecryptField(encReason)
+		if err != nil {
+			t.Fatalf("completion %d: decrypt reason: %v", id, err)
+		}
+		if reason != "Not finished" {
+			t.Errorf("completion %d: expected reason %q, got %q", id, "Not finished", reason)
+		}
+		if got := decryptOrPlaintext(encNotes); got != "Done, cleaned under the bed too" {
+			t.Errorf("completion %d: expected kid's note to be kept, got %q", id, got)
+		}
+
+		chores, err := GetChildChoresWithStatus(db, 1, 2, fmt.Sprintf("2026-03-%02d", i+1))
+		if err != nil {
+			t.Fatalf("GetChildChoresWithStatus: %v", err)
+		}
+		if len(chores) != 1 {
+			t.Fatalf("expected 1 chore, got %d", len(chores))
+		}
+		got := chores[0]
+		if got.CompletionRejectionReason == nil || *got.CompletionRejectionReason != "Not finished" {
+			t.Errorf("completion %d: expected completion_rejection_reason %q, got %v", id, "Not finished", got.CompletionRejectionReason)
+		}
+		if got.CompletionNotes == nil || *got.CompletionNotes != "Done, cleaned under the bed too" {
+			t.Errorf("completion %d: expected completion_notes to keep the kid's note, got %v", id, got.CompletionNotes)
+		}
+	}
+}
+
+// An empty reason must not make the kid's own note look like the parent's reason.
+func TestBatchRejectEmptyReasonKeepsKidNoteSeparate(t *testing.T) {
+	db := setupTestDB(t)
+	linkParentChild(t, db)
+
+	ids := seedChoreWithKidNotes(t, db, 1)
+
+	handler := BatchRejectCompletionsHandler(db)
+	body := map[string]any{"ids": ids, "reason": ""}
+	r := withUser(newRequest(http.MethodPost, "/api/allowance/reject/batch", body), testParent)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	chores, err := GetChildChoresWithStatus(db, 1, 2, "2026-03-01")
+	if err != nil {
+		t.Fatalf("GetChildChoresWithStatus: %v", err)
+	}
+	if len(chores) != 1 {
+		t.Fatalf("expected 1 chore, got %d", len(chores))
+	}
+	got := chores[0]
+	if got.CompletionStatus == nil || *got.CompletionStatus != "rejected" {
+		t.Fatalf("expected rejected status, got %v", got.CompletionStatus)
+	}
+	if got.CompletionRejectionReason != nil {
+		t.Errorf("expected no rejection reason, got %q", *got.CompletionRejectionReason)
+	}
+	if got.CompletionNotes == nil || *got.CompletionNotes != "Done, cleaned under the bed too" {
+		t.Errorf("expected kid's note to be kept in completion_notes, got %v", got.CompletionNotes)
 	}
 }
 

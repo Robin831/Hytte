@@ -252,10 +252,10 @@ func GetChildChoresWithStatus(db *sql.DB, parentID, childID int64, date string) 
 		SELECT c.id, c.parent_id, c.child_id, c.name, c.description, c.amount, c.currency,
 		       c.frequency, c.icon, c.requires_approval, c.active, c.created_at,
 		       c.completion_mode, c.min_team_size, c.team_bonus_pct,
-		       comp.id, comp.status, comp.notes
+		       comp.id, comp.status, comp.notes, comp.rejection_reason
 		FROM allowance_chores c
 		LEFT JOIN (
-		    SELECT id, chore_id, status, notes
+		    SELECT id, chore_id, status, notes, rejection_reason
 		    FROM allowance_completions
 		    WHERE date = ?
 		      AND (
@@ -280,14 +280,14 @@ func GetChildChoresWithStatus(db *sql.DB, parentID, childID int64, date string) 
 		var childIDNull sql.NullInt64
 		var reqApprovalInt, activeInt int
 		var compID sql.NullInt64
-		var compStatus, compNotes sql.NullString
+		var compStatus, compNotes, compRejection sql.NullString
 
 		if err := rows.Scan(
 			&cws.ID, &cws.ParentID, &childIDNull, &encName, &encDesc,
 			&cws.Amount, &cws.Currency, &cws.Frequency, &cws.Icon,
 			&reqApprovalInt, &activeInt, &cws.CreatedAt,
 			&cws.CompletionMode, &cws.MinTeamSize, &cws.TeamBonusPct,
-			&compID, &compStatus, &compNotes,
+			&compID, &compStatus, &compNotes, &compRejection,
 		); err != nil {
 			return nil, err
 		}
@@ -307,6 +307,10 @@ func GetChildChoresWithStatus(db *sql.DB, parentID, childID int64, date string) 
 		if compNotes.Valid {
 			dec := decryptOrPlaintext(compNotes.String)
 			cws.CompletionNotes = &dec
+		}
+		if compRejection.Valid && compRejection.String != "" {
+			dec := decryptOrPlaintext(compRejection.String)
+			cws.CompletionRejectionReason = &dec
 		}
 		if cws.CompletionMode == "team" {
 			teamChoreIDs = append(teamChoreIDs, cws.ID)
@@ -484,12 +488,12 @@ func ApproveCompletion(db *sql.DB, completionID, parentID int64) (*Completion, e
 }
 
 // RejectCompletion sets a pending completion's status to rejected.
-// reason is stored as notes; pass "" to leave notes unchanged.
+// reason is stored encrypted in rejection_reason; the kid's own notes are left untouched.
 func RejectCompletion(db *sql.DB, completionID, parentID int64, reason string) (*Completion, error) {
-	return resolveCompletion(db, completionID, parentID, "rejected", reason)
+	return resolveCompletion(db, completionID, parentID, "rejected", strings.TrimSpace(reason))
 }
 
-func resolveCompletion(db *sql.DB, completionID, parentID int64, status, notes string) (*Completion, error) {
+func resolveCompletion(db *sql.DB, completionID, parentID int64, status, rejectionReason string) (*Completion, error) {
 	var comp Completion
 	var encNotes string
 	var approvedBy sql.NullInt64
@@ -523,21 +527,19 @@ func resolveCompletion(db *sql.DB, completionID, parentID int64, status, notes s
 
 	now := nowRFC3339()
 
-	var encNewNotes string
-	if notes != "" {
-		encNewNotes, err = encryption.EncryptField(notes)
+	var encReason string
+	if rejectionReason != "" {
+		encReason, err = encryption.EncryptField(rejectionReason)
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		encNewNotes = encNotes
 	}
 
 	_, err = db.Exec(`
 		UPDATE allowance_completions
-		SET status = ?, approved_by = ?, approved_at = ?, notes = ?
+		SET status = ?, approved_by = ?, approved_at = ?, rejection_reason = ?
 		WHERE id = ?
-	`, status, parentID, now, encNewNotes, completionID)
+	`, status, parentID, now, encReason, completionID)
 	if err != nil {
 		return nil, err
 	}
@@ -545,11 +547,8 @@ func resolveCompletion(db *sql.DB, completionID, parentID int64, status, notes s
 	comp.Status = status
 	comp.ApprovedBy = &parentID
 	comp.ApprovedAt = &now
-	if notes != "" {
-		comp.Notes = notes
-	} else {
-		comp.Notes = decryptOrPlaintext(encNotes)
-	}
+	comp.Notes = decryptOrPlaintext(encNotes)
+	comp.RejectionReason = rejectionReason
 	return &comp, nil
 }
 

@@ -6,6 +6,7 @@ import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
 import RecordCompletionModal from '../components/allowance/RecordCompletionModal'
+import RejectReasonDialog from '../components/allowance/RejectReasonDialog'
 import ToastList from '../components/ToastList'
 import { useToast } from '../hooks/useToast'
 import { useTabFetch } from '../hooks/useTabFetch'
@@ -179,6 +180,11 @@ export default function AllowancePage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
   const [batchRunning, setBatchRunning] = useState(false)
   const selectAllRef = useRef<HTMLInputElement>(null)
+
+  // Reject reason dialog: which completion(s) the parent is about to reject.
+  // Batch targets capture their ids when the dialog opens so the count stays stable.
+  const [rejectTarget, setRejectTarget] = useState<{ kind: 'single'; id: number } | { kind: 'batch'; ids: number[] } | null>(null)
+  const [rejectSubmitting, setRejectSubmitting] = useState(false)
 
   // Chores tab state
   const [chores, setChores] = useState<Chore[]>([])
@@ -359,20 +365,27 @@ export default function AllowancePage() {
     }
   }
 
-  const handleReject = async (id: number) => {
+  const handleReject = (id: number) => {
+    setRejectTarget({ kind: 'single', id })
+  }
+
+  // Returns whether the request succeeded so the reason dialog can stay open on failure.
+  const performReject = async (id: number, reason: string): Promise<boolean> => {
     setActionError('')
     try {
       const res = await fetch(`/api/allowance/reject/${id}`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: '' }),
+        body: JSON.stringify({ reason }),
       })
       if (!res.ok) throw new Error()
       setPending(prev => prev.filter(c => c.id !== id))
       payoutsFetch.invalidate()
+      return true
     } catch {
       setActionError(t('errors.actionFailed'))
+      return false
     }
   }
 
@@ -413,10 +426,17 @@ export default function AllowancePage() {
     setSelectedIds(allPendingSelected ? new Set() : new Set(pending.map(c => c.id)))
   }
 
-  const handleBatchAction = async (action: 'approve' | 'reject') => {
-    const ids = selectedPendingIds
-    if (ids.length === 0 || batchRunning) return
+  const handleBatchAction = (action: 'approve' | 'reject') => {
+    if (selectedPendingIds.length === 0 || batchRunning) return
+    if (action === 'reject') {
+      setRejectTarget({ kind: 'batch', ids: selectedPendingIds })
+      return
+    }
+    void performBatchAction('approve', selectedPendingIds, '')
+  }
 
+  // Returns whether the request went through (partial failures included).
+  const performBatchAction = async (action: 'approve' | 'reject', ids: number[], reason: string): Promise<boolean> => {
     setBatchRunning(true)
     setActionError('')
     try {
@@ -424,8 +444,8 @@ export default function AllowancePage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        // Rejection sends the same empty reason as the single-item path.
-        body: JSON.stringify(action === 'reject' ? { ids, reason: '' } : { ids }),
+        // Rejection applies one shared reason to every selected completion.
+        body: JSON.stringify(action === 'reject' ? { ids, reason } : { ids }),
       })
       if (!res.ok) throw new Error()
       const data: BatchCompletionResponse = await res.json()
@@ -462,11 +482,25 @@ export default function AllowancePage() {
         )
         setSelectionMode(false)
       }
+      return true
     } catch {
       setActionError(t('errors.actionFailed'))
+      return false
     } finally {
       setBatchRunning(false)
     }
+  }
+
+  // The dialog stays open while the request runs and after a failure, so the typed reason isn't lost.
+  const handleRejectConfirm = async (reason: string) => {
+    const target = rejectTarget
+    if (!target || rejectSubmitting) return
+    setRejectSubmitting(true)
+    const ok = target.kind === 'single'
+      ? await performReject(target.id, reason)
+      : await performBatchAction('reject', target.ids, reason)
+    setRejectSubmitting(false)
+    if (ok) setRejectTarget(null)
   }
 
   const handleSaveChore = async () => {
@@ -1609,6 +1643,17 @@ export default function AllowancePage() {
         onConfirm={() => deactivateConfirmChore && handleDeactivateChore(deactivateConfirmChore.id)}
         title={t('actions.deactivate')}
         message={deactivateConfirmChore ? t('confirmDeactivate', { name: deactivateConfirmChore.name }) : undefined}
+      />
+      <RejectReasonDialog
+        open={rejectTarget !== null}
+        count={rejectTarget?.kind === 'batch' ? rejectTarget.ids.length : 1}
+        submitting={rejectSubmitting}
+        error={actionError || undefined}
+        onCancel={() => {
+          setRejectTarget(null)
+          setActionError('')
+        }}
+        onConfirm={reason => void handleRejectConfirm(reason)}
       />
       <RecordCompletionModal
         open={recordChore !== null}
