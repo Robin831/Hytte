@@ -390,6 +390,7 @@ describe('parseWorkSettings', () => {
   it('returns the defaults when no preference is set', () => {
     expect(parseWorkSettings({})).toEqual(DEFAULT_WORK_SETTINGS)
     expect(DEFAULT_WORK_SETTINGS).toEqual({ standard_day_minutes: 450, lunch_minutes: 30, rounding_minutes: 30 })
+    expect(Object.isFrozen(DEFAULT_WORK_SETTINGS)).toBe(true)
   })
 
   it('uses valid stored values', () => {

@@ -68,12 +68,16 @@ const MAX_LIVE_PUNCH_WRAP_DAYS = 1
 // Mirrors strconv.Atoi: optional sign, then decimal digits only.
 const ATOI_RE = /^[+-]?\d+$/
 
-/** Go's DefaultSettings (internal/workhours/calculator.go). */
-export const DEFAULT_WORK_SETTINGS: WorkSettings = {
+/**
+ * Go's DefaultSettings (internal/workhours/calculator.go). Frozen because it is
+ * shared: Go returns a fresh value per call, so a mutation here must not leak
+ * into later DayView mounts or parseWorkSettings fallbacks.
+ */
+export const DEFAULT_WORK_SETTINGS: Readonly<WorkSettings> = Object.freeze({
   standard_day_minutes: 450,
   lunch_minutes: 30,
   rounding_minutes: 30,
-}
+})
 
 /**
  * Builds WorkSettings from the user's preferences, mirroring Go's loadSettings
