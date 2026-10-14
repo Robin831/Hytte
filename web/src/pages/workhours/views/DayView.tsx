@@ -5,15 +5,18 @@ import { formatDate } from '../../../utils/formatDate'
 import { Skeleton } from '../../../components/ui/skeleton'
 import { Select, type SelectOption } from '../../../components/ui/select'
 import { TimePicker } from '../../../components/ui/time-picker'
+import { findSessionOverlaps } from '../../workHoursUtils'
 import {
-  calculateDayWithLivePunch,
-  findSessionOverlaps,
+  applyRedemption,
+  calculateDay,
+  DEFAULT_WORK_SETTINGS,
   isPunchStale,
+  liveSegmentMinutes,
+  parseWorkSettings,
   sessionMinutes,
-  type WorkSession,
-  type WorkSettings,
-} from '../../workHoursUtils'
-import type { DaySummary, FlexState, LeaveDay, LeaveType, WorkDay, WorkDeductionPreset } from '../types'
+  type DaySummaryCalc,
+} from '../calculateDay'
+import type { DaySummary, FlexState, LeaveDay, LeaveType, WorkDay, WorkDeductionPreset, WorkSession, WorkSettings } from '../types'
 import {
   buildNavHolidaySet,
   currentTimeHHMM,
@@ -90,7 +93,10 @@ export default function DayView({
   const [leaveSaving, setLeaveSaving] = useState(false)
   const [redeemingFlex, setRedeemingFlex] = useState(false)
   const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null)
-  const [workSettings, setWorkSettings] = useState<WorkSettings>({ standard_day_minutes: 450, lunch_minutes: 30, rounding_minutes: 30 })
+  const [workSettings, setWorkSettings] = useState<WorkSettings>(DEFAULT_WORK_SETTINGS)
+  // Until the user's own settings arrive the saved totals come straight from
+  // the server, which already applied them; see summary below.
+  const [workSettingsLoaded, setWorkSettingsLoaded] = useState(false)
   const [now, setNow] = useState(() => new Date())
   const [recentlyUsed, setRecentlyUsed] = useState<number[]>(() => {
     try {
@@ -184,17 +190,8 @@ export default function DayView({
     api.getPreferences()
       .then(prefs => {
         if (prefs) {
-          const parsePref = (val: string | undefined, fallback: number, requirePositive = false): number => {
-            const n = parseInt(val ?? '', 10)
-            if (!Number.isFinite(n)) return fallback
-            if (requirePositive && n <= 0) return fallback
-            return n
-          }
-          setWorkSettings({
-            standard_day_minutes: parsePref(prefs.work_hours_standard_day, 450, true),
-            lunch_minutes: parsePref(prefs.work_hours_lunch_minutes, 30),
-            rounding_minutes: parsePref(prefs.work_hours_rounding, 30, true),
-          })
+          setWorkSettings(parseWorkSettings(prefs))
+          setWorkSettingsLoaded(true)
         }
       })
       .catch(() => {})
@@ -700,7 +697,7 @@ export default function DayView({
   }
 
   const day = dayData?.day ?? null
-  const summary = dayData?.summary ?? null
+  const serverSummary = dayData?.summary ?? null
   const lunchChecked = day?.lunch ?? false
   const sessions = day?.sessions ?? []
   const overlaps = useMemo(() => findSessionOverlaps(day?.sessions ?? []), [day])
@@ -716,6 +713,39 @@ export default function DayView({
     )
   }
   const deductions = day?.deductions ?? []
+
+  // Flex redeemed for this date, which the server credits into reported and
+  // balance after CalculateDay; both paths below must credit it the same way.
+  const redeemedMinutes = serverSummary?.redeemed_minutes ?? 0
+
+  // Saved totals go through the shared calculateDay mirror of the Go
+  // calculator, so they always agree with the live estimate. The server's
+  // summary is the fallback while settings load or if a stored time is
+  // malformed (where the Go calculator would have failed too).
+  const summary = useMemo<DaySummary | null>(() => {
+    if (!serverSummary || !day || !workSettingsLoaded) return serverSummary
+    let calc: DaySummaryCalc
+    try {
+      calc = applyRedemption(
+        calculateDay(day.sessions ?? [], day.deductions ?? [], workSettings, { lunch: day.lunch }),
+        redeemedMinutes,
+      )
+    } catch {
+      return serverSummary
+    }
+    return {
+      ...serverSummary,
+      gross_minutes: calc.gross,
+      lunch_minutes: calc.lunch,
+      deduction_minutes: calc.deductions,
+      net_minutes: calc.net,
+      reported_minutes: calc.reported,
+      reported_hours: calc.reported / 60,
+      remainder_minutes: calc.remainder,
+      standard_minutes: workSettings.standard_day_minutes,
+      balance_minutes: calc.balance,
+    }
+  }, [serverSummary, day, workSettings, workSettingsLoaded, redeemedMinutes])
 
   const sortedPresets = [...presets].sort((a, b) => {
     const aIdx = recentlyUsed.indexOf(a.id)
@@ -932,7 +962,25 @@ export default function DayView({
                 open punch's elapsed time, so it is only meaningful on the day the
                 punch-in itself belongs to. */}
             {punchStart !== null && (punchDate === null || punchDate === currentDate) && (() => {
-              const estimate = calculateDayWithLivePunch(now, punchStart, sessions, lunchChecked, deductions, workSettings, punchDate)
+              // The live segment is null when it cannot be measured (stale
+              // punch-in, malformed or future start); calculateDay would count
+              // it as 0, so check it first to show why instead.
+              let estimate: DaySummaryCalc | null = null
+              if (liveSegmentMinutes(punchStart, now, punchDate) !== null) {
+                try {
+                  estimate = applyRedemption(
+                    calculateDay(sessions, deductions, workSettings, {
+                      lunch: lunchChecked,
+                      openPunchStart: punchStart,
+                      openPunchDate: punchDate,
+                      now,
+                    }),
+                    redeemedMinutes,
+                  )
+                } catch {
+                  estimate = null
+                }
+              }
               if (!estimate) {
                 // A punch-in that has been open for longer than the allowed
                 // wrap is forgotten, not running — say so instead of claiming
@@ -948,8 +996,8 @@ export default function DayView({
                   </div>
                 )
               }
-              const overStandard = estimate.reportedMinutes > estimate.standardMinutes
-              const atStandard = estimate.reportedMinutes >= estimate.standardMinutes
+              const overStandard = estimate.balance > 0
+              const atStandard = estimate.balance >= 0
               return (
                 <section
                   className={`rounded-lg border px-3 py-2.5 text-sm ${atStandard ? 'border-green-700/50 bg-green-900/20' : 'border-gray-700 bg-gray-800/50'}`}
@@ -960,25 +1008,25 @@ export default function DayView({
                   <div className="flex flex-wrap gap-x-4 gap-y-1">
                     <div>
                       <span className="text-gray-400 text-xs">{t('workhours:punchEstimate.net')}</span>{' '}
-                      <span className="text-white font-mono text-sm">{formatMins(estimate.netMinutes)}</span>
+                      <span className="text-white font-mono text-sm">{formatMins(estimate.net)}</span>
                     </div>
                     <div>
                       <span className="text-gray-400 text-xs">{t('workhours:punchEstimate.reported')}</span>{' '}
-                      <span className="text-white font-mono text-sm">{formatMins(estimate.reportedMinutes)}</span>
+                      <span className="text-white font-mono text-sm">{formatMins(estimate.reported)}</span>
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-500">
-                    <span>{t('workhours:punchEstimate.gross')}: <span className="font-mono">{formatMins(estimate.grossMinutes)}</span></span>
-                    {estimate.lunchMinutes > 0 && (
-                      <span>{t('workhours:punchEstimate.lunch')}: <span className="font-mono">{formatMins(estimate.lunchMinutes)}</span></span>
+                    <span>{t('workhours:punchEstimate.gross')}: <span className="font-mono">{formatMins(estimate.gross)}</span></span>
+                    {estimate.lunch > 0 && (
+                      <span>{t('workhours:punchEstimate.lunch')}: <span className="font-mono">{formatMins(estimate.lunch)}</span></span>
                     )}
-                    {estimate.deductionMinutes > 0 && (
-                      <span>{t('workhours:punchEstimate.deductions')}: <span className="font-mono">{formatMins(estimate.deductionMinutes)}</span></span>
+                    {estimate.deductions > 0 && (
+                      <span>{t('workhours:punchEstimate.deductions')}: <span className="font-mono">{formatMins(estimate.deductions)}</span></span>
                     )}
                   </div>
                   {overStandard && (
                     <div className="mt-1 text-xs text-green-400">
-                      {t('workhours:punchEstimate.overStandard', { amount: formatMins(estimate.reportedMinutes - estimate.standardMinutes) })}
+                      {t('workhours:punchEstimate.overStandard', { amount: formatMins(estimate.balance) })}
                     </div>
                   )}
                   {atStandard && !overStandard && (
