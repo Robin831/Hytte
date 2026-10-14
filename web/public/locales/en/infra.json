@@ -24,6 +24,13 @@
   },
   "moduleDisabled": "Module disabled",
   "lastChecked": "Last checked: {{time}}",
+  "updatedAgo": "Updated {{time}}",
+  "justNow": "just now",
+  "neverUpdated": "Not updated yet",
+  "staleBanner": "Can't reach the server. The status below may be out of date.",
+  "sessionExpired": "Your session has expired. Sign in again to keep the status up to date.",
+  "retry": "Retry",
+  "signIn": "Sign in",
   "toggle": {
     "disable": "Disable module",
     "enable": "Enable module",

@@ -24,6 +24,13 @@
   },
   "moduleDisabled": "Modul deaktivert",
   "lastChecked": "Sist sjekket: {{time}}",
+  "updatedAgo": "Oppdatert {{time}}",
+  "justNow": "akkurat nå",
+  "neverUpdated": "Ikke oppdatert ennå",
+  "staleBanner": "Får ikke kontakt med serveren. Statusen nedenfor kan være utdatert.",
+  "sessionExpired": "Økten din er utløpt. Logg inn på nytt for å holde statusen oppdatert.",
+  "retry": "Prøv igjen",
+  "signIn": "Logg inn",
   "toggle": {
     "disable": "Deaktiver modul",
     "enable": "Aktiver modul",
