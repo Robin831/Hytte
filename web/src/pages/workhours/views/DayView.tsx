@@ -1,39 +1,19 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Building2, Calendar, Check, ChevronLeft, ChevronRight, Clock, Copy, Pencil, Plus, Trash2, X } from 'lucide-react'
-import { formatDate } from '../../../utils/formatDate'
+import { Clock, Copy } from 'lucide-react'
 import { Skeleton } from '../../../components/ui/skeleton'
-import { Select, type SelectOption } from '../../../components/ui/select'
-import { TimePicker } from '../../../components/ui/time-picker'
-import { findSessionOverlaps } from '../../workHoursUtils'
-import {
-  applyRedemption,
-  calculateDay,
-  DEFAULT_WORK_SETTINGS,
-  parseWorkSettings,
-  sessionMinutes,
-  type DaySummaryCalc,
-} from '../calculateDay'
-import type { DaySummary, FlexState, LeaveDay, LeaveType, WorkDay, WorkDeductionPreset, WorkSession, WorkSettings } from '../types'
-import {
-  buildNavHolidaySet,
-  formatMins,
-  getNorwegianHolidays,
-  localDateStr,
-  nextWeekday,
-  prevWeekday,
-} from '../dateUtils'
-import { normalizePresetIcon } from '../presetIcons'
-import { SessionConflict, useWorkHoursApi, type PunchOutResult } from '../useWorkHoursApi'
+import type { LeaveType } from '../types'
+import { getNorwegianHolidays } from '../dateUtils'
+import type { PunchOutResult } from '../useWorkHoursApi'
 import type { PunchClock } from '../usePunchClock'
-
-type ConflictCause = 'save' | 'toggle' | 'copy'
-
-const CONFLICT_MESSAGE_KEYS = {
-  save: 'workhours:sessionConflict',
-  toggle: 'workhours:sessionConflictToggle',
-  copy: 'workhours:sessionConflictCopy',
-} as const satisfies Record<ConflictCause, string>
+import { useDayEntry } from '../useDayEntry'
+import { useFlex } from '../useFlex'
+import SessionList from '../components/SessionList'
+import DeductionList from '../components/DeductionList'
+import LiveEstimateCard from '../components/LiveEstimateCard'
+import DaySummaryCard from '../components/DaySummaryCard'
+import DayNavigator from '../components/DayNavigator'
+import FlexPoolCard from '../components/FlexPoolCard'
 
 export default function DayView({
   currentDate,
@@ -53,669 +33,48 @@ export default function DayView({
   onBusyChange: (busy: boolean) => void
 }) {
   const { t } = useTranslation(['workhours', 'common'])
-  const api = useWorkHoursApi()
 
-  const navYear = parseInt(currentDate.split('-')[0])
-  const navHolidaySet = useMemo(() => buildNavHolidaySet(navYear), [navYear])
-
-  const currentDateRef = useRef(currentDate)
-  const leaveDaysCacheRef = useRef<Map<string, LeaveDay[]>>(new Map())
-  const datePickerRef = useRef<HTMLInputElement>(null)
-  const [dayData, setDayData] = useState<{ day: WorkDay | null; summary: DaySummary | null } | null>(null)
-  const [presets, setPresets] = useState<WorkDeductionPreset[]>([])
-  const [flex, setFlex] = useState<FlexState | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [newStart, setNewStart] = useState('')
-  const [newEnd, setNewEnd] = useState('')
-  const [newIsInternal, setNewIsInternal] = useState(false)
-  const [newCrossesMidnight, setNewCrossesMidnight] = useState(false)
-  // Session ids are per day, so the open editor is tagged with the day it was
-  // opened on and derived away on a day change instead of being reset in an effect.
-  const [editSession, setEditSession] = useState<{ date: string; id: number } | null>(null)
-  const [editStart, setEditStart] = useState('')
-  const [editEnd, setEditEnd] = useState('')
-  const [editCrossesMidnight, setEditCrossesMidnight] = useState(false)
-  // Overlap conflict from the last rejected save, shown inline next to the form
-  // it came from: 'add' for the add-session row, or the id of the edited session.
-  // Tagged with its day like editSession so it disappears on a day change.
-  // `cause` picks the message: a rejected save of typed times, an internal
-  // toggle on a stored overlap, or a copy-yesterday that stopped part way.
-  const [sessionConflict, setSessionConflict] = useState<{ date: string; target: 'add' | number; cause: ConflictCause; conflict: WorkSession } | null>(null)
-  const [newDeductionName, setNewDeductionName] = useState('')
-  const [newDeductionMinutes, setNewDeductionMinutes] = useState('')
-  const [leaveDay, setLeaveDay] = useState<LeaveDay | null>(null)
-  const [leaveSaving, setLeaveSaving] = useState(false)
-  const [redeemingFlex, setRedeemingFlex] = useState(false)
-  const [selectedPresetId, setSelectedPresetId] = useState<number | null>(null)
-  const [workSettings, setWorkSettings] = useState<WorkSettings>(DEFAULT_WORK_SETTINGS)
-  // Until the user's own settings arrive the saved totals come straight from
-  // the server, which already applied them; see summary below.
-  const [workSettingsLoaded, setWorkSettingsLoaded] = useState(false)
-  const [recentlyUsed, setRecentlyUsed] = useState<number[]>(() => {
-    try {
-      const stored = localStorage.getItem('workhours_recent_presets')
-      if (!stored) return []
-      const parsed: unknown = JSON.parse(stored)
-      if (!Array.isArray(parsed)) return []
-      return parsed.filter((v): v is number => typeof v === 'number' && isFinite(v))
-    } catch {
-      return []
-    }
+  const flexPool = useFlex()
+  const flex = flexPool.flex
+  const entry = useDayEntry({
+    date: currentDate,
+    openPunchStart: punch.openPunch?.start ?? null,
+    lastPunchOut,
+    onFlexChanged: flexPool.reload,
   })
-
-  // The add-session form starts from the open punch's start time and follows
-  // edits to it; a new punch-in or a closed punch also clears the end time.
-  const openPunchStart = punch.openPunch?.start ?? null
-  const [prefilledPunchStart, setPrefilledPunchStart] = useState<string | null>(null)
-  if (openPunchStart !== prefilledPunchStart) {
-    setPrefilledPunchStart(openPunchStart)
-    setNewStart(openPunchStart ?? '')
-    if (prefilledPunchStart === null || openPunchStart === null) setNewEnd('')
-  }
-
-  const editSessionId = editSession && editSession.date === currentDate ? editSession.id : null
-  const activeConflict = sessionConflict && sessionConflict.date === currentDate ? sessionConflict : null
-  // Records a 409 overlap from a session save; anything else is rethrown.
-  const reportConflict = (err: unknown, target: 'add' | number, cause: ConflictCause) => {
-    if (!(err instanceof SessionConflict)) throw err
-    setSessionConflict({ date: currentDate, target, cause, conflict: err.conflict })
-  }
-  const setEditSessionId = useCallback((id: number | null) => {
-    setEditSession(id === null ? null : { date: currentDate, id })
-  }, [currentDate])
+  const { navHolidaySet, leaveDay, leaveSaving, sessions, summary } = entry
 
   useEffect(() => {
-    currentDateRef.current = currentDate
-  }, [currentDate])
-
-  const loadFlex = useCallback(() => {
-    api.getFlex()
-      .then(data => setFlex(data))
-      .catch(() => {})
-  }, [api])
-
-  const loadDay = useCallback(async (date: string, signal?: AbortSignal) => {
-    setLoading(true)
-    try {
-      const data = await api.getDay(date, signal)
-      if (signal?.aborted || currentDateRef.current !== date) return
-      if (data) {
-        if (currentDateRef.current === date) setDayData(data)
-      } else {
-        if (currentDateRef.current === date) setDayData({ day: null, summary: null })
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      if (currentDateRef.current === date) setDayData({ day: null, summary: null })
-    } finally {
-      if (!signal?.aborted && currentDateRef.current === date) {
-        setLoading(false)
-      }
-    }
-  }, [api])
-
-  const handleFlexRedeem = useCallback(async () => {
-    setRedeemingFlex(true)
-    try {
-      const res = await api.redeemFlex(currentDateRef.current)
-      if (res.ok) {
-        loadFlex()
-        loadDay(currentDateRef.current)
-      } else {
-        alert(res.error ?? t('workhours:redeemFlexError'))
-      }
-    } catch {
-      alert(t('workhours:redeemFlexError'))
-    } finally {
-      setRedeemingFlex(false)
-    }
-  }, [api, loadFlex, loadDay, t])
-
-  useEffect(() => {
-    api.getPresets()
-      .then(setPresets)
-      .catch(() => {})
-    loadFlex()
-    api.getPreferences()
-      .then(prefs => {
-        if (prefs) {
-          setWorkSettings(parseWorkSettings(prefs))
-          setWorkSettingsLoaded(true)
-        }
-      })
-      .catch(() => {})
-  }, [api, loadFlex])
-
-  const loadLeaveDay = useCallback(async (date: string, signal?: AbortSignal) => {
-    try {
-      const year = date.slice(0, 4)
-      const cached = leaveDaysCacheRef.current.get(year)
-      if (cached) {
-        if (currentDateRef.current === date) {
-          setLeaveDay(cached.find(d => d.date === date) ?? null)
-        }
-        return
-      }
-      const data = await api.getLeaveForYear(year, signal)
-      if (signal?.aborted || currentDateRef.current !== date) return
-      if (data) {
-        leaveDaysCacheRef.current.set(year, data.leave_days)
-        if (currentDateRef.current === date) {
-          setLeaveDay(data.leave_days.find(d => d.date === date) ?? null)
-        }
-      } else {
-        if (currentDateRef.current === date) setLeaveDay(null)
-      }
-    } catch (err) {
-      if (err instanceof Error && err.name === 'AbortError') return
-      console.error('workhours: load leave day:', err)
-      if (currentDateRef.current === date) setLeaveDay(null)
-    }
-  }, [api])
-
-  useEffect(() => {
-    const controller = new AbortController()
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadDay(currentDate, controller.signal)
-    loadLeaveDay(currentDate, controller.signal)
-    return () => controller.abort()
-  }, [currentDate, loadDay, loadLeaveDay])
-
-  // A punch-out saved a session; show the saved day and reload flex. When it
-  // landed on another day the clock has already moved the view there, and
-  // the ref effect above has caught up by the time this runs.
-  const seenPunchOutRef = useRef(lastPunchOut)
-  useEffect(() => {
-    if (!lastPunchOut || seenPunchOutRef.current === lastPunchOut) return
-    seenPunchOutRef.current = lastPunchOut
-    if (lastPunchOut.date === currentDateRef.current) {
-      setDayData({ day: lastPunchOut.day, summary: lastPunchOut.summary })
-    }
-    loadFlex()
-  }, [lastPunchOut, loadFlex])
-
-  useEffect(() => {
-    onBusyChange(saving)
+    onBusyChange(entry.saving)
     return () => onBusyChange(false)
-  }, [saving, onBusyChange])
+  }, [entry.saving, onBusyChange])
 
-  const ensureDay = async (lunch?: boolean): Promise<WorkDay | null> => {
-    const targetDate = currentDate
-    const body = {
-      date: targetDate,
-      lunch: lunch !== undefined ? lunch : (dayData?.day?.lunch ?? false),
-    }
-    try {
-      const data = await api.saveDay(body)
-      if (!data) return null
-      if (currentDateRef.current !== targetDate) return null
-      setDayData(data)
-      loadFlex()
-      return data.day
-    } catch {
-      return null
-    }
+  const handleFlexRedeem = async () => {
+    if (await flexPool.redeem(currentDate)) entry.reload()
   }
 
-  const handleLunchToggle = async () => {
-    setSaving(true)
-    try {
-      await ensureDay(!(dayData?.day?.lunch ?? false))
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // Resolves the "ends next day" flag for the entered times. The flag is never
-  // set behind the user's back: an end before the start is only treated as
-  // next-day after an explicit confirmation (or after ticking the checkbox).
-  // Returns null when the combination is invalid and nothing should be saved.
-  const resolveCrossesMidnight = (start: string, end: string, checked: boolean): boolean | null => {
-    if (checked) {
-      // Mirror the server-side rule so a bad combination gets a clear message
-      // instead of a silent failure.
-      if (end >= start) {
-        alert(t('workhours:crossesMidnightRangeError'))
-        return null
-      }
-      return true
-    }
-    if (end === start) {
-      alert(t('workhours:sessionRangeError'))
-      return null
-    }
-    if (end < start) {
-      if (!confirm(t('workhours:sessionCrossesMidnightConfirm', { start, end }))) return null
-      return true
-    }
-    return false
-  }
-
-  const handleAddSession = async () => {
-    if (!newStart || !newEnd) return
-    const crossesMidnight = resolveCrossesMidnight(newStart, newEnd, newCrossesMidnight)
-    if (crossesMidnight === null) return
-    setSaving(true)
-    try {
-      let day = dayData?.day ?? null
-      if (!day) {
-        day = await ensureDay()
-        if (!day) return
-      }
-      const sortOrder = day.sessions?.length ?? 0
-      const ok = await api.addSession({
-        day_id: day.id,
-        start_time: newStart,
-        end_time: newEnd,
-        sort_order: sortOrder,
-        is_internal: newIsInternal,
-        crosses_midnight: crossesMidnight,
-      })
-      if (ok) {
-        setSessionConflict(null)
-        setNewStart('')
-        setNewEnd('')
-        setNewIsInternal(false)
-        setNewCrossesMidnight(false)
-        await loadDay(currentDate)
-        loadFlex()
-      }
-    } catch (err) {
-      reportConflict(err, 'add', 'save')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleDeleteSession = async (sessionID: number) => {
-    setSaving(true)
-    try {
-      const ok = await api.deleteSession(sessionID)
-      if (ok) {
-        // The message may name the deleted session.
-        setSessionConflict(null)
-        await loadDay(currentDate)
-        loadFlex()
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleStartEditSession = (session: WorkSession) => {
-    setSessionConflict(null)
-    setEditSessionId(session.id)
-    setEditStart(session.start_time)
-    setEditEnd(session.end_time)
-    setEditCrossesMidnight(session.crosses_midnight)
-  }
-
-  const handleCancelEditSession = () => {
-    setSessionConflict(null)
-    setEditSessionId(null)
-  }
-
-  // Saves an edited session. Times and the "ends next day" flag are edited
-  // together, so a wrongly flagged session can be corrected without deleting it.
-  const handleSaveEditSession = async (session: WorkSession) => {
-    if (!editStart || !editEnd) return
-    const crossesMidnight = resolveCrossesMidnight(editStart, editEnd, editCrossesMidnight)
-    if (crossesMidnight === null) return
-    setSaving(true)
-    try {
-      const ok = await api.updateSession(session.id, {
-        start_time: editStart,
-        end_time: editEnd,
-        sort_order: session.sort_order,
-        is_internal: session.is_internal,
-        crosses_midnight: crossesMidnight,
-      })
-      if (!ok) {
-        alert(t('workhours:punchSaveError'))
-        return
-      }
-      setSessionConflict(null)
-      setEditSessionId(null)
-      await loadDay(currentDate)
-      loadFlex()
-    } catch (err) {
-      reportConflict(err, session.id, 'save')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleToggleInternal = async (session: WorkSession) => {
-    setSaving(true)
-    try {
-      const ok = await api.updateSession(session.id, {
-        start_time: session.start_time,
-        end_time: session.end_time,
-        sort_order: session.sort_order,
-        is_internal: !session.is_internal,
-        crosses_midnight: session.crosses_midnight,
-      })
-      if (!ok) {
-        console.error('Failed to toggle internal flag')
-        return
-      }
-      setSessionConflict(null)
-      await loadDay(currentDate)
-    } catch (err) {
-      // The times are unchanged, but a session already stored overlapping
-      // another is still rejected by the server's overlap check.
-      reportConflict(err, session.id, 'toggle')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handlePresetToggle = async (preset: WorkDeductionPreset) => {
-    const existing = dayData?.day?.deductions.find(d => d.preset_id === preset.id)
-    setSaving(true)
-    try {
-      if (existing) {
-        const ok = await api.deleteDeduction(existing.id)
-        if (ok) {
-          await loadDay(currentDate)
-          loadFlex()
-        }
-      } else {
-        let day = dayData?.day ?? null
-        if (!day) {
-          day = await ensureDay()
-          if (!day) return
-        }
-        const ok = await api.addDeduction({
-          day_id: day.id,
-          name: preset.name,
-          minutes: preset.default_minutes,
-          preset_id: preset.id,
-        })
-        if (ok) {
-          await loadDay(currentDate)
-          loadFlex()
-        }
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleAddDeduction = async () => {
-    const name = newDeductionName.trim()
-    const minutes = parseInt(newDeductionMinutes, 10)
-    if (!name || !minutes || minutes <= 0) return
-    setSaving(true)
-    try {
-      let day = dayData?.day ?? null
-      if (!day) {
-        day = await ensureDay()
-        if (!day) return
-      }
-      const ok = await api.addDeduction({ day_id: day.id, name, minutes })
-      if (ok) {
-        if (selectedPresetId !== null) {
-          const updated = [selectedPresetId, ...recentlyUsed.filter(id => id !== selectedPresetId)].slice(0, 10)
-          try {
-            localStorage.setItem('workhours_recent_presets', JSON.stringify(updated))
-          } catch {
-            // storage unavailable or quota exceeded — non-fatal
-          }
-          setRecentlyUsed(updated)
-          setSelectedPresetId(null)
-        }
-        setNewDeductionName('')
-        setNewDeductionMinutes('')
-        await loadDay(currentDate)
-        loadFlex()
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleDeleteDeduction = async (deductionID: number) => {
-    setSaving(true)
-    try {
-      const ok = await api.deleteDeduction(deductionID)
-      if (ok) {
-        await loadDay(currentDate)
-        loadFlex()
-      }
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handlePresetDropdownSelect = (val: string) => {
-    if (!val) {
-      setSelectedPresetId(null)
-      return
-    }
-    const presetId = parseInt(val, 10)
-    const preset = presets.find(p => p.id === presetId)
-    if (!preset) return
-    setSelectedPresetId(presetId)
-    setNewDeductionName(preset.name)
-    setNewDeductionMinutes(String(preset.default_minutes))
-  }
-
-  const handleCopyYesterday = async () => {
-    if (sessions.length > 0) return
-    const yesterday = prevWeekday(currentDate, navHolidaySet)
-    setSaving(true)
-    try {
-      const data = await api.getDay(yesterday)
-      if (!data?.day?.sessions?.length) return
-
-      let d = dayData?.day ?? null
-      if (!d) {
-        d = await ensureDay()
-        if (!d) return
-      }
-
-      for (const session of data.day.sessions) {
-        let ok: boolean
-        try {
-          ok = await api.addSession({
-            day_id: d.id,
-            start_time: session.start_time,
-            end_time: session.end_time,
-            sort_order: (d.sessions?.length ?? 0),
-            is_internal: session.is_internal,
-            crosses_midnight: session.crosses_midnight,
-          })
-        } catch (err) {
-          // Yesterday's sessions overlapped each other; the ones copied before
-          // the conflict are kept.
-          reportConflict(err, 'add', 'copy')
-          break
-        }
-        if (!ok) {
-          console.error('workhours: failed to copy session', session)
-          break
-        }
-        // Keep track so subsequent sessions don't overwrite each other
-        d = { ...d, sessions: [...(d.sessions ?? []), session] }
-      }
-      await loadDay(currentDate)
-      loadFlex()
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  const handleSetLeave = async (leaveType: LeaveType | null) => {
-    setLeaveSaving(true)
-    const targetDate = currentDate
-    try {
-      if (leaveType === null) {
-        const ok = await api.removeLeave(targetDate)
-        if (ok && currentDateRef.current === targetDate) {
-          leaveDaysCacheRef.current.delete(targetDate.slice(0, 4))
-          setLeaveDay(null)
-        }
-      } else {
-        const ld = await api.setLeave(targetDate, leaveType, '')
-        if (ld && currentDateRef.current === targetDate) {
-          leaveDaysCacheRef.current.delete(targetDate.slice(0, 4))
-          setLeaveDay(ld)
-        }
-      }
-    } catch (err) {
-      console.error('workhours: set leave:', err)
-    } finally {
-      setLeaveSaving(false)
-    }
-  }
-
-  const day = dayData?.day ?? null
-  const serverSummary = dayData?.summary ?? null
-  const lunchChecked = day?.lunch ?? false
-  const sessions = day?.sessions ?? []
-  const overlaps = useMemo(() => findSessionOverlaps(day?.sessions ?? []), [day])
-
-  // Inline message for a save rejected because it overlaps another session.
-  const renderSessionConflict = (target: 'add' | number) => {
-    if (!activeConflict || activeConflict.target !== target) return null
-    return (
-      <p role="alert" className="flex items-start gap-1.5 text-xs text-red-400">
-        <AlertTriangle size={14} className="mt-0.5 shrink-0" aria-hidden="true" />
-        <span>{t(CONFLICT_MESSAGE_KEYS[activeConflict.cause], { start: activeConflict.conflict.start_time, end: activeConflict.conflict.end_time })}</span>
-      </p>
-    )
-  }
-  const deductions = day?.deductions ?? []
   // Punch actions and day edits share the form, so either one in flight locks it.
-  const busy = saving || punch.saving
-
-  // Flex redeemed for this date, which the server credits into reported and
-  // balance after CalculateDay; both paths below must credit it the same way.
-  const redeemedMinutes = serverSummary?.redeemed_minutes ?? 0
-
-  // Saved totals go through the shared calculateDay mirror of the Go
-  // calculator, so they always agree with the live estimate. The server's
-  // summary is the fallback while settings load or if a stored time is
-  // malformed (where the Go calculator would have failed too).
-  const summary = useMemo<DaySummary | null>(() => {
-    if (!serverSummary || !day || !workSettingsLoaded) return serverSummary
-    let calc: DaySummaryCalc
-    try {
-      calc = applyRedemption(
-        calculateDay(day.sessions ?? [], day.deductions ?? [], workSettings, { lunch: day.lunch }),
-        redeemedMinutes,
-      )
-    } catch {
-      return serverSummary
-    }
-    return {
-      ...serverSummary,
-      gross_minutes: calc.gross,
-      lunch_minutes: calc.lunch,
-      deduction_minutes: calc.deductions,
-      net_minutes: calc.net,
-      reported_minutes: calc.reported,
-      reported_hours: calc.reported / 60,
-      remainder_minutes: calc.remainder,
-      standard_minutes: workSettings.standard_day_minutes,
-      balance_minutes: calc.balance,
-    }
-  }, [serverSummary, day, workSettings, workSettingsLoaded, redeemedMinutes])
+  const busy = entry.saving || punch.saving
 
   // Live "if punched out now" totals: the shared calculateDay over this day's
   // saved data plus the open punch's elapsed time.
   const liveEstimate = punch.liveEstimate({
     sessions,
-    deductions,
-    settings: workSettings,
-    lunch: lunchChecked,
-    redeemedMinutes,
-  })
-
-  const sortedPresets = [...presets].sort((a, b) => {
-    const aIdx = recentlyUsed.indexOf(a.id)
-    const bIdx = recentlyUsed.indexOf(b.id)
-    if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
-    if (aIdx !== -1) return -1
-    if (bIdx !== -1) return 1
-    return a.sort_order - b.sort_order
+    deductions: entry.deductions,
+    settings: entry.workSettings,
+    lunch: entry.lunch,
+    redeemedMinutes: entry.redeemedMinutes,
   })
 
   const currentYear = parseInt(currentDate.split('-')[0])
   const holidays = getNorwegianHolidays(currentYear)
   const holidayName = holidays.get(currentDate)
 
-  const dateLabel = formatDate(currentDate + 'T12:00:00', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  })
-
   return (
     <div className="space-y-6">
-      {/* Date navigation */}
-      <div className="flex items-center justify-between bg-gray-800 rounded-lg p-3">
-        <button
-          type="button"
-          onClick={() => setCurrentDate(prev => prevWeekday(prev, navHolidaySet))}
-          className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
-          aria-label={t('workhours:prevDay')}
-        >
-          <ChevronLeft size={20} />
-        </button>
-        <div className="relative flex items-center gap-1">
-          <button
-            type="button"
-            onClick={() => {
-              const input = datePickerRef.current
-              if (!input) return
-              // Prefer native showPicker when available, fall back to click/focus for broader browser support
-              if (typeof (input as HTMLInputElement).showPicker === 'function') {
-                ;(input as HTMLInputElement).showPicker()
-              } else {
-                input.click()
-                input.focus()
-              }
-            }}
-            className="flex items-center gap-1 text-sm font-medium text-white capitalize hover:text-blue-300 transition-colors cursor-pointer"
-            title={t('workhours:selectDate')}
-          >
-            <Calendar size={14} className="text-gray-400" />
-            {dateLabel}
-          </button>
-          <input
-            ref={datePickerRef}
-            type="date"
-            value={currentDate}
-            onChange={e => {
-              if (!e.target.value) return
-              const d = new Date(e.target.value + 'T12:00:00')
-              const pickedYear = d.getFullYear()
-              const pickedHolidaySet = buildNavHolidaySet(pickedYear)
-              while (d.getDay() === 0 || d.getDay() === 6 || pickedHolidaySet.has(localDateStr(d))) {
-                d.setDate(d.getDate() - 1)
-              }
-              setCurrentDate(localDateStr(d))
-            }}
-            className="absolute left-0 top-0 opacity-0 pointer-events-none w-0 h-0"
-            aria-hidden="true"
-            tabIndex={-1}
-          />
-        </div>
-        <button
-          type="button"
-          onClick={() => setCurrentDate(prev => nextWeekday(prev, navHolidaySet))}
-          className="p-1 text-gray-400 hover:text-white transition-colors cursor-pointer"
-          aria-label={t('workhours:nextDay')}
-        >
-          <ChevronRight size={20} />
-        </button>
-      </div>
+      <DayNavigator currentDate={currentDate} setCurrentDate={setCurrentDate} navHolidaySet={navHolidaySet} />
 
-      {loading ? (
+      {entry.loading ? (
         <div role="status" aria-live="polite" className="inline-flex items-center gap-2">
           <Skeleton className="h-5 w-24" />
           <span className="sr-only">{t('common:skeleton.loading')}</span>
@@ -739,7 +98,7 @@ export default function DayView({
               {leaveDay && (
                 <button
                   type="button"
-                  onClick={() => handleSetLeave(null)}
+                  onClick={() => entry.setLeave(null)}
                   disabled={leaveSaving}
                   className="text-xs text-gray-500 hover:text-gray-300 transition-colors disabled:opacity-40 cursor-pointer"
                 >
@@ -752,7 +111,7 @@ export default function DayView({
                 <button
                   key={lt}
                   type="button"
-                  onClick={() => handleSetLeave(leaveDay?.leave_type === lt ? null : lt)}
+                  onClick={() => entry.setLeave(leaveDay?.leave_type === lt ? null : lt)}
                   disabled={leaveSaving}
                   className={`px-3 py-1.5 text-xs rounded transition-colors disabled:opacity-40 cursor-pointer border ${
                     leaveDay?.leave_type === lt
@@ -782,7 +141,7 @@ export default function DayView({
                 {/* Copy yesterday button */}
                 <button
                   type="button"
-                  onClick={handleCopyYesterday}
+                  onClick={entry.copyYesterday}
                   disabled={busy || sessions.length > 0}
                   className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-gray-200 bg-gray-800 hover:bg-gray-700 rounded transition-colors cursor-pointer disabled:opacity-40"
                   aria-label={t('workhours:copyYesterday')}
@@ -846,436 +205,51 @@ export default function DayView({
             </div>
 
             {/* Null off the punch-in's own day; see usePunchClock's liveEstimate. */}
-            {liveEstimate && (() => {
-              if (liveEstimate.kind !== 'estimate') {
-                // A punch-in that has been open for longer than the allowed
-                // wrap is forgotten, not running — say so instead of claiming
-                // the start time is in the future.
-                return (
-                  <div className="rounded-lg border border-yellow-700/50 bg-yellow-900/20 px-3 py-2 text-xs text-yellow-400">
-                    {liveEstimate.kind === 'stale'
-                      ? t('workhours:punchEstimate.stalePunch', {
-                          date: formatDate(liveEstimate.punchDate + 'T12:00:00', { year: 'numeric', month: 'long', day: 'numeric' }),
-                        })
-                      : t('workhours:punchEstimate.invalidStart')}
-                  </div>
-                )
-              }
-              const estimate = liveEstimate.calc
-              const overStandard = estimate.balance > 0
-              const atStandard = estimate.balance >= 0
-              return (
-                <section
-                  className={`rounded-lg border px-3 py-2.5 text-sm ${atStandard ? 'border-green-700/50 bg-green-900/20' : 'border-gray-700 bg-gray-800/50'}`}
-                >
-                  <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-2">
-                    {t('workhours:punchEstimate.title')}
-                  </h3>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1">
-                    <div>
-                      <span className="text-gray-400 text-xs">{t('workhours:punchEstimate.net')}</span>{' '}
-                      <span className="text-white font-mono text-sm">{formatMins(estimate.net)}</span>
-                    </div>
-                    <div>
-                      <span className="text-gray-400 text-xs">{t('workhours:punchEstimate.reported')}</span>{' '}
-                      <span className="text-white font-mono text-sm">{formatMins(estimate.reported)}</span>
-                    </div>
-                  </div>
-                  <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-gray-500">
-                    <span>{t('workhours:punchEstimate.gross')}: <span className="font-mono">{formatMins(estimate.gross)}</span></span>
-                    {estimate.lunch > 0 && (
-                      <span>{t('workhours:punchEstimate.lunch')}: <span className="font-mono">{formatMins(estimate.lunch)}</span></span>
-                    )}
-                    {estimate.deductions > 0 && (
-                      <span>{t('workhours:punchEstimate.deductions')}: <span className="font-mono">{formatMins(estimate.deductions)}</span></span>
-                    )}
-                  </div>
-                  {overStandard && (
-                    <div className="mt-1 text-xs text-green-400">
-                      {t('workhours:punchEstimate.overStandard', { amount: formatMins(estimate.balance) })}
-                    </div>
-                  )}
-                  {atStandard && !overStandard && (
-                    <div className="mt-1 text-xs text-green-400">
-                      {t('workhours:punchEstimate.atStandard')}
-                    </div>
-                  )}
-                </section>
-              )
-            })()}
+            {liveEstimate && <LiveEstimateCard liveEstimate={liveEstimate} />}
 
-            {overlaps.pairs.length > 0 && (
-              <div role="status" className="rounded-lg border border-amber-700/50 bg-amber-900/20 px-3 py-2 text-xs text-amber-300">
-                <p className="flex items-center gap-1.5 font-medium">
-                  <AlertTriangle size={14} className="shrink-0" aria-hidden="true" />
-                  {t('workhours:storedOverlapTitle')}
-                </p>
-                <ul className="mt-1 space-y-0.5 pl-5">
-                  {overlaps.pairs.map(([a, b]) => (
-                    <li key={`${a.id}-${b.id}`} className="font-mono">
-                      {t('workhours:storedOverlapWarning', { startA: a.start_time, endA: a.end_time, startB: b.start_time, endB: b.end_time })}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {sessions.length > 0 && (
-              <div className="space-y-2">
-                {sessions.map(s => {
-                  const mins = sessionMinutes(s) ?? 0
-                  const overlapping = overlaps.ids.has(s.id)
-                  if (editSessionId === s.id) {
-                    return (
-                      <div key={s.id} className="space-y-1">
-                        <div className={`flex items-center gap-2 flex-wrap rounded-lg border bg-gray-800 px-3 py-2 ${overlapping ? 'border-amber-500/60' : 'border-blue-700/40'}`}>
-                          <TimePicker
-                            value={editStart}
-                            onChange={v => { if (v !== editStart) setSessionConflict(null); setEditStart(v) }}
-                            aria-label={t('workhours:startTime')}
-                          />
-                          <span className="text-gray-500 text-xs">→</span>
-                          <TimePicker
-                            value={editEnd}
-                            onChange={v => { if (v !== editEnd) setSessionConflict(null); setEditEnd(v) }}
-                            aria-label={t('workhours:endTime')}
-                          />
-                          <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
-                            <input
-                              type="checkbox"
-                              checked={editCrossesMidnight}
-                              onChange={e => { setSessionConflict(null); setEditCrossesMidnight(e.target.checked) }}
-                              className="accent-blue-500"
-                              aria-label={t('workhours:endsNextDay')}
-                            />
-                            <span className={editCrossesMidnight ? 'text-blue-300' : ''}>{t('workhours:endsNextDay')}</span>
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => handleSaveEditSession(s)}
-                            disabled={busy || !editStart || !editEnd}
-                            className="ml-auto text-green-400 hover:text-green-300 transition-colors disabled:opacity-40 cursor-pointer"
-                            aria-label={t('workhours:saveSession')}
-                            title={t('workhours:saveSession')}
-                          >
-                            <Check size={16} />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={handleCancelEditSession}
-                            disabled={busy}
-                            className="text-gray-500 hover:text-white transition-colors disabled:opacity-40 cursor-pointer"
-                            aria-label={t('workhours:cancelEditSession')}
-                            title={t('workhours:cancelEditSession')}
-                          >
-                            <X size={16} />
-                          </button>
-                        </div>
-                        {renderSessionConflict(s.id)}
-                      </div>
-                    )
-                  }
-                  return (
-                    <div key={s.id} className="space-y-1">
-                      <div className={`flex items-center gap-3 rounded-lg border px-3 py-2 ${s.is_internal ? 'bg-purple-900/40' : 'bg-gray-800'} ${overlapping ? 'border-amber-500/60' : s.is_internal ? 'border-purple-700/40' : 'border-transparent'}`}>
-                        <span className="text-white font-mono text-sm">{s.start_time}</span>
-                        <span className="text-gray-500 text-xs">→</span>
-                        <span className="text-white font-mono text-sm">{s.end_time}</span>
-                        {s.crosses_midnight && (
-                          <span
-                            className="rounded bg-blue-900/50 px-1 py-0.5 text-[0.65rem] font-medium text-blue-300"
-                            title={t('workhours:endsNextDayTitle')}
-                          >
-                            {t('workhours:nextDayMarker')}
-                          </span>
-                        )}
-                        <span className="text-gray-400 text-xs ml-auto">{formatMins(mins)}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleStartEditSession(s)}
-                          disabled={busy}
-                          className="text-gray-500 hover:text-blue-400 transition-colors disabled:opacity-40 cursor-pointer"
-                          aria-label={t('workhours:editSession')}
-                          title={t('workhours:editSession')}
-                        >
-                          <Pencil size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleInternal(s)}
-                          disabled={busy}
-                          className={`transition-colors disabled:opacity-40 cursor-pointer ${s.is_internal ? 'text-purple-400 hover:text-purple-300' : 'text-gray-500 hover:text-purple-400'}`}
-                          aria-label={s.is_internal ? t('workhours:markExternal') : t('workhours:markInternal')}
-                          title={s.is_internal ? t('workhours:markExternal') : t('workhours:markInternal')}
-                        >
-                          <Building2 size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteSession(s.id)}
-                          disabled={busy}
-                          className="text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40 cursor-pointer"
-                          aria-label={t('workhours:removeSession')}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                      {renderSessionConflict(s.id)}
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-
-            {summary && summary.gross_minutes > 0 && (
-              <p className="text-xs text-gray-400">
-                {t('workhours:gross')}: <span className="font-mono">{formatMins(summary.gross_minutes)}</span>
-              </p>
-            )}
-
-            {/* Add session row */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <TimePicker
-                value={newStart}
-                onChange={v => { if (v !== newStart) setSessionConflict(null); setNewStart(v) }}
-                aria-label={t('workhours:startTime')}
-              />
-              <span className="text-gray-500 text-xs">→</span>
-              <TimePicker
-                value={newEnd}
-                onChange={v => { if (v !== newEnd) setSessionConflict(null); setNewEnd(v) }}
-                aria-label={t('workhours:endTime')}
-              />
-              <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
-                <input
-                  type="checkbox"
-                  checked={newCrossesMidnight}
-                  onChange={e => { setSessionConflict(null); setNewCrossesMidnight(e.target.checked) }}
-                  className="accent-blue-500"
-                  aria-label={t('workhours:endsNextDay')}
-                />
-                <span className={newCrossesMidnight ? 'text-blue-300' : ''}>{t('workhours:endsNextDay')}</span>
-              </label>
-              <label className="flex items-center gap-1.5 cursor-pointer text-xs text-gray-400 select-none">
-                <input
-                  type="checkbox"
-                  checked={newIsInternal}
-                  onChange={e => { setSessionConflict(null); setNewIsInternal(e.target.checked) }}
-                  className="accent-purple-500"
-                  aria-label={t('workhours:markInternal')}
-                />
-                <Building2 size={12} className={newIsInternal ? 'text-purple-400' : 'text-gray-500'} />
-                <span className={newIsInternal ? 'text-purple-400' : ''}>{t('workhours:internal')}</span>
-              </label>
-              <button
-                type="button"
-                onClick={handleAddSession}
-                disabled={!newStart || !newEnd || busy}
-                className="flex items-center gap-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors cursor-pointer"
-              >
-                <Plus size={14} />
-                {t('workhours:addSession')}
-              </button>
-            </div>
-            {renderSessionConflict('add')}
+            <SessionList
+              sessions={sessions}
+              overlaps={entry.overlaps}
+              grossMinutes={summary?.gross_minutes ?? 0}
+              editSessionId={entry.editSessionId}
+              edit={entry.edit}
+              draft={entry.draft}
+              conflict={entry.conflict}
+              disabled={busy}
+              onEditChange={entry.changeEdit}
+              onDraftChange={entry.changeDraft}
+              onStartEdit={entry.startEditSession}
+              onCancelEdit={entry.cancelEditSession}
+              onSaveEdit={entry.saveEditSession}
+              onToggleInternal={entry.toggleInternal}
+              onDelete={entry.deleteSession}
+              onAdd={entry.addSession}
+            />
           </section>
 
-          {/* Deductions */}
-          <section className="space-y-3">
-            <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide">
-              {t('workhours:deductions')}
-            </h2>
-
-            {/* Lunch checkbox */}
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={lunchChecked}
-                onChange={handleLunchToggle}
-                disabled={busy}
-                className="w-4 h-4 rounded accent-blue-500"
-              />
-              <span className="text-sm text-white">{t('workhours:lunch')}</span>
-              {summary && summary.lunch_minutes > 0 && (
-                <span className="text-xs text-gray-400 font-mono">({formatMins(summary.lunch_minutes)})</span>
-              )}
-            </label>
-
-            {/* Preset chips */}
-            {presets.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {presets.map(p => {
-                  const active = deductions.some(d => d.preset_id === p.id)
-                  return (
-                    <button
-                      key={p.id}
-                      type="button"
-                      onClick={() => handlePresetToggle(p)}
-                      disabled={busy}
-                      className={`px-3 py-1 rounded-full text-xs font-medium transition-colors cursor-pointer disabled:opacity-40 ${
-                        active
-                          ? 'bg-blue-600 text-white'
-                          : 'bg-gray-700 text-gray-300 hover:bg-gray-600'
-                      }`}
-                    >
-                      {p.name} ({t('workhours:minutesValue', { count: p.default_minutes })})
-                    </button>
-                  )
-                })}
-              </div>
-            )}
-
-            {/* Custom deductions list */}
-            {deductions.filter(d => !d.preset_id).length > 0 && (
-              <div className="space-y-1">
-                {deductions
-                  .filter(d => !d.preset_id)
-                  .map(d => (
-                    <div key={d.id} className="flex items-center gap-2 text-sm bg-gray-800/50 rounded px-2 py-1">
-                      <span className="flex-1 text-gray-300">{d.name}</span>
-                      <span className="text-gray-400 text-xs font-mono">{formatMins(d.minutes)}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleDeleteDeduction(d.id)}
-                        disabled={busy}
-                        className="text-gray-500 hover:text-red-400 transition-colors disabled:opacity-40 cursor-pointer"
-                        aria-label={t('workhours:removeDeduction')}
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
-              </div>
-            )}
-
-            {/* Add custom deduction */}
-            <div className="space-y-2">
-              {/* Preset dropdown */}
-              {sortedPresets.length > 0 && (
-                <div className="flex items-center gap-2">
-                  <Select
-                    value={selectedPresetId !== null ? String(selectedPresetId) : ''}
-                    onChange={handlePresetDropdownSelect}
-                    placeholder={t('workhours:presetDropdownPlaceholder')}
-                    aria-label={t('workhours:presetDropdownPlaceholder')}
-                    className="flex-1"
-                    options={sortedPresets.map(p => {
-                      const icon = normalizePresetIcon(p.icon)
-                      return {
-                        value: String(p.id),
-                        label: `${p.name} — ${t('workhours:minutesValue', { count: p.default_minutes })}`,
-                        icon: icon || undefined,
-                      } satisfies SelectOption
-                    })}
-                  />
-                  <button
-                    type="button"
-                    onClick={onNavigateToSettings}
-                    className="text-xs text-gray-400 hover:text-blue-400 transition-colors cursor-pointer whitespace-nowrap"
-                  >
-                    {t('workhours:managePresets')}
-                  </button>
-                </div>
-              )}
-              <div className="flex items-center gap-2 flex-wrap">
-                <input
-                  type="text"
-                  value={newDeductionName}
-                  onChange={e => setNewDeductionName(e.target.value)}
-                  placeholder={t('workhours:deductionNamePlaceholder')}
-                  aria-label={t('workhours:deductionNamePlaceholder')}
-                  className="flex-1 min-w-32 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none placeholder-gray-500"
-                />
-                <input
-                  type="number"
-                  value={newDeductionMinutes}
-                  onChange={e => setNewDeductionMinutes(e.target.value)}
-                  placeholder={t('workhours:minutesShort')}
-                  min="1"
-                  className="w-20 bg-gray-800 text-white rounded px-2 py-1.5 text-sm border border-gray-700 focus:border-blue-500 focus:outline-none placeholder-gray-500"
-                  aria-label={t('workhours:minutes')}
-                />
-                <button
-                  type="button"
-                  onClick={handleAddDeduction}
-                  disabled={!newDeductionName.trim() || !newDeductionMinutes || busy}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm rounded transition-colors cursor-pointer"
-                  aria-label={t('workhours:addDeduction')}
-                >
-                  <Plus size={14} />
-                </button>
-              </div>
-            </div>
-          </section>
+          <DeductionList
+            deductions={entry.deductions}
+            lunch={entry.lunch}
+            lunchMinutes={summary?.lunch_minutes ?? 0}
+            presets={entry.presets}
+            sortedPresets={entry.sortedPresets}
+            selectedPresetId={entry.selectedPresetId}
+            draft={entry.deductionDraft}
+            disabled={busy}
+            onLunchToggle={entry.toggleLunch}
+            onPresetToggle={entry.togglePreset}
+            onPresetSelect={entry.selectPreset}
+            onDraftChange={entry.changeDeductionDraft}
+            onAdd={entry.addDeduction}
+            onDelete={entry.deleteDeduction}
+            onManagePresets={onNavigateToSettings}
+          />
 
           {/* Summary card */}
-          {summary && (
-            <section className="bg-gray-800 rounded-lg p-4">
-              <h2 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">
-                {t('workhours:summary')}
-              </h2>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
-                <span className="text-gray-400">{t('workhours:gross')}</span>
-                <span className="text-white font-mono text-right">{formatMins(summary.gross_minutes)}</span>
-
-                <span className="text-gray-400">{t('workhours:totalDeductions')}</span>
-                <span className="text-white font-mono text-right">
-                  -{formatMins(summary.lunch_minutes + summary.deduction_minutes)}
-                </span>
-
-                <span className="text-gray-400">{t('workhours:net')}</span>
-                <span className="text-white font-mono text-right">{formatMins(summary.net_minutes)}</span>
-
-                <span className="text-gray-400">{t('workhours:reported')}</span>
-                <span className="text-white font-mono text-right">{formatMins(summary.reported_minutes)}</span>
-
-                <span className="text-gray-400">{t('workhours:remainder')}</span>
-                <span
-                  className={`font-mono text-right ${summary.remainder_minutes < 0 ? 'text-red-400' : 'text-green-400'}`}
-                >
-                  {formatMins(summary.remainder_minutes)}
-                </span>
-
-                <span className="text-gray-400">{t('workhours:balance')}</span>
-                <span
-                  className={`font-mono text-right ${
-                    summary.balance_minutes < 0
-                      ? 'text-red-400'
-                      : summary.balance_minutes > 0
-                        ? 'text-green-400'
-                        : 'text-white'
-                  }`}
-                >
-                  {summary.balance_minutes > 0 ? '+' : ''}
-                  {formatMins(summary.balance_minutes)}
-                </span>
-              </div>
-            </section>
-          )}
+          {summary && <DaySummaryCard summary={summary} />}
 
           {/* Flex pool running total */}
-          {flex && (
-            <section className="flex items-center justify-between bg-gray-800/50 rounded-lg px-4 py-3">
-              <span className="text-sm text-gray-400">{t('workhours:flexPool')}</span>
-              <div className="flex items-center gap-2">
-                {flex.flex.total_minutes >= (flex.rounding_minutes ?? 30) && (
-                  <button
-                    onClick={handleFlexRedeem}
-                    disabled={redeemingFlex}
-                    className="text-xs px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-50"
-                  >
-                    {t('workhours:redeemFlex', { minutes: flex.rounding_minutes ?? 30 })}
-                  </button>
-                )}
-                <span
-                  className={`font-mono text-sm font-semibold ${flex.flex.total_minutes < 0 ? 'text-red-400' : 'text-green-400'}`}
-                >
-                  {flex.flex.total_minutes > 0 ? '+' : ''}
-                  {formatMins(flex.flex.total_minutes)}
-                </span>
-              </div>
-            </section>
-          )}
+          {flex && <FlexPoolCard flex={flex} redeeming={flexPool.redeeming} onRedeem={handleFlexRedeem} />}
         </>
       )}
     </div>
