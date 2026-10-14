@@ -2832,7 +2832,7 @@ func TestBatchRejectCompletionsHandler(t *testing.T) {
 	ids := seedPendingCompletions(t, db, 2)
 
 	handler := BatchRejectCompletionsHandler(db)
-	// The UI sends an empty reason, matching the single-item reject payload.
+	// An empty reason is still supported: the reject dialog keeps the reason optional.
 	body := map[string]any{"ids": ids, "reason": ""}
 	r := withUser(newRequest(http.MethodPost, "/api/allowance/reject/batch", body), testParent)
 	w := httptest.NewRecorder()

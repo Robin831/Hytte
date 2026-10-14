@@ -1,0 +1,2 @@
+category: Added
+- **Reasons when rejecting chore completions** - Rejecting a pending chore (one at a time or with "Reject selected") now opens a dialog with quick-pick reasons ("Not finished", "Do it again properly", "Wrong day") and an optional free-text field; one shared reason applies to every selected completion. Kids see the reason next to "Rejected — try again" on the chore card. Leaving the reason empty keeps the kid's own note. (Hytte-hd4iq)

@@ -6,6 +6,7 @@ import { Skeleton } from '../components/ui/skeleton'
 import { ConfirmDialog } from '../components/ui/dialog'
 import { Tabs, TabList, TabTrigger, TabPanel } from '../components/ui/tabs'
 import RecordCompletionModal from '../components/allowance/RecordCompletionModal'
+import RejectReasonDialog from '../components/RejectReasonDialog'
 import ToastList from '../components/ToastList'
 import { useToast } from '../hooks/useToast'
 import { useTabFetch } from '../hooks/useTabFetch'
@@ -179,6 +180,9 @@ export default function AllowancePage() {
   const [selectedIds, setSelectedIds] = useState<Set<number>>(() => new Set())
   const [batchRunning, setBatchRunning] = useState(false)
   const selectAllRef = useRef<HTMLInputElement>(null)
+
+  // Reject reason dialog: which completion(s) the parent is about to reject.
+  const [rejectTarget, setRejectTarget] = useState<{ kind: 'single'; id: number } | { kind: 'batch' } | null>(null)
 
   // Chores tab state
   const [chores, setChores] = useState<Chore[]>([])
@@ -359,14 +363,18 @@ export default function AllowancePage() {
     }
   }
 
-  const handleReject = async (id: number) => {
+  const handleReject = (id: number) => {
+    setRejectTarget({ kind: 'single', id })
+  }
+
+  const performReject = async (id: number, reason: string) => {
     setActionError('')
     try {
       const res = await fetch(`/api/allowance/reject/${id}`, {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reason: '' }),
+        body: JSON.stringify({ reason }),
       })
       if (!res.ok) throw new Error()
       setPending(prev => prev.filter(c => c.id !== id))
@@ -413,7 +421,16 @@ export default function AllowancePage() {
     setSelectedIds(allPendingSelected ? new Set() : new Set(pending.map(c => c.id)))
   }
 
-  const handleBatchAction = async (action: 'approve' | 'reject') => {
+  const handleBatchAction = (action: 'approve' | 'reject') => {
+    if (selectedPendingIds.length === 0 || batchRunning) return
+    if (action === 'reject') {
+      setRejectTarget({ kind: 'batch' })
+      return
+    }
+    void performBatchAction('approve', '')
+  }
+
+  const performBatchAction = async (action: 'approve' | 'reject', reason: string) => {
     const ids = selectedPendingIds
     if (ids.length === 0 || batchRunning) return
 
@@ -424,8 +441,8 @@ export default function AllowancePage() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        // Rejection sends the same empty reason as the single-item path.
-        body: JSON.stringify(action === 'reject' ? { ids, reason: '' } : { ids }),
+        // Rejection applies one shared reason to every selected completion.
+        body: JSON.stringify(action === 'reject' ? { ids, reason } : { ids }),
       })
       if (!res.ok) throw new Error()
       const data: BatchCompletionResponse = await res.json()
@@ -466,6 +483,17 @@ export default function AllowancePage() {
       setActionError(t('errors.actionFailed'))
     } finally {
       setBatchRunning(false)
+    }
+  }
+
+  const handleRejectConfirm = (reason: string) => {
+    const target = rejectTarget
+    setRejectTarget(null)
+    if (!target) return
+    if (target.kind === 'single') {
+      void performReject(target.id, reason)
+    } else {
+      void performBatchAction('reject', reason)
     }
   }
 
@@ -1609,6 +1637,12 @@ export default function AllowancePage() {
         onConfirm={() => deactivateConfirmChore && handleDeactivateChore(deactivateConfirmChore.id)}
         title={t('actions.deactivate')}
         message={deactivateConfirmChore ? t('confirmDeactivate', { name: deactivateConfirmChore.name }) : undefined}
+      />
+      <RejectReasonDialog
+        open={rejectTarget !== null}
+        count={rejectTarget?.kind === 'batch' ? selectedPendingIds.length : 1}
+        onCancel={() => setRejectTarget(null)}
+        onConfirm={handleRejectConfirm}
       />
       <RecordCompletionModal
         open={recordChore !== null}

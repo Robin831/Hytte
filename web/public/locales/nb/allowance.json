@@ -223,6 +223,20 @@
     "successToast": "Registrert for {{names}}",
     "skippedWarning": "Allerede registrert for denne datoen for {{name}}"
   },
+  "reject": {
+    "title": "Avvis fullføring",
+    "titleBatch": "Avvis {{count}} fullføringer",
+    "reasonOptional": "Begrunnelse (valgfritt)",
+    "placeholder": "Fortell hva som må fikses…",
+    "cancel": "Avbryt",
+    "confirm": "Avvis",
+    "reasonDisplay": "«{{reason}}»",
+    "chips": {
+      "notFinished": "Ikke ferdig",
+      "redoProperly": "Gjør det ordentlig på nytt",
+      "wrongDay": "Feil dag"
+    }
+  },
   "errors": {
     "loadFailed": "Kunne ikke laste data. Prøv igjen.",
     "actionFailed": "Handlingen mislyktes. Prøv igjen.",

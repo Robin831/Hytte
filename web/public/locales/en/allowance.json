@@ -223,6 +223,20 @@
     "successToast": "Recorded for {{names}}",
     "skippedWarning": "Already recorded for this date for {{name}}"
   },
+  "reject": {
+    "title": "Reject completion",
+    "titleBatch": "Reject {{count}} completions",
+    "reasonOptional": "Reason (optional)",
+    "placeholder": "Tell them what to fix…",
+    "cancel": "Cancel",
+    "confirm": "Reject",
+    "reasonDisplay": "“{{reason}}”",
+    "chips": {
+      "notFinished": "Not finished",
+      "redoProperly": "Do it again properly",
+      "wrongDay": "Wrong day"
+    }
+  },
   "errors": {
     "loadFailed": "Failed to load data. Please try again.",
     "actionFailed": "Action failed. Please try again.",
