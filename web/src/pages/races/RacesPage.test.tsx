@@ -150,6 +150,11 @@ describe('RacesPage', () => {
     expect(screen.getByText('London Marathon')).toBeInTheDocument()
     expect(screen.queryByText('Bergen Half')).toBeNull()
 
+    // Every series has a filter chip.
+    for (const s of ['majors', 'emc', 'superhalfs', 'superhalfs_europa']) {
+      expect(screen.getByRole('button', { name: `series.${s}` })).toBeInTheDocument()
+    }
+
     // Marathon + Majors + direct flight narrows to London.
     fireEvent.click(within(statusGroup).getByRole('button', { name: /filters.all/ }))
     fireEvent.click(screen.getByRole('button', { name: 'distance.marathon' }))

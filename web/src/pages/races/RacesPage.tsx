@@ -5,7 +5,7 @@ import { useAuth } from '../../auth'
 import {
   type Deadline, type FamilyWatch, type HomeBase, type RaceEvent, type RaceStatus, type Watch, type WatchState,
   type DistanceBucket, WATCH_STATES, deadlineMoment, deleteWatch, distanceBucket, distanceKind, eventDistances, fetchRaces,
-  intlLocale, nextDeadline, pickText, setWatch,
+  type Series, SERIES, intlLocale, nextDeadline, pickText, setWatch,
 } from './racesApi'
 import { RaceRow, StatusPill } from './RaceParts'
 import { useRaceFormat } from './useRaceFormat'
@@ -29,7 +29,7 @@ type StatusFilter = 'all' | RaceStatus
 type DistanceFilter = 'all' | DistanceBucket
 type ScopeFilter = 'all' | 'local' | 'away'
 const DISTANCE_FILTERS: DistanceFilter[] = ['all', '3k', '5k', '10k', 'half', 'marathon']
-type SeriesFilter = 'all' | 'majors' | 'emc'
+type SeriesFilter = 'all' | Series
 
 export default function RacesPage() {
   const { t } = useRaceFormat()
@@ -349,7 +349,7 @@ function Discover({ events, watchByEvent, onToggleWatch, busyId }: {
         <button type="button" aria-pressed={kidsOnly} onClick={() => setKidsOnly(v => !v)} className={chip(kidsOnly)}>
           {t('filters.kids')}
         </button>
-        {(['majors', 'emc'] as const).map(s => (
+        {SERIES.map(s => (
           <button key={s} type="button" aria-pressed={series === s} onClick={() => setSeries(series === s ? 'all' : s)} className={chip(series === s)}>
             {t(`series.${s}`)}
           </button>
