@@ -46,7 +46,8 @@
     "complete": {
       "majors": "ครบทั้งเจ็ด Majors — Seven Star Finisher!",
       "emc": "วิ่งจบห้างานแล้ว ได้เหรียญ Finisher",
-      "superhalfs": "ครบ SuperHalfs ทั้งหก — SuperRunner!"
+      "superhalfs": "ครบ SuperHalfs ทั้งหก — SuperRunner!",
+      "superhalfs_europa": "ครบ SuperHalfs Europa ทั้งหก — ได้ SuperMedal ของ Europa!"
     },
     "done": "วิ่งจบแล้ว",
     "nextEdition": "ครั้งถัดไป",
@@ -56,7 +57,9 @@
     "time": "เวลา (ไม่บังคับ)",
     "remove": "ลบงานปี {{year}}",
     "confirmRemove": "ลบงานปี {{year}} หรือไม่?",
-    "superhalfs": "SuperHalfs"
+    "superhalfs": "SuperHalfs Originals",
+    "superhalfs_europa": "SuperHalfs Europa",
+    "fromYear": "นับงานตั้งแต่ปี {{year}} — วิ่งลำดับใดก็ได้ ไม่จำกัดเวลา"
   },
   "distance": {
     "all": "ทุกระยะ",
@@ -410,7 +413,8 @@
     },
     "seriesBadge": {
       "major": "งานในซีรีส์",
-      "superhalfs": "SuperHalfs"
+      "superhalfs": "SuperHalfs Originals",
+      "superhalfs_europa": "SuperHalfs Europa"
     },
     "nominal": "ระยะทางที่ประกาศ (ม.)",
     "nominalHint": "ใส่เฉพาะเมื่อเส้นทางสั้นหรือยาวกว่ากำหนด",

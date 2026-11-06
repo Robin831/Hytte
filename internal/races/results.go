@@ -155,6 +155,9 @@ var halfCityKeys = map[string]string{
 	"lisboa": "lisbon_half", "lisbon": "lisbon_half", "praha": "prague_half", "prague": "prague_half",
 	"kobenhavn": "copenhagen_half", "copenhagen": "copenhagen_half", "cardiff": "cardiff_half",
 	"berlin": "berlin_half", "valencia": "valencia_half",
+	"napoli": "napoli_half", "naples": "napoli_half", "warszawa": "warsaw_half", "warsaw": "warsaw_half",
+	"beograd": "belgrade_half", "belgrade": "belgrade_half", "wien": "vienna_half", "vienna": "vienna_half",
+	"riga": "riga_half", "stockholm": "stockholm_half",
 }
 
 // resultSeriesKey works out which series race a result is, from its

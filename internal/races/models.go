@@ -43,7 +43,7 @@ var (
 	validTravel     = set("direct", "nearby", "none", "")
 	validScope      = set(ScopeLocal, ScopeAway)
 	validPrecision  = set("day", "approx", "early", "mid", "late", "month")
-	validSeries     = set("majors", "emc", "superhalfs")
+	validSeries     = set("majors", "emc", "superhalfs", "superhalfs_europa")
 	validWatchState = set("watching", "planning", "lottery_entered", "got_place", "not_selected", "registered", "completed", "skipped")
 	validKind       = set("entry_opens", "entry_closes", "lottery_opens", "lottery_closes", "lottery_results",
 		"payment_due", "price_increase", "waitlist_closes", "other")

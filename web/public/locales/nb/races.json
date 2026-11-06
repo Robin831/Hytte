@@ -46,7 +46,8 @@
     "complete": {
       "majors": "Alle sju Majors — Seven Star Finisher!",
       "emc": "Fem løp fullført — du har fortjent Finisher-medaljen.",
-      "superhalfs": "Alle seks SuperHalfs — SuperRunner!"
+      "superhalfs": "Alle seks SuperHalfs — SuperRunner!",
+      "superhalfs_europa": "Alle seks SuperHalfs Europa — Europa-SuperMedal!"
     },
     "done": "fullført",
     "nextEdition": "Neste utgave",
@@ -56,7 +57,9 @@
     "time": "Tid (valgfritt)",
     "remove": "Fjern løpet fra {{year}}",
     "confirmRemove": "Fjerne løpet fra {{year}}?",
-    "superhalfs": "SuperHalfs"
+    "superhalfs": "SuperHalfs Originals",
+    "superhalfs_europa": "SuperHalfs Europa",
+    "fromYear": "Teller løp fra {{year}} — valgfri rekkefølge, ingen tidsfrist"
   },
   "distance": {
     "all": "Alle distanser",
@@ -421,7 +424,8 @@
     },
     "seriesBadge": {
       "major": "Serieløp",
-      "superhalfs": "SuperHalfs"
+      "superhalfs": "SuperHalfs Originals",
+      "superhalfs_europa": "SuperHalfs Europa"
     },
     "nominal": "Oppgitt distanse (m)",
     "nominalHint": "bare hvis løypa var for kort eller lang",

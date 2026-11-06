@@ -67,7 +67,7 @@ func TestSeriesProgressCountsAutoAndManualFinishes(t *testing.T) {
 	if err := d.QueryRow(`SELECT id FROM race_events WHERE slug = 'tcs-london-marathon-2027'`).Scan(&london); err != nil {
 		t.Fatal(err)
 	}
-	if SeriesKeyForSlug("vienna-city-marathon-halvmaraton-2027") != "" || SeriesKeyForSlug("vienna-city-marathon-2027") != "vienna" {
+	if SeriesKeyForSlug("vienna-city-marathon-halvmaraton-2027") != "vienna_half" || SeriesKeyForSlug("vienna-city-marathon-2027") != "vienna" {
 		t.Fatal("slug → series key mapping wrong for Vienna")
 	}
 
@@ -118,6 +118,80 @@ func TestSeriesProgressCountsAutoAndManualFinishes(t *testing.T) {
 	if err := DeleteFinish(ctx, d, 1, "rome", 2024); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("second delete: %v", err)
 	}
+}
+
+func TestSuperHalfsEuropaCountsFrom2027(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	if err := SeedCatalog(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+	// Seeded races are tagged with their series (originals and Europa).
+	for slug, want := range map[string]string{
+		"cardiff-half-marathon-2027":            "superhalfs",
+		"nn-polmaraton-warszawski-2027":         "superhalfs_europa",
+		"adidas-stockholm-half-marathon-2027":   "superhalfs_europa",
+		"coelmo-napoli-city-half-marathon-2027": "superhalfs_europa",
+		"belgrade-half-marathon-2027":           "superhalfs_europa",
+	} {
+		var series string
+		if err := d.QueryRow(`SELECT series FROM race_events WHERE slug = ?`, slug).Scan(&series); err != nil {
+			t.Fatal(err)
+		}
+		if series != want {
+			t.Fatalf("%s series = %q, want %q", slug, series, want)
+		}
+	}
+	// Warsaw moved to 14 March and its entry-opens date is announced.
+	var date, due string
+	var expected bool
+	if err := d.QueryRow(`SELECT e.race_date, d.due_date, d.expected FROM race_events e JOIN race_deadlines d ON d.event_id = e.id
+		WHERE e.slug = 'nn-polmaraton-warszawski-2027' AND d.kind = 'entry_opens'`).Scan(&date, &due, &expected); err != nil {
+		t.Fatal(err)
+	}
+	if date != "2027-03-14" || due != "2026-11-16" || expected {
+		t.Fatalf("warsaw = %s, entry opens %s (expected=%v)", date, due, expected)
+	}
+	// Tagging runs once: a second seed pass changes nothing.
+	if err := SeedCatalog(ctx, d); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := SaveFinish(ctx, d, 1, FinishInput{RaceKey: "warsaw_half", Year: 2026}, "manual"); !errors.Is(err, ErrValidation) {
+		t.Fatalf("pre-2027 Europa finish: %v", err)
+	}
+	if err := SaveFinish(ctx, d, 1, FinishInput{RaceKey: "riga_half", Year: 2027}, "manual"); err != nil {
+		t.Fatal(err)
+	}
+	// A 2025 Stockholm half result is a series race by city, but too early for Europa.
+	secs := 6300
+	if _, err := SaveResult(ctx, d, 1, 0, ResultInput{RaceName: "Stockholm Half", RaceDate: "2025-08-30", DistanceM: 21097,
+		City: "Stockholm", FinishSeconds: &secs, Status: "confirmed"}, "manual"); err != nil {
+		t.Fatal(err)
+	}
+
+	p, err := BuildSeriesProgress(ctx, d, 1, "2026-11-06")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range p {
+		if s.Key != "superhalfs_europa" {
+			continue
+		}
+		if s.Required != 6 || s.FromYear != 2027 || s.Done != 1 || len(s.Races) != 6 {
+			t.Fatalf("europa = %+v", s)
+		}
+		for _, r := range s.Races {
+			if r.Key == "stockholm_half" && len(r.Finishes) != 0 {
+				t.Fatalf("pre-2027 Stockholm counted: %+v", r.Finishes)
+			}
+			if r.Key == "warsaw_half" && r.NextEventID == nil {
+				t.Fatal("warsaw_half has no next edition")
+			}
+		}
+		return
+	}
+	t.Fatal("no superhalfs_europa series")
 }
 
 func TestFamilyWatchesShareStatusesNotNotes(t *testing.T) {

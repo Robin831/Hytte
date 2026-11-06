@@ -1,0 +1,2 @@
+category: Added
+- **SuperHalfs Europa** - The new six-race series (Napoli, Warsaw, Belgrade, Vienna, Riga, Stockholm) is on the races page: a filter chip, its own progress card that counts finishes from 2027 onwards, and Hall of fame badges. Napoli and Belgrade are added to the catalog, Warsaw moves to 14 March 2027 with entry opening 16 November, and the original series is now labelled SuperHalfs Originals, with its six races tagged so the filter finds them.

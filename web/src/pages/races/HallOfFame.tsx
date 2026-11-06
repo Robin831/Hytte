@@ -5,7 +5,7 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import {
   type HallSummary, type PersonalBest, type RaceResult, type ResultInput,
   confirmResults, createResult, deleteResult, fetchResults, flag, formatDuration, intlLocale, lookupMissingTimes,
-  lookupTime, parseDuration, resultToInput, updateResult,
+  lookupTime, parseDuration, resultToInput, seriesBadge, updateResult,
 } from './racesApi'
 import { useRaceFormat } from './useRaceFormat'
 import { useAuth } from '../../auth'
@@ -374,7 +374,10 @@ export function HallOfFame() {
                         <Medal size={11} aria-hidden="true" /> {t('hall.pb')}
                       </span>
                     )}
-                    {r.series_key && <span className="ml-2 rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-300">{t(`hall.seriesBadge.${r.series_key.endsWith('_half') ? 'superhalfs' : 'major'}`)}</span>}
+                    {(() => {
+                      const badge = seriesBadge(r.series_key, r.race_date)
+                      return badge && <span className="ml-2 rounded-full bg-gray-800 px-2 py-0.5 text-xs text-gray-300">{t(`hall.seriesBadge.${badge}`)}</span>
+                    })()}
                     <span className="block text-xs text-gray-500">
                       {fmtDate(r)} · {flag(r.country)} {r.city} · {t(`hall.distance.${distanceKey(r.distance_m) ?? 'other'}`, { km: (r.distance_m / 1000).toFixed(1) })}
                     </span>

@@ -8,7 +8,7 @@ export type RaceStatus = 'open' | 'later' | 'closed'
 export type EntryType = 'lottery' | 'fcfs' | 'qualifier' | 'unknown'
 export type Travel = 'direct' | 'nearby' | 'none' | ''
 export type DatePrecision = 'day' | 'approx' | 'early' | 'mid' | 'late' | 'month'
-export type Series = 'majors' | 'emc' | 'superhalfs'
+export type Series = 'majors' | 'emc' | 'superhalfs' | 'superhalfs_europa'
 export type DeadlineKind =
   | 'entry_opens' | 'entry_closes' | 'lottery_opens' | 'lottery_closes' | 'lottery_results'
   | 'payment_due' | 'price_increase' | 'waitlist_closes' | 'other'
@@ -20,7 +20,19 @@ export const STATUSES: RaceStatus[] = ['open', 'later', 'closed']
 export const ENTRY_TYPES: EntryType[] = ['lottery', 'fcfs', 'qualifier', 'unknown']
 export const TRAVELS: Travel[] = ['direct', 'nearby', 'none', '']
 export const PRECISIONS: DatePrecision[] = ['day', 'approx', 'early', 'mid', 'late', 'month']
-export const SERIES: Series[] = ['majors', 'emc', 'superhalfs']
+export const SERIES: Series[] = ['majors', 'emc', 'superhalfs', 'superhalfs_europa']
+
+// SuperHalfs Europa races; they count from the series' launch in 2027.
+const EUROPA_RACES = new Set(['napoli_half', 'warsaw_half', 'belgrade_half', 'vienna_half', 'riga_half', 'stockholm_half'])
+const EUROPA_FROM = 2027
+
+/** The hall-of-fame badge for a result's series race, or null when the
+ *  race doesn't count (a Europa race run before 2027). */
+export function seriesBadge(seriesKey: string, raceDate: string): 'major' | 'superhalfs' | 'superhalfs_europa' | null {
+  if (!seriesKey) return null
+  if (EUROPA_RACES.has(seriesKey)) return Number(raceDate.slice(0, 4)) >= EUROPA_FROM ? 'superhalfs_europa' : null
+  return seriesKey.endsWith('_half') ? 'superhalfs' : 'major'
+}
 export const DEADLINE_KINDS: DeadlineKind[] = [
   'entry_opens', 'entry_closes', 'lottery_opens', 'lottery_closes', 'lottery_results',
   'payment_due', 'price_increase', 'waitlist_closes', 'other',
@@ -267,8 +279,10 @@ export interface SeriesFinish {
 }
 
 export interface SeriesProgress {
-  key: 'majors' | 'emc'
+  key: Series
   required: number
+  /** First year a finish counts (SuperHalfs Europa: 2027). */
+  from_year?: number
   done: number
   races: { key: string; name: string; finishes: SeriesFinish[]; next_event_id: number | null }[]
 }

@@ -63,7 +63,7 @@ export function FamilyList({ family }: { family: FamilyWatch[] }) {
   )
 }
 
-function AddFinish({ raceKey, onSaved }: { raceKey: string; onSaved: () => void }) {
+function AddFinish({ raceKey, minYear, onSaved }: { raceKey: string; minYear: number; onSaved: () => void }) {
   const { t } = useRaceFormat()
   const [open, setOpen] = useState(false)
   const [year, setYear] = useState('')
@@ -72,8 +72,10 @@ function AddFinish({ raceKey, onSaved }: { raceKey: string; onSaved: () => void 
   const seconds = parseDuration(time)
   const timeInvalid = time.trim() !== '' && seconds === null
   const yearNum = Number(year)
-  const yearInvalid = !(Number.isInteger(yearNum) && yearNum >= 1897 && yearNum <= new Date().getFullYear())
+  const yearInvalid = !(Number.isInteger(yearNum) && yearNum >= minYear && yearNum <= new Date().getFullYear())
 
+  // A series that hasn't started yet (Europa before 2027) has nothing to add.
+  if (minYear > new Date().getFullYear()) return null
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} className="inline-flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 cursor-pointer">
@@ -163,6 +165,7 @@ export function SeriesSection() {
                 <h3 className="font-semibold">{t(`series.${s.key}`)}</h3>
                 <span className="text-sm tabular-nums text-gray-300">{t('series.progress', { done: s.done, required: s.required })}</span>
               </div>
+              {s.from_year && <p className="mt-0.5 text-xs text-gray-500">{t('series.fromYear', { year: s.from_year })}</p>}
               <div
                 className="mt-2 h-2 rounded-full bg-gray-700"
                 role="progressbar"
@@ -205,7 +208,7 @@ export function SeriesSection() {
                           ))}
                         </ul>
                       )}
-                      <div className="ml-7"><AddFinish raceKey={r.key} onSaved={reload} /></div>
+                      <div className="ml-7"><AddFinish raceKey={r.key} minYear={s.from_year ?? 1897} onSaved={reload} /></div>
                     </li>
                   )
                 })}

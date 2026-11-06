@@ -1,0 +1,110 @@
+{
+ "checked_at": "2026-11-06T12:00:00Z",
+ "events": [
+  {
+   "slug": "coelmo-napoli-city-half-marathon-2027",
+   "name": "Coelmo Napoli City Half Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-02-21",
+   "date_precision": "day",
+   "country": "IT",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "none",
+   "url": "https://www.napolirunning.com/cnchm/?lang=en",
+   "series": ["superhalfs_europa"],
+   "texts": {
+    "nb": {
+     "place": "Napoli, Italia",
+     "participants": "7 777 fullførte i februar 2026 (biegowe.pl); pressen meldte over 10 000 påmeldte.",
+     "course": "Flatt, raskt og sertifisert, kalt Italias raskeste halvmaraton. Langs sjøen med utsikt mot Vesuv. Start kl. 09.00 ved Mostra d'Oltremare, tidsgrense 3 t 30 min. Løyperekorder 59:01 (Yeman Crippa, 2026) og 1:08:27 (Sofiia Yaremchuk, 2024).",
+     "travel": "Ingen direkte fra Bergen. Norwegian flyr Oslo–Napoli, men det er uklart om ruten går i februar. Ellers ett bytte via Roma, München, Frankfurt, Amsterdam eller København (ikke verifisert).",
+     "how": "Førstemann til mølla med pristrinn etter antall påmeldte. Påmeldingen er åpen på maxfunregister.com. Første løp i SuperHalfs Europa.",
+     "price": "€52 nå (de to billigste trinnene på €38 og €45 er utsolgt), €60 på messen. Gebyr kommer i tillegg."
+    },
+    "en": {
+     "place": "Naples, Italy",
+     "participants": "7,777 finished in February 2026 (biegowe.pl); the press reported over 10,000 entrants.",
+     "course": "Flat, fast and certified, billed as Italy's fastest half marathon. Along the seafront with views of Vesuvius. Starts 09:00 at Mostra d'Oltremare, 3 h 30 min time limit. Course records 59:01 (Yeman Crippa, 2026) and 1:08:27 (Sofiia Yaremchuk, 2024).",
+     "travel": "No direct flights from Bergen. Norwegian flies Oslo–Naples, but it's unclear whether the route runs in February. Otherwise one stop via Rome, Munich, Frankfurt, Amsterdam or Copenhagen (unverified).",
+     "how": "First come, first served, with price tiers by number of entrants. Entry is open on maxfunregister.com. The first race of SuperHalfs Europa.",
+     "price": "€52 now (the two cheapest tiers at €38 and €45 are sold out), €60 at the expo. Fees come on top."
+    },
+    "th": {
+     "place": "เนเปิลส์, อิตาลี",
+     "participants": "มีผู้วิ่งจบ 7,777 คนในเดือนกุมภาพันธ์ 2026 (biegowe.pl) สื่อรายงานว่ามีผู้สมัครกว่า 10,000 คน",
+     "course": "ทางราบ เร็ว และได้รับการรับรอง ได้ชื่อว่าเป็นฮาล์ฟมาราธอนที่เร็วที่สุดในอิตาลี วิ่งเลียบทะเลเห็นภูเขาไฟวิสุเวียส ปล่อยตัว 09:00 ที่ Mostra d'Oltremare เวลาตัดตัว 3 ชม. 30 นาที สถิติสนาม 59:01 (Yeman Crippa, 2026) และ 1:08:27 (Sofiia Yaremchuk, 2024)",
+     "travel": "ไม่มีเที่ยวบินตรงจากแบร์เกน Norwegian บินออสโล–เนเปิลส์ แต่ยังไม่ชัดว่ามีในเดือนกุมภาพันธ์หรือไม่ หรือต่อเครื่องหนึ่งครั้งที่โรม มิวนิก แฟรงก์เฟิร์ต อัมสเตอร์ดัม หรือโคเปนเฮเกน (ยังไม่ได้ตรวจสอบ)",
+     "how": "ใครสมัครก่อนได้ก่อน ราคาขึ้นตามจำนวนผู้สมัคร เปิดรับสมัครแล้วที่ maxfunregister.com เป็นงานแรกของ SuperHalfs Europa",
+     "price": "ตอนนี้ €52 (ราคา €38 และ €45 เต็มแล้ว) สมัครที่งานเอ็กซ์โป €60 ไม่รวมค่าธรรมเนียม"
+    }
+   },
+   "deadlines": []
+  },
+  {
+   "slug": "belgrade-half-marathon-2027",
+   "name": "Belgrade Half Marathon",
+   "edition_year": 2027,
+   "race_date": "2027-04-17",
+   "date_precision": "day",
+   "country": "RS",
+   "distance_m": 21097,
+   "status": "open",
+   "entry_type": "fcfs",
+   "travel": "direct",
+   "url": "https://europeanrunningchampionships.com/",
+   "series": ["superhalfs_europa"],
+   "texts": {
+    "nb": {
+     "place": "Beograd, Serbia",
+     "participants": "5 192 fullførte vårhalvmaratonet i april 2026 (biegowe.pl, ikke verifisert). Arrangøren venter over 25 000 deltakere totalt i 2027-helgen.",
+     "course": "I 2027 er dette mosjonsløpet i EM i løping (European Running Championships), på samme løype som EM-halvmaratonet, gjennom sentrum over elver og broer. Start lørdag kl. 09.00; maratonet går søndag 18. april. Høydeprofil ikke funnet.",
+     "travel": "Air Serbia flyr direkte Oslo–Beograd ca. to ganger i uken (aprilruten ikke bekreftet). Fra Bergen ett bytte via Oslo, København, Wien, München eller Istanbul.",
+     "how": "Påmeldingen er trolig åpen til 31. mars 2027 (eller til det er fullt), med etteranmelding på messen fra 14. april. Ser ut som førstemann til mølla, men det står ikke uttrykkelig. Ikke det samme som høsthalvmaratonet i november. Del av SuperHalfs Europa.",
+     "price": "€60 til 30. november 2026, deretter €70 (des–feb), €80 (mars) og €90 på messen."
+    },
+    "en": {
+     "place": "Belgrade, Serbia",
+     "participants": "5,192 finished the spring half in April 2026 (biegowe.pl, unverified). The organiser expects over 25,000 participants across the 2027 weekend.",
+     "course": "In 2027 this is the mass race of the European Running Championships, on the same course as the European half marathon championship, through the centre over rivers and bridges. Starts Saturday 09:00; the marathon is on Sunday 18 April. Elevation profile not found.",
+     "travel": "Air Serbia flies Oslo–Belgrade direct about twice a week (April schedule not confirmed). From Bergen, one stop via Oslo, Copenhagen, Vienna, Munich or Istanbul.",
+     "how": "Entry is probably open until 31 March 2027 (or until full), with late entry at the expo from 14 April. Looks first come, first served, but it isn't stated outright. Not the same race as the autumn half in November. Part of SuperHalfs Europa.",
+     "price": "€60 until 30 November 2026, then €70 (Dec–Feb), €80 (March) and €90 at the expo."
+    },
+    "th": {
+     "place": "เบลเกรด, เซอร์เบีย",
+     "participants": "มีผู้วิ่งจบฮาล์ฟมาราธอนฤดูใบไม้ผลิ 5,192 คนในเดือนเมษายน 2026 (biegowe.pl ยังไม่ได้ตรวจสอบ) ผู้จัดคาดว่าจะมีผู้เข้าร่วมกว่า 25,000 คนตลอดสุดสัปดาห์ปี 2027",
+     "course": "ปี 2027 เป็นรายการวิ่งมวลชนของ European Running Championships ใช้เส้นทางเดียวกับฮาล์ฟมาราธอนชิงแชมป์ยุโรป ผ่านใจกลางเมือง แม่น้ำ และสะพาน ปล่อยตัววันเสาร์ 09:00 มาราธอนจัดวันอาทิตย์ที่ 18 เมษายน ไม่พบข้อมูลความสูงของเส้นทาง",
+     "travel": "Air Serbia บินตรงออสโล–เบลเกรดราวสัปดาห์ละสองเที่ยว (ยังไม่ยืนยันตารางเดือนเมษายน) จากแบร์เกนต่อเครื่องหนึ่งครั้งที่ออสโล โคเปนเฮเกน เวียนนา มิวนิก หรืออิสตันบูล",
+     "how": "น่าจะเปิดรับสมัครถึง 31 มีนาคม 2027 (หรือจนกว่าจะเต็ม) และสมัครช้าได้ที่งานเอ็กซ์โปตั้งแต่ 14 เมษายน ดูเหมือนใครสมัครก่อนได้ก่อนแต่ไม่ได้ระบุชัด ไม่ใช่งานเดียวกับฮาล์ฟมาราธอนฤดูใบไม้ร่วงในเดือนพฤศจิกายน เป็นส่วนหนึ่งของ SuperHalfs Europa",
+     "price": "€60 ถึง 30 พฤศจิกายน 2026 จากนั้น €70 (ธ.ค.–ก.พ.) €80 (มี.ค.) และ €90 ที่งานเอ็กซ์โป"
+    }
+   },
+   "deadlines": [
+    {
+     "kind": "price_increase",
+     "due_date": "2026-12-01",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {"what": "Prisen øker fra €60 til €70."},
+      "en": {"what": "The price rises from €60 to €70."},
+      "th": {"what": "ราคาขึ้นจาก €60 เป็น €70"}
+     }
+    },
+    {
+     "kind": "entry_closes",
+     "due_date": "2027-03-31",
+     "date_precision": "day",
+     "expected": false,
+     "texts": {
+      "nb": {"what": "Nettpåmeldingen stenger (etteranmelding på messen fra 14. april)."},
+      "en": {"what": "Online entry closes (late entry at the expo from 14 April)."},
+      "th": {"what": "ปิดรับสมัครออนไลน์ (สมัครช้าได้ที่งานเอ็กซ์โปตั้งแต่ 14 เมษายน)"}
+     }
+    }
+   ]
+  }
+ ]
+}

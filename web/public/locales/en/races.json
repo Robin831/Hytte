@@ -46,7 +46,8 @@
     "complete": {
       "majors": "All seven Majors — Seven Star Finisher!",
       "emc": "Five races done — you’ve earned the Finisher medal.",
-      "superhalfs": "All six SuperHalfs — SuperRunner!"
+      "superhalfs": "All six SuperHalfs — SuperRunner!",
+      "superhalfs_europa": "All six SuperHalfs Europa — Europa SuperMedal!"
     },
     "done": "finished",
     "nextEdition": "Next edition",
@@ -56,7 +57,9 @@
     "time": "Time (optional)",
     "remove": "Remove the {{year}} finish",
     "confirmRemove": "Remove the {{year}} finish?",
-    "superhalfs": "SuperHalfs"
+    "superhalfs": "SuperHalfs Originals",
+    "superhalfs_europa": "SuperHalfs Europa",
+    "fromYear": "Counts races from {{year}} — any order, no time limit"
   },
   "distance": {
     "all": "All distances",
@@ -421,7 +424,8 @@
     },
     "seriesBadge": {
       "major": "Series race",
-      "superhalfs": "SuperHalfs"
+      "superhalfs": "SuperHalfs Originals",
+      "superhalfs_europa": "SuperHalfs Europa"
     },
     "nominal": "Advertised distance (m)",
     "nominalHint": "only if the course was short or long",

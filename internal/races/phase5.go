@@ -181,10 +181,13 @@ type SeriesRace struct {
 	Name string `json:"name"`
 }
 
-// SeriesDef describes a series and how many races complete it.
+// SeriesDef describes a series and how many races complete it. FromYear,
+// when set, is the first year a finish counts (SuperHalfs Europa only
+// counts races run from its launch in 2027).
 type SeriesDef struct {
 	Key      string       `json:"key"`
 	Required int          `json:"required"`
+	FromYear int          `json:"from_year,omitempty"`
 	Races    []SeriesRace `json:"races"`
 }
 
@@ -202,6 +205,12 @@ var Series = []SeriesDef{
 		{"lisbon_half", "Lisbon"}, {"prague_half", "Prague"}, {"copenhagen_half", "Copenhagen"},
 		{"cardiff_half", "Cardiff"}, {"berlin_half", "Berlin"}, {"valencia_half", "Valencia"},
 	}},
+	// SuperHalfs Europa (launched November 2026): a second six-race series
+	// with its own SuperMedal, no time limit, finishes from 2027 onwards.
+	{Key: "superhalfs_europa", Required: 6, FromYear: 2027, Races: []SeriesRace{
+		{"napoli_half", "Napoli"}, {"warsaw_half", "Warsaw"}, {"belgrade_half", "Belgrade"},
+		{"vienna_half", "Vienna"}, {"riga_half", "Riga"}, {"stockholm_half", "Stockholm"},
+	}},
 }
 
 // seriesSlugKeys maps a catalog slug (without its year) to a series race.
@@ -214,6 +223,9 @@ var seriesSlugKeys = map[string]string{
 	"edp-lisbon-half": "lisbon_half", "generali-prague-half-marathon": "prague_half",
 	"copenhagen-half-marathon": "copenhagen_half", "cardiff-half-marathon": "cardiff_half",
 	"generali-berliner-halbmarathon": "berlin_half", "medio-maraton-valencia": "valencia_half",
+	"coelmo-napoli-city-half-marathon": "napoli_half", "nn-polmaraton-warszawski": "warsaw_half",
+	"belgrade-half-marathon": "belgrade_half", "vienna-city-marathon-halvmaraton": "vienna_half",
+	"rimi-riga-marathon-halvmaraton": "riga_half", "adidas-stockholm-half-marathon": "stockholm_half",
 }
 
 var slugYear = regexp.MustCompile(`-(19|20)\d\d(-\d+)?$`)
@@ -225,14 +237,19 @@ func SeriesKeyForSlug(slug string) string {
 }
 
 func validSeriesKey(key string) bool {
-	for _, s := range Series {
+	return seriesForRace(key) != nil
+}
+
+// seriesForRace returns the series a race key belongs to, or nil.
+func seriesForRace(key string) *SeriesDef {
+	for i, s := range Series {
 		for _, r := range s.Races {
 			if r.Key == key {
-				return true
+				return &Series[i]
 			}
 		}
 	}
-	return false
+	return nil
 }
 
 // Finish is one finished series race.
@@ -252,11 +269,15 @@ type FinishInput struct {
 
 // SaveFinish stores (or replaces) a finished series race.
 func SaveFinish(ctx context.Context, db *sql.DB, userID int64, in FinishInput, source string) error {
-	if !validSeriesKey(in.RaceKey) {
+	def := seriesForRace(in.RaceKey)
+	if def == nil {
 		return invalid("unknown series race %q", in.RaceKey)
 	}
 	if in.Year < 1897 || in.Year > 2100 {
 		return invalid("year must be between 1897 and 2100")
+	}
+	if in.Year < def.FromYear {
+		return invalid("%s only counts races from %d", def.Key, def.FromYear)
 	}
 	if in.FinishSeconds != nil && (*in.FinishSeconds <= 0 || *in.FinishSeconds > maxTargetSeconds) {
 		return invalid("finish_seconds must be a positive number of seconds")
@@ -292,6 +313,7 @@ type SeriesRaceProgress struct {
 type SeriesProgress struct {
 	Key      string               `json:"key"`
 	Required int                  `json:"required"`
+	FromYear int                  `json:"from_year,omitempty"`
 	Done     int                  `json:"done"`
 	Races    []SeriesRaceProgress `json:"races"`
 }
@@ -369,11 +391,13 @@ func BuildSeriesProgress(ctx context.Context, db *sql.DB, userID int64, today st
 
 	var out []SeriesProgress
 	for _, s := range Series {
-		p := SeriesProgress{Key: s.Key, Required: s.Required}
+		p := SeriesProgress{Key: s.Key, Required: s.Required, FromYear: s.FromYear}
 		for _, r := range s.Races {
-			rp := SeriesRaceProgress{SeriesRace: r, Finishes: finishes[r.Key]}
-			if rp.Finishes == nil {
-				rp.Finishes = []Finish{}
+			rp := SeriesRaceProgress{SeriesRace: r, Finishes: []Finish{}}
+			for _, f := range finishes[r.Key] {
+				if f.Year >= s.FromYear {
+					rp.Finishes = append(rp.Finishes, f)
+				}
 			}
 			if id, ok := next[r.Key]; ok {
 				id := id
