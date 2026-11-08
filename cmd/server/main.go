@@ -469,6 +469,9 @@ func main() {
 	// window and to force stuck queued/processing rows to 'failed'.
 	go pokemon.StartScanCleanupLoop(notifCtx, database)
 
+	// Check the Norwegian shops for singles in wanted sets nightly (06:30).
+	go pokemon.StartOffersLoop(notifCtx, database)
+
 	// End livestream sessions whose broadcaster stopped sending heartbeats.
 	go livestream.StartReaper(notifCtx, database)
 

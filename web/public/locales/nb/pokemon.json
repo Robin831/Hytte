@@ -272,5 +272,85 @@
       "uploadFailed": "Opplastingen feilet, prøv på nytt",
       "timedOut": "Opplastingen tok for lang tid, prøv på nytt"
     }
+  },
+  "singles": {
+    "entryButton": "Kjøp singles",
+    "entryLabel": "Finn manglende kort å kjøpe",
+    "back": "Tilbake til Pokémon-settene",
+    "title": "Kjøp singles",
+    "subtitle": "Manglende kort fra settene du fullfører, og hvor du får kjøpt dem i Norge.",
+    "dismiss": "Lukk",
+    "errors": {
+      "load": "Klarte ikke å hente singles-listen.",
+      "save": "Klarte ikke å lagre endringen.",
+      "basket": "Klarte ikke å regne ut handlekurven."
+    },
+    "sets": {
+      "title": "Sett du fullfører",
+      "empty": "Velg et sett under for å se hvilke kort du mangler.",
+      "missing_one": "{{count}} av {{total}} mangler",
+      "missing_other": "{{count}} av {{total}} mangler",
+      "remove": "Slutt å fullføre {{name}}",
+      "addLabel": "Sett å fullføre",
+      "choose": "Velg et sett …",
+      "add": "Legg til sett"
+    },
+    "cards": {
+      "title_one": "{{count}} manglende kort",
+      "title_other": "{{count}} manglende kort",
+      "complete": "Du har alle kortene i disse settene. 🎉",
+      "noneMatch": "Ingen manglende kort passer filteret."
+    },
+    "checking": "Sjekker butikkene …",
+    "lastChecked": "Sjekket {{when}}",
+    "refresh": "Sjekk nå",
+    "filter": {
+      "label": "Filtrer på lager",
+      "all": "Alle",
+      "inStock": "På lager i Norge",
+      "notInStock": "Ikke på lager"
+    },
+    "selectInStock": "Velg alle på lager",
+    "clearSelection": "Fjern valg",
+    "select": "Velg {{name}} #{{number}}",
+    "print": {
+      "normal": "vanlig",
+      "reverse": "reverse holo",
+      "holo": "holo"
+    },
+    "notInStock": "Ikke på lager i norske butikker",
+    "cardmarket": "Cardmarket {{price}}",
+    "cardmarketPrice": "Cardmarket-pris {{price}}",
+    "otherOffers_one": "{{count}} tilbud til",
+    "otherOffers_other": "{{count}} tilbud til",
+    "soldOut": "utsolgt",
+    "selected_one": "{{count}} kort valgt",
+    "selected_other": "{{count}} kort valgt",
+    "basket": {
+      "plan": "Finn billigste handlekurv",
+      "title": "Billigste handlekurv",
+      "shopTotal": "{{subtotal}} + frakt {{shipping}} = {{total}}",
+      "free": "gratis",
+      "checkout": "Gå til kassen hos {{shop}}",
+      "unavailable": "Ikke på lager noe sted — prøv Cardmarket",
+      "total": "Totalt {{total}}"
+    },
+    "shops": {
+      "title_one": "{{count}} butikk sjekkes",
+      "title_other": "{{count}} butikker sjekkes",
+      "intro": "Butikkene sjekkes hver morgen for settene over. Frakt er billigste levering til Bergen.",
+      "error": "siste sjekk feilet",
+      "notChecked": "ikke sjekket ennå",
+      "shipping": "Frakt (kr)",
+      "freeOver": "Gratis over (kr)",
+      "enabled": "Sjekk denne butikken",
+      "confirmRemove": "Fjerne {{name}}?",
+      "remove": "Fjern {{name}}",
+      "shippingInfo": "Frakt {{shipping}}",
+      "freeOverInfo": "gratis over {{amount}}",
+      "addLabel": "Butikkadresse",
+      "placeholder": "Legg til en butikk — f.eks. pokehandel.no",
+      "add": "Legg til butikk"
+    }
   }
 }

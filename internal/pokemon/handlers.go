@@ -201,6 +201,15 @@ func RegisterRoutes(r chi.Router, db *sql.DB) {
 		r.Patch("/pokemon/collection/{id}", UpdateCollectionHandler(db))
 		r.Delete("/pokemon/collection/{id}", DeleteCollectionHandler(db))
 		r.Get("/pokemon/collection/missing", MissingFromSetHandler(db))
+		// Buying singles: wanted sets, shop offers, cheapest basket.
+		r.Get("/pokemon/singles", SinglesPageHandler(db))
+		r.Post("/pokemon/singles/sets", AddWantedSetHandler(db))
+		r.Delete("/pokemon/singles/sets/{id}", RemoveWantedSetHandler(db))
+		r.Post("/pokemon/singles/refresh", RefreshOffersHandler(db))
+		r.Post("/pokemon/singles/basket", BasketHandler(db))
+		r.Post("/pokemon/singles/shops", AddShopHandler(db))
+		r.Patch("/pokemon/singles/shops/{id}", UpdateShopHandler(db))
+		r.Delete("/pokemon/singles/shops/{id}", DeleteShopHandler(db))
 		// Async scan queue (Hytte-7fgp). The sync /api/pokemon/scan endpoint
 		// is gone; uploads enqueue a job that the background worker picks up.
 		// Kids hit /queue from the camera page, then poll /scans for results.

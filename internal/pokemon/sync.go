@@ -108,19 +108,35 @@ func SyncAll(ctx context.Context, db *sql.DB, client *TCGdexClient) error {
 	if n > 0 {
 		log.Printf("pokemon: backfilled %d normal variant rows for cards with no price data", n)
 	}
+	if _, err := db.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations (key, value) VALUES (?, '1')`, marketplaceIDsKey); err != nil {
+		return fmt.Errorf("mark marketplace ids: %w", err)
+	}
 	return nil
 }
 
-// RefreshPrices updates prices for the cards someone owns. Runs daily; the
-// weekly SyncAll refreshes every other card.
+// RefreshPrices runs daily: every card's price from Cardmarket's price
+// export, plus TCGdex per-card prices for owned cards without a Cardmarket
+// id. The weekly SyncAll also refreshes prices along with the catalogue.
 func RefreshPrices(ctx context.Context, db *sql.DB, client *TCGdexClient) error {
 	if client == nil {
 		client = NewTCGdexClient()
 	}
+	// Every card with a Cardmarket id gets today's price from the daily
+	// export; owned cards without one (or all owned cards, if the download
+	// fails) fall back to TCGdex per card.
+	ownedFilter := `AND c.cm_product_id = 0`
+	if guide, err := fetchPriceGuide(ctx, client.httpClient); err != nil {
+		log.Printf("pokemon: cardmarket price guide: %v", err)
+		ownedFilter = ""
+	} else if n, err := applyPriceGuide(ctx, db, guide); err != nil {
+		return fmt.Errorf("apply price guide: %w", err)
+	} else {
+		log.Printf("pokemon: priced %d cards from the Cardmarket price guide", n)
+	}
 	rows, err := db.QueryContext(ctx, `
 		SELECT DISTINCT c.id, c.tcgdex_id FROM pokemon_cards c
 		JOIN pokemon_collections col ON col.card_id = c.id
-		WHERE c.tcgdex_id != ''`)
+		WHERE c.tcgdex_id != '' `+ownedFilter)
 	if err != nil {
 		return fmt.Errorf("list owned cards: %w", err)
 	}
@@ -148,11 +164,15 @@ func NeedsTCGdexSync(ctx context.Context, db *sql.DB) (bool, error) {
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pokemon_sets WHERE tcgdex_id != ''`).Scan(&linked); err != nil {
 		return false, err
 	}
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE key IN (?, ?)`, repairClassicKey, repairImagesKey).Scan(&repaired); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE key IN (?, ?, ?)`, repairClassicKey, repairImagesKey, marketplaceIDsKey).Scan(&repaired); err != nil {
 		return false, err
 	}
-	return linked == 0 || repaired < 2, nil
+	return linked == 0 || repaired < 3, nil
 }
+
+// marketplaceIDsKey marks the first full sync that stored every card's
+// Cardmarket and TCGplayer ids (needed for buying singles).
+const marketplaceIDsKey = "pokemon_tcgdex_marketplace_ids"
 
 // repairImagesKey marks the one-time check of the TCGdex images the first
 // sync stored without verifying them.
@@ -690,6 +710,8 @@ type cardDetail struct {
 	ourID       string
 	rarity      string
 	normal, rev float64
+	cmProductID int64
+	tcgplayerID int64
 }
 
 // fetchCardDetails fetches each card's detail concurrently (bounded by
@@ -717,8 +739,13 @@ func fetchCardDetails(ctx context.Context, client *TCGdexClient, cards []cardRef
 				return
 			}
 			n, r := pickTCGdexPrice(card.Pricing.Cardmarket)
+			var cm int64
+			if card.Pricing.Cardmarket != nil {
+				cm = card.Pricing.Cardmarket.IDProduct
+			}
 			mu.Lock()
-			out = append(out, cardDetail{ourID: c.ourID, rarity: rarityLabel(card.Rarity), normal: n, rev: r})
+			out = append(out, cardDetail{ourID: c.ourID, rarity: rarityLabel(card.Rarity), normal: n, rev: r,
+				cmProductID: cm, tcgplayerID: card.Pricing.tcgplayerProductID()})
 			mu.Unlock()
 		}()
 	}
@@ -757,6 +784,14 @@ func applyCardDetails(ctx context.Context, db *sql.DB, details []cardDetail, wit
 		if withRarity && d.rarity != "" {
 			if _, err := tx.ExecContext(ctx, `UPDATE pokemon_cards SET rarity = ? WHERE id = ? AND rarity = ''`, d.rarity, d.ourID); err != nil {
 				return fmt.Errorf("set rarity for %s: %w", d.ourID, err)
+			}
+		}
+		if d.cmProductID > 0 || d.tcgplayerID > 0 {
+			if _, err := tx.ExecContext(ctx, `UPDATE pokemon_cards SET
+				cm_product_id = CASE WHEN ? > 0 THEN ? ELSE cm_product_id END,
+				tcgplayer_id  = CASE WHEN ? > 0 THEN ? ELSE tcgplayer_id END
+				WHERE id = ?`, d.cmProductID, d.cmProductID, d.tcgplayerID, d.tcgplayerID, d.ourID); err != nil {
+				return fmt.Errorf("set marketplace ids for %s: %w", d.ourID, err)
 			}
 		}
 		for _, v := range []struct {

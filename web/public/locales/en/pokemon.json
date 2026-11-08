@@ -272,5 +272,85 @@
       "uploadFailed": "Upload failed, try again",
       "timedOut": "Upload timed out, try again"
     }
+  },
+  "singles": {
+    "entryButton": "Buy singles",
+    "entryLabel": "Find missing cards to buy",
+    "back": "Back to Pokémon sets",
+    "title": "Buy singles",
+    "subtitle": "Missing cards from the sets you're completing, and where to buy them in Norway.",
+    "dismiss": "Dismiss",
+    "errors": {
+      "load": "Couldn't load the singles list.",
+      "save": "Couldn't save the change.",
+      "basket": "Couldn't work out the basket."
+    },
+    "sets": {
+      "title": "Sets you're completing",
+      "empty": "Pick a set below to see which of its cards you're missing.",
+      "missing_one": "{{count}} of {{total}} missing",
+      "missing_other": "{{count}} of {{total}} missing",
+      "remove": "Stop completing {{name}}",
+      "addLabel": "Set to complete",
+      "choose": "Choose a set…",
+      "add": "Add set"
+    },
+    "cards": {
+      "title_one": "{{count}} missing card",
+      "title_other": "{{count}} missing cards",
+      "complete": "You have every card in these sets. 🎉",
+      "noneMatch": "No missing cards match this filter."
+    },
+    "checking": "Checking the shops…",
+    "lastChecked": "Checked {{when}}",
+    "refresh": "Check now",
+    "filter": {
+      "label": "Filter by stock",
+      "all": "All",
+      "inStock": "In stock in Norway",
+      "notInStock": "Not in stock"
+    },
+    "selectInStock": "Select all in stock",
+    "clearSelection": "Clear selection",
+    "select": "Select {{name}} #{{number}}",
+    "print": {
+      "normal": "normal",
+      "reverse": "reverse holo",
+      "holo": "holo"
+    },
+    "notInStock": "Not in stock in Norwegian shops",
+    "cardmarket": "Cardmarket {{price}}",
+    "cardmarketPrice": "Cardmarket price {{price}}",
+    "otherOffers_one": "{{count}} more offer",
+    "otherOffers_other": "{{count}} more offers",
+    "soldOut": "sold out",
+    "selected_one": "{{count}} card selected",
+    "selected_other": "{{count}} cards selected",
+    "basket": {
+      "plan": "Find cheapest basket",
+      "title": "Cheapest basket",
+      "shopTotal": "{{subtotal}} + shipping {{shipping}} = {{total}}",
+      "free": "free",
+      "checkout": "Go to checkout at {{shop}}",
+      "unavailable": "Not in stock in any shop — try Cardmarket",
+      "total": "Total {{total}}"
+    },
+    "shops": {
+      "title_one": "{{count}} shop checked",
+      "title_other": "{{count}} shops checked",
+      "intro": "Shops are checked every morning for the sets above. Shipping is the cheapest delivery to Bergen.",
+      "error": "last check failed",
+      "notChecked": "not checked yet",
+      "shipping": "Shipping (kr)",
+      "freeOver": "Free over (kr)",
+      "enabled": "Check this shop",
+      "confirmRemove": "Remove {{name}}?",
+      "remove": "Remove {{name}}",
+      "shippingInfo": "Shipping {{shipping}}",
+      "freeOverInfo": "free over {{amount}}",
+      "addLabel": "Shop address",
+      "placeholder": "Add a shop — e.g. pokehandel.no",
+      "add": "Add shop"
+    }
   }
 }

@@ -270,5 +270,80 @@
       "uploadFailed": "อัปโหลดไม่สำเร็จ โปรดลองอีกครั้ง",
       "timedOut": "การอัปโหลดใช้เวลานานเกินไป โปรดลองอีกครั้ง"
     }
+  },
+  "singles": {
+    "entryButton": "ซื้อการ์ดใบเดี่ยว",
+    "entryLabel": "หาการ์ดที่ขาดเพื่อซื้อ",
+    "back": "กลับไปที่ชุดโปเกมอน",
+    "title": "ซื้อการ์ดใบเดี่ยว",
+    "subtitle": "การ์ดที่ยังขาดจากชุดที่กำลังสะสม และร้านในนอร์เวย์ที่มีขาย",
+    "dismiss": "ปิด",
+    "errors": {
+      "load": "โหลดรายการการ์ดไม่สำเร็จ",
+      "save": "บันทึกการเปลี่ยนแปลงไม่สำเร็จ",
+      "basket": "คำนวณตะกร้าไม่สำเร็จ"
+    },
+    "sets": {
+      "title": "ชุดที่กำลังสะสม",
+      "empty": "เลือกชุดด้านล่างเพื่อดูว่าขาดการ์ดใบไหนบ้าง",
+      "missing_other": "ขาด {{count}} จาก {{total}} ใบ",
+      "remove": "เลิกสะสม {{name}}",
+      "addLabel": "ชุดที่จะสะสม",
+      "choose": "เลือกชุด…",
+      "add": "เพิ่มชุด"
+    },
+    "cards": {
+      "title_other": "การ์ดที่ขาด {{count}} ใบ",
+      "complete": "คุณมีการ์ดครบทุกใบในชุดเหล่านี้แล้ว 🎉",
+      "noneMatch": "ไม่มีการ์ดที่ขาดตรงกับตัวกรองนี้"
+    },
+    "checking": "กำลังเช็กร้านค้า…",
+    "lastChecked": "เช็กเมื่อ {{when}}",
+    "refresh": "เช็กตอนนี้",
+    "filter": {
+      "label": "กรองตามสต็อก",
+      "all": "ทั้งหมด",
+      "inStock": "มีในนอร์เวย์",
+      "notInStock": "ไม่มีสต็อก"
+    },
+    "selectInStock": "เลือกทั้งหมดที่มีสต็อก",
+    "clearSelection": "ล้างการเลือก",
+    "select": "เลือก {{name}} #{{number}}",
+    "print": {
+      "normal": "ธรรมดา",
+      "reverse": "รีเวิร์สโฮโล",
+      "holo": "โฮโล"
+    },
+    "notInStock": "ไม่มีในร้านนอร์เวย์",
+    "cardmarket": "Cardmarket {{price}}",
+    "cardmarketPrice": "ราคา Cardmarket {{price}}",
+    "otherOffers_other": "อีก {{count}} ข้อเสนอ",
+    "soldOut": "ขายหมด",
+    "selected_other": "เลือกแล้ว {{count}} ใบ",
+    "basket": {
+      "plan": "หาตะกร้าที่ถูกที่สุด",
+      "title": "ตะกร้าที่ถูกที่สุด",
+      "shopTotal": "{{subtotal}} + ค่าส่ง {{shipping}} = {{total}}",
+      "free": "ฟรี",
+      "checkout": "ไปชำระเงินที่ {{shop}}",
+      "unavailable": "ไม่มีสต็อกที่ร้านไหนเลย — ลอง Cardmarket",
+      "total": "รวม {{total}}"
+    },
+    "shops": {
+      "title_other": "เช็ก {{count}} ร้าน",
+      "intro": "ร้านค้าจะถูกเช็กทุกเช้าสำหรับชุดด้านบน ค่าส่งคือค่าส่งที่ถูกที่สุดไปแบร์เกน",
+      "error": "เช็กครั้งล่าสุดไม่สำเร็จ",
+      "notChecked": "ยังไม่ได้เช็ก",
+      "shipping": "ค่าส่ง (โครน)",
+      "freeOver": "ส่งฟรีเมื่อเกิน (โครน)",
+      "enabled": "เช็กร้านนี้",
+      "confirmRemove": "ลบ {{name}} ไหม?",
+      "remove": "ลบ {{name}}",
+      "shippingInfo": "ค่าส่ง {{shipping}}",
+      "freeOverInfo": "ส่งฟรีเมื่อเกิน {{amount}}",
+      "addLabel": "ที่อยู่ร้าน",
+      "placeholder": "เพิ่มร้าน — เช่น pokehandel.no",
+      "add": "เพิ่มร้าน"
+    }
   }
 }

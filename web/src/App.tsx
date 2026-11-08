@@ -93,6 +93,7 @@ import MathAchievements from './pages/MathAchievements'
 import PokemonSets from './pages/PokemonSets'
 import PokemonSet from './pages/PokemonSet'
 import PokemonTop from './pages/PokemonTop'
+import PokemonSingles from './pages/PokemonSingles'
 import PokemonScanned from './pages/PokemonScanned'
 import { AchievementUnlockOverlay } from './components/regnemester/AchievementUnlockOverlay'
 import { useSyncLanguagePreference } from './hooks/useSyncLanguagePreference'
@@ -740,6 +741,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="pokemon">
                 <PokemonTop />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/pokemon/singles"
+            element={
+              <FeatureRoute feature="pokemon">
+                <PokemonSingles />
               </FeatureRoute>
             }
           />

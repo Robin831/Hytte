@@ -3558,6 +3558,67 @@ func createSchema(db *sql.DB) error {
 		return fmt.Errorf("create pokemon_cards tcgdex_id index: %w", err)
 	}
 
+	// Marketplace ids for buying singles: cm_product_id is the card's
+	// Cardmarket idProduct (daily price file + deep links), tcgplayer_id is
+	// TCGplayer's productId, which Norwegian Shopify shops tag their singles
+	// with. Both come from TCGdex card details; 0 = unknown.
+	for _, col := range []string{"cm_product_id", "tcgplayer_id"} {
+		var has int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('pokemon_cards') WHERE name = ?`, col).Scan(&has); err != nil {
+			return fmt.Errorf("check pokemon_cards %s column: %w", col, err)
+		}
+		if has == 0 {
+			if _, err := db.Exec(`ALTER TABLE pokemon_cards ADD COLUMN ` + col + ` INTEGER NOT NULL DEFAULT 0`); err != nil {
+				return fmt.Errorf("add pokemon_cards %s column: %w", col, err)
+			}
+		}
+	}
+
+	// Buying singles: the sets a user is completing, the shops we check, the
+	// shop collection that holds each set's singles, and the offers found.
+	if _, err := db.Exec(`
+		CREATE TABLE IF NOT EXISTS pokemon_wanted_sets (
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			set_id     TEXT NOT NULL REFERENCES pokemon_sets(id) ON DELETE CASCADE,
+			created_at TIMESTAMP NOT NULL,
+			PRIMARY KEY (user_id, set_id)
+		);
+		CREATE TABLE IF NOT EXISTS pokemon_shops (
+			id              INTEGER PRIMARY KEY AUTOINCREMENT,
+			name            TEXT NOT NULL,
+			base_url        TEXT NOT NULL UNIQUE,
+			shipping_nok    REAL NOT NULL DEFAULT 0,
+			free_over_nok   REAL NOT NULL DEFAULT 0,
+			enabled         INTEGER NOT NULL DEFAULT 1,
+			last_checked_at TIMESTAMP,
+			last_error      TEXT NOT NULL DEFAULT '',
+			created_at      TIMESTAMP NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS pokemon_shop_collections (
+			shop_id    INTEGER NOT NULL REFERENCES pokemon_shops(id) ON DELETE CASCADE,
+			set_id     TEXT NOT NULL REFERENCES pokemon_sets(id) ON DELETE CASCADE,
+			handle     TEXT NOT NULL DEFAULT '',
+			checked_at TIMESTAMP NOT NULL,
+			PRIMARY KEY (shop_id, set_id)
+		);
+		CREATE TABLE IF NOT EXISTS pokemon_shop_offers (
+			shop_id    INTEGER NOT NULL REFERENCES pokemon_shops(id) ON DELETE CASCADE,
+			variant_id TEXT NOT NULL,
+			card_id    TEXT NOT NULL REFERENCES pokemon_cards(id) ON DELETE CASCADE,
+			title      TEXT NOT NULL DEFAULT '',
+			print      TEXT NOT NULL DEFAULT '',
+			condition  TEXT NOT NULL DEFAULT '',
+			price_nok  REAL NOT NULL,
+			available  INTEGER NOT NULL DEFAULT 0,
+			url        TEXT NOT NULL DEFAULT '',
+			checked_at TIMESTAMP NOT NULL,
+			PRIMARY KEY (shop_id, variant_id)
+		);
+		CREATE INDEX IF NOT EXISTS idx_pokemon_shop_offers_card ON pokemon_shop_offers(card_id);
+	`); err != nil {
+		return fmt.Errorf("create pokemon singles tables: %w", err)
+	}
+
 	// Add page_id FK to pokemon_scan_jobs (Hytte-3zej): nullable parent link so
 	// children of a /scans/page upload can be grouped under one
 	// pokemon_scan_pages row while the single-card /scans/queue path keeps

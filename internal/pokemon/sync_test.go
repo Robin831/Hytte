@@ -39,6 +39,7 @@ type fakeTCGdex struct {
 	cardHits      map[string]int
 	failSetsAt    int             // when >0, GET /sets returns 500 this many times first
 	missingImages map[string]bool // image URLs that 404
+	guide         []priceGuideEntry
 }
 
 func (f *fakeTCGdex) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -78,6 +79,8 @@ func (f *fakeTCGdex) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		write(c)
+	case r.URL.Path == "/price_guide_6.json":
+		write(map[string]any{"version": 1, "priceGuides": f.guide})
 	default:
 		http.NotFound(w, r)
 	}
@@ -140,7 +143,49 @@ func newFakeClient(t *testing.T, f *fakeTCGdex) *TCGdexClient {
 		defer f.mu.Unlock()
 		return !f.missingImages[u]
 	}
+	prevGuide := cardmarketGuideURL
+	cardmarketGuideURL = srv.URL + "/price_guide_6.json"
+	t.Cleanup(func() { cardmarketGuideURL = prevGuide })
 	return c
+}
+
+func TestRefreshPrices_UsesCardmarketGuide(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	seedPokemontcgCatalog(t, d)
+	f := newFakeTCGdex()
+	c := f.cards["sv03.5-210"]
+	c.Pricing.Cardmarket.IDProduct = 733700
+	c.Pricing.TCGPlayer = map[string]json.RawMessage{"unit": json.RawMessage(`"USD"`), "holofoil": json.RawMessage(`{"productId":502600}`)}
+	f.cards["sv03.5-210"] = c
+	if err := SyncAll(ctx, d, newFakeClient(t, f)); err != nil {
+		t.Fatal(err)
+	}
+	var cm, tp int64
+	if err := d.QueryRow(`SELECT cm_product_id, tcgplayer_id FROM pokemon_cards WHERE id = 'sv3pt5-210'`).Scan(&cm, &tp); err != nil || cm != 733700 || tp != 502600 {
+		t.Fatalf("ids = %d %d, %v", cm, tp, err)
+	}
+
+	// The daily refresh prices the (unowned) card from the export without a
+	// per-card TCGdex call.
+	f2 := newFakeTCGdex()
+	trend, holo := 55.5, 7.0
+	f2.guide = []priceGuideEntry{{IDProduct: 733700, Trend: &trend, TrendHolo: &holo}}
+	if err := RefreshPrices(ctx, d, newFakeClient(t, f2)); err != nil {
+		t.Fatal(err)
+	}
+	if p := variantPrice(t, d, "sv3pt5-210", "normal"); p != 55.5 {
+		t.Fatalf("normal = %v", p)
+	}
+	if p := variantPrice(t, d, "sv3pt5-210", "reverse_holofoil"); p != 7 {
+		t.Fatalf("reverse = %v", p)
+	}
+	if f2.cardHits["sv03.5-210"] != 0 {
+		t.Fatalf("card fetched from TCGdex: %v", f2.cardHits)
+	}
+	if got := CardmarketProductURL(733700); got != "https://www.cardmarket.com/en/Pokemon/Products?idProduct=733700&language=1&minCondition=2" {
+		t.Fatalf("url = %s", got)
+	}
 }
 
 // seedPokemontcgCatalog inserts sets and cards the way the old

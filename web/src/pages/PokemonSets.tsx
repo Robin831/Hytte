@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ArrowRight, Camera, ChevronDown, ChevronUp, LayoutGrid, ScanLine, Trophy } from 'lucide-react'
+import { ArrowRight, Camera, ChevronDown, ChevronUp, LayoutGrid, ScanLine, ShoppingCart, Trophy } from 'lucide-react'
 import { Skeleton } from '../components/ui/skeleton'
 import AddCardPanel from '../components/pokemon/AddCardPanel'
 import CardScanner from '../components/pokemon/CardScanner'
@@ -377,6 +377,15 @@ export default function PokemonSets() {
             >
               <Trophy size={16} aria-hidden="true" />
               <span>{t('top.entryButton')}</span>
+            </Link>
+            <Link
+              to="/pokemon/singles"
+              aria-label={t('singles.entryLabel')}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/40 text-emerald-200 rounded transition-colors"
+              data-testid="pokemon-singles-link"
+            >
+              <ShoppingCart size={16} aria-hidden="true" />
+              <span>{t('singles.entryButton')}</span>
             </Link>
           </div>
         </header>

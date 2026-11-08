@@ -137,6 +137,22 @@ type TCGdexCard struct {
 // of a €0.10 card.
 type TCGdexPricing struct {
 	Cardmarket *TCGdexCardmarket `json:"cardmarket"`
+	// TCGPlayer maps print → {productId,…} plus "unit"/"updated" strings;
+	// we only read the productId (the same for every print of a card).
+	TCGPlayer map[string]json.RawMessage `json:"tcgplayer"`
+}
+
+// tcgplayerProductID returns the card's TCGplayer productId, or 0.
+func (p TCGdexPricing) tcgplayerProductID() int64 {
+	for _, raw := range p.TCGPlayer {
+		var v struct {
+			ProductID int64 `json:"productId"`
+		}
+		if json.Unmarshal(raw, &v) == nil && v.ProductID > 0 {
+			return v.ProductID
+		}
+	}
+	return 0
 }
 
 // TCGdexCardmarket is the card's Cardmarket product: the plain print's
@@ -145,6 +161,7 @@ type TCGdexPricing struct {
 // reverseHoloTrend), so prices carry over consistently.
 type TCGdexCardmarket struct {
 	Updated   string   `json:"updated"`
+	IDProduct int64    `json:"idProduct"`
 	Avg       *float64 `json:"avg"`
 	Trend     *float64 `json:"trend"`
 	AvgHolo   *float64 `json:"avg-holo"`
