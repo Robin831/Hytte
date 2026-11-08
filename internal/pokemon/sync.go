@@ -156,7 +156,7 @@ func NeedsTCGdexSync(ctx context.Context, db *sql.DB) (bool, error) {
 
 // repairImagesKey marks the one-time check of the TCGdex images the first
 // sync stored without verifying them.
-const repairImagesKey = "pokemon_tcgdex_repair_images"
+const repairImagesKey = "pokemon_tcgdex_repair_images_v2" // v2 also checks the large image
 
 // repairBrokenImages checks every stored TCGdex image once and replaces the
 // broken ones with the card's previous picture (pokemontcg.io's images, now
@@ -171,15 +171,15 @@ func repairBrokenImages(ctx context.Context, db *sql.DB, client *TCGdexClient) e
 	if done > 0 {
 		return nil
 	}
-	rows, err := db.QueryContext(ctx, `SELECT id, image_small_url FROM pokemon_cards WHERE image_small_url LIKE 'https://assets.tcgdex.net/%'`)
+	rows, err := db.QueryContext(ctx, `SELECT id, image_small_url, image_large_url FROM pokemon_cards WHERE image_small_url LIKE 'https://assets.tcgdex.net/%'`)
 	if err != nil {
 		return err
 	}
-	type card struct{ id, small string }
+	type card struct{ id, small, large string }
 	var cards []card
 	for rows.Next() {
 		var c card
-		if err := rows.Scan(&c.id, &c.small); err != nil {
+		if err := rows.Scan(&c.id, &c.small, &c.large); err != nil {
 			rows.Close()
 			return err
 		}
@@ -206,7 +206,7 @@ func repairBrokenImages(ctx context.Context, db *sql.DB, client *TCGdexClient) e
 		go func() {
 			defer wg.Done()
 			defer func() { <-sem }()
-			if client.imageOK(ctx, c.small) {
+			if client.imageOK(ctx, c.small) && (!strings.HasPrefix(c.large, "https://assets.tcgdex.net/") || client.imageOK(ctx, c.large)) {
 				return
 			}
 			old := "https://images.scrydex.com/pokemon/" + c.id
@@ -663,7 +663,7 @@ func verifiedImages(ctx context.Context, client *TCGdexClient, cards []TCGdexCar
 			defer wg.Done()
 			defer func() { <-sem }()
 			small := tcgdexAsset(c.Image, "/low.webp")
-			if client.imageOK(ctx, small) {
+			if client.imageOK(ctx, small) && client.imageOK(ctx, tcgdexAsset(c.Image, "/high.webp")) {
 				mu.Lock()
 				out[c.ID] = [2]string{small, tcgdexAsset(c.Image, "/high.webp")}
 				mu.Unlock()
