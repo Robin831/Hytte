@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -45,6 +46,9 @@ const tcgdexParallelism = 6
 func SyncAll(ctx context.Context, db *sql.DB, client *TCGdexClient) error {
 	if client == nil {
 		client = NewTCGdexClient()
+	}
+	if err := repairClassicCollection(ctx, db); err != nil {
+		return fmt.Errorf("repair classic collection: %w", err)
 	}
 	briefs, err := client.ListSets(ctx)
 	if err != nil {
@@ -134,14 +138,64 @@ func RefreshPrices(ctx context.Context, db *sql.DB, client *TCGdexClient) error 
 }
 
 // NeedsTCGdexSync reports whether the catalogue has never been synced from
-// TCGdex (no set carries a tcgdex_id yet), so the server can run the first
-// sync at startup instead of waiting for Sunday.
+// TCGdex (no set carries a tcgdex_id yet) or a one-time repair is pending,
+// so the server can sync at startup instead of waiting for Sunday.
 func NeedsTCGdexSync(ctx context.Context, db *sql.DB) (bool, error) {
-	var n int
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pokemon_sets WHERE tcgdex_id != ''`).Scan(&n); err != nil {
+	var linked, repaired int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pokemon_sets WHERE tcgdex_id != ''`).Scan(&linked); err != nil {
 		return false, err
 	}
-	return n == 0, nil
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE key = ?`, repairClassicKey).Scan(&repaired); err != nil {
+		return false, err
+	}
+	return linked == 0 || repaired == 0, nil
+}
+
+// repairClassicKey marks the one-time cleanup after the first TCGdex sync
+// matched the 30th Celebration Classic Collection (me55c) by number only:
+// the sources number those reprints differently, so 24 duplicates were
+// added (without images) and 6 cards were linked to the wrong card.
+const repairClassicKey = "pokemon_tcgdex_repair_me55c"
+
+// repairClassicCollection deletes those duplicates — cards the sync added
+// to me55c, recognisable by a TCGdex link and no image, never owned or
+// scanned — and clears the set's links so linkCards matches it by name.
+func repairClassicCollection(ctx context.Context, db *sql.DB) error {
+	var done int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE key = ?`, repairClassicKey).Scan(&done); err != nil {
+		return err
+	}
+	if done > 0 {
+		return nil
+	}
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	dupes := `SELECT id FROM pokemon_cards WHERE set_id = 'me55c' AND tcgdex_id != '' AND image_small_url = ''
+		AND id NOT IN (SELECT card_id FROM pokemon_collections)
+		AND id NOT IN (SELECT matched_card_id FROM pokemon_scan_jobs WHERE matched_card_id IS NOT NULL)`
+	if _, err := tx.ExecContext(ctx, `DELETE FROM pokemon_card_variants WHERE card_id IN (`+dupes+`)`); err != nil {
+		return fmt.Errorf("delete me55c duplicate variants: %w", err)
+	}
+	res, err := tx.ExecContext(ctx, `DELETE FROM pokemon_cards WHERE id IN (`+dupes+`)`)
+	if err != nil {
+		return fmt.Errorf("delete me55c duplicates: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE pokemon_cards SET tcgdex_id = '' WHERE set_id = 'me55c'`); err != nil {
+		return fmt.Errorf("unlink me55c: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations (key, value) VALUES (?, '1')`, repairClassicKey); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		log.Printf("pokemon: removed %d duplicate Classic Collection cards", n)
+	}
+	return nil
 }
 
 // --- set matching ------------------------------------------------------
@@ -318,34 +372,109 @@ func collectorNo(localID string) string {
 	return localID
 }
 
-// upsertSetCards links TCGdex's cards to ours (by tcgdex_id, else by
-// collector number), refreshes their images, and inserts cards we don't
-// have. Returns the cards to fetch details for.
+// cardName folds a card name for matching ("Buzzwole-GX" ≈ "Buzzwole GX").
+func cardName(s string) string { return normName(s) }
+
+// namesCompatible reports whether two card names can be the same card. The
+// sources name some cards differently ("Empoleon LV.X" / "Empoleon", "Basic
+// Fire Energy" / "Fire Energy", "Imposter" / "Impostor"), so it accepts
+// containment or a shared start of five letters, and rejects different
+// Pokémon ("Charizard" / "Genesect EX").
+func namesCompatible(a, b string) bool {
+	a, b = cardName(a), cardName(b)
+	if a == "" || b == "" || strings.Contains(a, b) || strings.Contains(b, a) {
+		return true
+	}
+	n := 0
+	for n < len(a) && n < len(b) && a[n] == b[n] {
+		n++
+	}
+	return n >= 5
+}
+
+type ourCard struct {
+	id, no, name, tcgdexID string
+	linked                 bool
+}
+
+// linkCards pairs TCGdex cards with ours, strongest rule first:
+//
+//  1. the stored tcgdex_id, if the names still agree
+//  2. same collector number and compatible names
+//  3. same name (exact, then compatible), first free card in number order
+//
+// Rule 3 covers reprint sets numbered differently by the two sources (the
+// 30th Celebration Classic Collection keeps the original numbers on
+// pokemontcg.io but runs 1–30 on TCGdex). Unlinked TCGdex cards are new.
+func linkCards(tcg []TCGdexCardSummary, ours []*ourCard) map[string]*ourCard {
+	links := map[string]*ourCard{}
+	link := func(c TCGdexCardSummary, o *ourCard) {
+		links[c.ID] = o
+		o.linked = true
+	}
+	for _, c := range tcg {
+		for _, o := range ours {
+			if !o.linked && o.tcgdexID == c.ID && namesCompatible(o.name, c.Name) {
+				link(c, o)
+				break
+			}
+		}
+	}
+	for _, c := range tcg {
+		if links[c.ID] != nil {
+			continue
+		}
+		for _, o := range ours {
+			if !o.linked && collectorKey(o.no) == collectorKey(c.LocalID) && namesCompatible(o.name, c.Name) {
+				link(c, o)
+				break
+			}
+		}
+	}
+	for _, exact := range []bool{true, false} {
+		for _, c := range tcg {
+			if links[c.ID] != nil {
+				continue
+			}
+			for _, o := range ours {
+				if o.linked {
+					continue
+				}
+				if (exact && cardName(o.name) == cardName(c.Name)) || (!exact && namesCompatible(o.name, c.Name)) {
+					link(c, o)
+					break
+				}
+			}
+		}
+	}
+	return links
+}
+
+// upsertSetCards links TCGdex's cards to ours (see linkCards), refreshes
+// their images, and inserts cards we don't have. Returns the cards to fetch
+// details for.
 func upsertSetCards(ctx context.Context, db *sql.DB, d *TCGdexSet, ourSetID string, now time.Time) ([]cardRef, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, collector_no, tcgdex_id FROM pokemon_cards WHERE set_id = ?`, ourSetID)
+	rows, err := db.QueryContext(ctx, `SELECT id, collector_no, name, tcgdex_id FROM pokemon_cards WHERE set_id = ?`, ourSetID)
 	if err != nil {
 		return nil, fmt.Errorf("list cards: %w", err)
 	}
-	byTCG := map[string]string{}
-	byNo := map[string]string{}
+	var ours []*ourCard
 	ids := map[string]bool{}
 	for rows.Next() {
-		var id, no, tcg string
-		if err := rows.Scan(&id, &no, &tcg); err != nil {
+		o := &ourCard{}
+		if err := rows.Scan(&o.id, &o.no, &o.name, &o.tcgdexID); err != nil {
 			rows.Close()
 			return nil, err
 		}
-		ids[id] = true
-		if tcg != "" {
-			byTCG[tcg] = id
-		} else {
-			byNo[collectorKey(no)] = id
-		}
+		ours = append(ours, o)
+		ids[o.id] = true
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
+	sort.SliceStable(ours, func(i, j int) bool { return collectorOrder(ours[i].no) < collectorOrder(ours[j].no) })
+	links := linkCards(d.Cards, ours)
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -353,15 +482,22 @@ func upsertSetCards(ctx context.Context, db *sql.DB, d *TCGdexSet, ourSetID stri
 	}
 	defer tx.Rollback() //nolint:errcheck
 
+	// Drop links no TCGdex card claimed any more (e.g. a wrong number match
+	// from before names were checked), so the card stops taking its prices.
+	for _, o := range ours {
+		if !o.linked && o.tcgdexID != "" {
+			if _, err := tx.ExecContext(ctx, `UPDATE pokemon_cards SET tcgdex_id = '' WHERE id = ?`, o.id); err != nil {
+				return nil, fmt.Errorf("unlink card %s: %w", o.id, err)
+			}
+		}
+	}
+
 	var out []cardRef
 	for _, c := range d.Cards {
 		small, large := tcgdexAsset(c.Image, "/low.webp"), tcgdexAsset(c.Image, "/high.webp")
-		ourID := byTCG[c.ID]
-		if ourID == "" {
-			ourID = byNo[collectorKey(c.LocalID)]
-			delete(byNo, collectorKey(c.LocalID))
-		}
-		if ourID != "" {
+		var ourID string
+		if o := links[c.ID]; o != nil {
+			ourID = o.id
 			if _, err := tx.ExecContext(ctx, `
 				UPDATE pokemon_cards SET
 					tcgdex_id       = ?,
@@ -374,8 +510,8 @@ func upsertSetCards(ctx context.Context, db *sql.DB, d *TCGdexSet, ourSetID stri
 		} else {
 			ourID = ourSetID + "-" + collectorNo(c.LocalID)
 			if ids[ourID] {
-				// A card with this id but another number already exists;
-				// fall back to TCGdex's id rather than overwrite it.
+				// A card with this id but another name already exists; fall
+				// back to TCGdex's id rather than overwrite it.
 				ourID = c.ID
 			}
 			if _, err := tx.ExecContext(ctx, `
@@ -396,6 +532,16 @@ func upsertSetCards(ctx context.Context, db *sql.DB, d *TCGdexSet, ourSetID stri
 		return nil, err
 	}
 	return out, nil
+}
+
+// collectorOrder sorts collector numbers numerically where possible
+// ("2" < "10"), so name matches take the lowest-numbered free card.
+func collectorOrder(no string) string {
+	if m := collectorPattern.FindStringSubmatch(strings.ToUpper(strings.TrimSpace(no))); m != nil {
+		n, _ := strconv.Atoi(m[2])
+		return fmt.Sprintf("%s%08d%s", m[1], n, m[3])
+	}
+	return no
 }
 
 // --- card details (rarity + prices) ------------------------------------

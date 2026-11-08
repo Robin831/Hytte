@@ -486,3 +486,76 @@ func TestNextDailyPriceRefresh_SevenAMOslo(t *testing.T) {
 		t.Errorf("same-day case: got %v, want %v", got2, want2)
 	}
 }
+
+func TestSyncAll_ReprintSetMatchesByNameAndRepairsDuplicates(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if _, err := d.Exec(`INSERT INTO pokemon_sets (id, name, series, release_date, synced_at) VALUES
+		('me55c', '30th Celebration: Classic Collection', 'Mega Evolution', '2026/09/16', ?)`, now); err != nil {
+		t.Fatal(err)
+	}
+	// pokemontcg.io kept the original numbers; the first TCGdex sync then
+	// linked Charizard #4 to TCGdex #004 (Genesect EX) and added Charizard
+	// #001 as an imageless duplicate.
+	for _, c := range [][]string{
+		{"me55c-4", "Charizard", "4", "30th-c-004", "old"},
+		{"me55c-149", "Lugia", "149", "", "old"},
+		{"me55c-1", "Charizard", "1", "30th-c-001", ""},
+	} {
+		if _, err := d.Exec(`INSERT INTO pokemon_cards (id, set_id, name, collector_no, image_small_url, image_large_url, synced_at, tcgdex_id)
+			VALUES (?, 'me55c', ?, ?, ?, ?, ?, ?)`, c[0], c[1], c[2], c[4], c[4], now, c[3]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f := &fakeTCGdex{
+		sets: []TCGdexSet{tcgSet("30th-c", "30th Classic Collection", "2026-09-16", "me", "Mega Evolution",
+			summary("30th-c-001", "001", "Charizard"), summary("30th-c-004", "004", "Genesect EX"), summary("30th-c-029", "029", "Lugia"))},
+		cards:    map[string]TCGdexCard{},
+		cardHits: map[string]int{},
+	}
+	if err := SyncAll(ctx, d, newFakeClient(t, f)); err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	rows, err := d.Query(`SELECT id, tcgdex_id FROM pokemon_cards WHERE set_id = 'me55c'`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for rows.Next() {
+		var id, tcg string
+		if err := rows.Scan(&id, &tcg); err != nil {
+			t.Fatal(err)
+		}
+		got[id] = tcg
+	}
+	rows.Close()
+	// Charizard and Lugia link by name; the duplicate is gone; Genesect,
+	// which we didn't have, is added under TCGdex's number.
+	want := map[string]string{"me55c-4": "30th-c-001", "me55c-149": "30th-c-029", "me55c-1": "", "30th-c-004": "30th-c-004"}
+	if len(got) != 3 || got["me55c-4"] != want["me55c-4"] || got["me55c-149"] != want["me55c-149"] {
+		t.Fatalf("cards = %v", got)
+	}
+	if first, _ := NeedsTCGdexSync(ctx, d); first {
+		t.Fatal("repair still pending after sync")
+	}
+}
+
+func TestNamesCompatible(t *testing.T) {
+	for _, c := range []struct {
+		a, b string
+		ok   bool
+	}{
+		{"Empoleon LV.X", "Empoleon", true},
+		{"Basic Fire Energy", "Fire Energy", true},
+		{"Imposter Professor Oak", "Impostor Professor Oak", true},
+		{"Buzzwole-GX", "Buzzwole GX", true},
+		{"Charizard", "Genesect EX", false},
+		{"Dark Tyranitar", "Darkrai & Cresselia LEGEND", false},
+		{"Antique Cover Fossil", "Escavalier", false},
+	} {
+		if got := namesCompatible(c.a, c.b); got != c.ok {
+			t.Errorf("namesCompatible(%q, %q) = %v", c.a, c.b, got)
+		}
+	}
+}
