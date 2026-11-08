@@ -489,16 +489,30 @@ func main() {
 		// The catalogue moved from pokemontcg.io to TCGdex (Nov 2026): run the
 		// first TCGdex sync right away rather than waiting for Sunday, so new
 		// sets and the TCGdex links appear on deploy.
-		if first, err := pokemon.NeedsTCGdexSync(notifCtx, database); err != nil {
-			log.Printf("pokemon: check tcgdex sync: %v", err)
-		} else if first {
-			ctx, cancel := context.WithTimeout(notifCtx, 60*time.Minute)
-			if err := pokemon.SyncAll(ctx, database, nil); err != nil {
-				log.Printf("pokemon: first TCGdex SyncAll error: %v", err)
-			} else {
-				log.Println("pokemon: first TCGdex SyncAll complete")
+		// A failed attempt (TCGdex answers 503 now and then) is retried every
+		// 15 minutes, up to eight times.
+		for attempt := 0; attempt < 8; attempt++ {
+			first, err := pokemon.NeedsTCGdexSync(notifCtx, database)
+			if err != nil {
+				log.Printf("pokemon: check tcgdex sync: %v", err)
+				break
 			}
+			if !first {
+				break
+			}
+			ctx, cancel := context.WithTimeout(notifCtx, 60*time.Minute)
+			err = pokemon.SyncAll(ctx, database, nil)
 			cancel()
+			if err == nil {
+				log.Println("pokemon: first TCGdex SyncAll complete")
+				break
+			}
+			log.Printf("pokemon: first TCGdex SyncAll error (attempt %d): %v", attempt+1, err)
+			select {
+			case <-notifCtx.Done():
+				return
+			case <-time.After(15 * time.Minute):
+			}
 		}
 		for {
 			now := time.Now()
