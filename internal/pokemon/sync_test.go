@@ -4,13 +4,10 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"strconv"
 	"strings"
-	"sync/atomic"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,482 +27,338 @@ func setupTestDB(t *testing.T) *sql.DB {
 	d.SetMaxOpenConns(1)
 	d.SetMaxIdleConns(1)
 	t.Cleanup(func() { d.Close() })
-	// Default-disable the TCGdex hybrid overlay during tests by pointing the
-	// stub client at an unreachable address. Tests that exercise the overlay
-	// override tcgdexClientFn explicitly. Without this default, tests that
-	// happen to seed me*-prefixed sets (used by the existing fallback /
-	// backfill tests) would race against real network calls to TCGdex.
-	prev := tcgdexClientFn
-	tcgdexClientFn = func() *TCGdexClient {
-		return NewTCGdexClient().WithTCGdexBaseURL("http://127.0.0.1:1") // refused
-	}
-	t.Cleanup(func() { tcgdexClientFn = prev })
 	return d
 }
 
-// newTestClient builds a Client pointed at the given test server, with sleeps
-// stubbed so 429 retries don't block real wall-clock time.
-func newTestClient(srv *httptest.Server) *Client {
-	c := NewClient().WithBaseURL(srv.URL).WithHTTPClient(srv.Client())
-	c.withSleep(func(_ context.Context, _ time.Duration) error { return nil })
-	c.maxRetries = 2
+// fakeTCGdex serves /sets, /sets/{id} and /cards/{id} from maps and counts
+// card fetches. Unknown ids 404, like the real API.
+type fakeTCGdex struct {
+	mu         sync.Mutex
+	sets       []TCGdexSet
+	cards      map[string]TCGdexCard
+	cardHits   map[string]int
+	failSetsAt int // when >0, GET /sets returns 500 this many times first
+}
+
+func (f *fakeTCGdex) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	write := func(v any) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(v)
+	}
+	switch {
+	case r.URL.Path == "/sets":
+		if f.failSetsAt > 0 {
+			f.failSetsAt--
+			w.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		var briefs []TCGdexSetBrief
+		for _, s := range f.sets {
+			briefs = append(briefs, TCGdexSetBrief{ID: s.ID, Name: s.Name})
+		}
+		write(briefs)
+	case strings.HasPrefix(r.URL.Path, "/sets/"):
+		id := strings.TrimPrefix(r.URL.Path, "/sets/")
+		for _, s := range f.sets {
+			if s.ID == id {
+				write(s)
+				return
+			}
+		}
+		http.NotFound(w, r)
+	case strings.HasPrefix(r.URL.Path, "/cards/"):
+		id := strings.TrimPrefix(r.URL.Path, "/cards/")
+		f.cardHits[id]++
+		c, ok := f.cards[id]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		write(c)
+	default:
+		http.NotFound(w, r)
+	}
+}
+
+// prices builds a card-level Cardmarket block; 0 leaves a field null.
+func prices(trend, avg, trendHolo, avgHolo float64) TCGdexPricing {
+	ptr := func(v float64) *float64 {
+		if v <= 0 {
+			return nil
+		}
+		return &v
+	}
+	return TCGdexPricing{Cardmarket: &TCGdexCardmarket{Trend: ptr(trend), Avg: ptr(avg), TrendHolo: ptr(trendHolo), AvgHolo: ptr(avgHolo)}}
+}
+
+func tcgSet(id, name, date, serieID, serieName string, cards ...TCGdexCardSummary) TCGdexSet {
+	s := TCGdexSet{ID: id, Name: name, ReleaseDate: date, Cards: cards,
+		Logo: "https://assets.tcgdex.net/en/x/" + id + "/logo", Symbol: "https://assets.tcgdex.net/univ/x/" + id + "/symbol"}
+	s.Serie.ID, s.Serie.Name = serieID, serieName
+	s.CardCount = TCGdexCardCount{Total: len(cards), Official: len(cards)}
+	return s
+}
+
+func summary(id, local, name string) TCGdexCardSummary {
+	return TCGdexCardSummary{ID: id, LocalID: local, Name: name, Image: "https://assets.tcgdex.net/en/x/" + id}
+}
+
+// newFakeTCGdex is the catalogue the sync tests run against: a set we have
+// under a pokemontcg.io id (151), one that only matches by id (Base), a new
+// release (Delta Reign), a TCG Pocket set and an old trainer kit.
+func newFakeTCGdex() *fakeTCGdex {
+	return &fakeTCGdex{
+		sets: []TCGdexSet{
+			tcgSet("sv03.5", "151", "2023-09-22", "sv", "Scarlet & Violet",
+				summary("sv03.5-006", "006", "Charizard ex"), summary("sv03.5-210", "210", "Zapdos ex")),
+			tcgSet("base1", "Base Set", "1999-01-09", "base", "Base", summary("base1-4", "4", "Charizard")),
+			tcgSet("me06", "Delta Reign", "2026-11-06", "me", "Mega Evolution", summary("me06-001", "001", "Pikachu")),
+			tcgSet("A1", "Genetic Apex", "2024-10-30", "tcgp", "Pokémon TCG Pocket", summary("A1-001", "001", "Bulbasaur")),
+			tcgSet("tk-xy-b", "XY trainer Kit (Bisharp)", "2014-11-01", "tk", "Trainer kits", summary("tk-xy-b-1", "1", "Bisharp")),
+		},
+		cards: map[string]TCGdexCard{
+			"sv03.5-006": {ID: "sv03.5-006", Rarity: "Double rare", Pricing: prices(2.5, 3, 0, 4)},
+			"sv03.5-210": {ID: "sv03.5-210", Rarity: "Special illustration rare", Pricing: prices(40, 0, 0, 0)},
+			"me06-001":   {ID: "me06-001", Rarity: "Common", Pricing: prices(0, 0.2, 0.5, 0)},
+			// base1-4 has no detail: the card keeps its old data.
+		},
+		cardHits: map[string]int{},
+	}
+}
+
+func newFakeClient(t *testing.T, f *fakeTCGdex) *TCGdexClient {
+	t.Helper()
+	srv := httptest.NewServer(f)
+	t.Cleanup(srv.Close)
+	c := NewTCGdexClient().WithTCGdexBaseURL(srv.URL).WithHTTPClient(srv.Client())
+	c.sleep = func(context.Context, time.Duration) error { return nil }
 	return c
 }
 
-func TestSyncSets_SinglePage(t *testing.T) {
-	d := setupTestDB(t)
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, "/sets") {
-			t.Fatalf("unexpected path: %s", r.URL.Path)
-		}
-		resp := SetsResponse{
-			Page:       1,
-			PageSize:   PageSize,
-			Count:      2,
-			TotalCount: 2,
-			Data: []Set{
-				{
-					ID:           "base1",
-					Name:         "Base Set",
-					Series:       "Base",
-					PrintedTotal: 102,
-					// Total exceeds PrintedTotal so the assertion below can
-					// verify the two columns are written independently
-					// (printed_total = card-face denominator, total_cards =
-					// full secret-rare-inclusive count).
-					Total:       110,
-					ReleaseDate: "1999/01/09",
-					Images:      SetImages{Symbol: "https://example/sym.png", Logo: "https://example/logo.png"},
-				},
-				{
-					ID:          "jungle",
-					Name:        "Jungle",
-					Series:      "Base",
-					Total:       64,
-					ReleaseDate: "1999/06/16",
-				},
-			},
-		}
-		writeJSON(t, w, resp)
-	}))
-	defer srv.Close()
-
-	if err := SyncSets(context.Background(), d, newTestClient(srv)); err != nil {
-		t.Fatalf("SyncSets: %v", err)
-	}
-
-	var count int
-	if err := d.QueryRow(`SELECT COUNT(*) FROM pokemon_sets`).Scan(&count); err != nil {
-		t.Fatalf("count sets: %v", err)
-	}
-	if count != 2 {
-		t.Fatalf("expected 2 sets, got %d", count)
-	}
-
-	var name, logo string
-	var total, printedTotal int
-	if err := d.QueryRow(`SELECT name, total_cards, printed_total, logo_url FROM pokemon_sets WHERE id = ?`, "base1").Scan(&name, &total, &printedTotal, &logo); err != nil {
-		t.Fatalf("read base1: %v", err)
-	}
-	if name != "Base Set" || total != 110 || printedTotal != 102 || logo != "https://example/logo.png" {
-		t.Fatalf("unexpected base1 row: name=%q total=%d printed=%d logo=%q", name, total, printedTotal, logo)
-	}
-}
-
-func TestSyncSets_Pagination(t *testing.T) {
-	d := setupTestDB(t)
-
-	totalCount := PageSize*2 + 5 // three pages: full, full, partial
-	var hits int32
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		atomic.AddInt32(&hits, 1)
-		pageStr := r.URL.Query().Get("page")
-		page, _ := strconv.Atoi(pageStr)
-		if page < 1 {
-			page = 1
-		}
-
-		var pageData []Set
-		switch page {
-		case 1, 2:
-			pageData = makeSetPage(page, PageSize)
-		case 3:
-			pageData = makeSetPage(page, 5)
-		default:
-			pageData = nil
-		}
-		writeJSON(t, w, SetsResponse{
-			Page:       page,
-			PageSize:   PageSize,
-			Count:      len(pageData),
-			TotalCount: totalCount,
-			Data:       pageData,
-		})
-	}))
-	defer srv.Close()
-
-	if err := SyncSets(context.Background(), d, newTestClient(srv)); err != nil {
-		t.Fatalf("SyncSets: %v", err)
-	}
-	if hits < 3 {
-		t.Fatalf("expected at least 3 page requests, got %d", hits)
-	}
-
-	var count int
-	if err := d.QueryRow(`SELECT COUNT(*) FROM pokemon_sets`).Scan(&count); err != nil {
-		t.Fatalf("count: %v", err)
-	}
-	if count != totalCount {
-		t.Fatalf("expected %d sets, got %d", totalCount, count)
-	}
-}
-
-func TestSyncCards_InsertsCardsAndVariants(t *testing.T) {
-	d := setupTestDB(t)
-
-	// Seed the set so the cards row's FK passes.
-	if _, err := d.Exec(`INSERT INTO pokemon_sets (id, name, series, release_date, total_cards, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?)`, "swsh1", "Sword & Shield", "Sword & Shield", "2020/02/07", 202, time.Now()); err != nil {
-		t.Fatalf("seed set: %v", err)
-	}
-
-	card := Card{
-		ID:     "swsh1-1",
-		Name:   "Celebi V",
-		Number: "001",
-		Rarity: "Rare Holo V",
-		Images: CardImages{
-			Small: "https://example/sm.png",
-			Large: "https://example/lg.png",
-		},
-		Cardmarket: Cardmarket{
-			Prices: CardmarketPrices{
-				AverageSellPrice: 1.5,
-				TrendPrice:       1.7,
-				ReverseHoloSell:  2.0,
-				ReverseHoloTrend: 0, // trend missing -> fallback to ReverseHoloSell
-			},
-		},
-	}
-
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		q, _ := url.QueryUnescape(r.URL.RawQuery)
-		if !strings.Contains(q, "q=set.id:swsh1") {
-			t.Fatalf("expected set.id filter in query, got %s", q)
-		}
-		writeJSON(t, w, CardsResponse{
-			Page:       1,
-			PageSize:   PageSize,
-			Count:      1,
-			TotalCount: 1,
-			Data:       []Card{card},
-		})
-	}))
-	defer srv.Close()
-
-	if err := SyncCards(context.Background(), d, newTestClient(srv), "swsh1"); err != nil {
-		t.Fatalf("SyncCards: %v", err)
-	}
-
-	var name, rarity string
-	if err := d.QueryRow(`SELECT name, rarity FROM pokemon_cards WHERE id = ?`, "swsh1-1").Scan(&name, &rarity); err != nil {
-		t.Fatalf("read card: %v", err)
-	}
-	if name != "Celebi V" || rarity != "Rare Holo V" {
-		t.Fatalf("unexpected card row: name=%q rarity=%q", name, rarity)
-	}
-
-	rows, err := d.Query(`SELECT kind, price_eur FROM pokemon_card_variants WHERE card_id = ? ORDER BY kind`, "swsh1-1")
-	if err != nil {
-		t.Fatalf("query variants: %v", err)
-	}
-	defer rows.Close()
-
-	got := map[string]float64{}
-	for rows.Next() {
-		var k string
-		var p float64
-		if err := rows.Scan(&k, &p); err != nil {
-			t.Fatalf("scan: %v", err)
-		}
-		got[k] = p
-	}
-
-	want := map[string]float64{
-		"normal":           1.7, // trendPrice preferred
-		"reverse_holofoil": 2.0, // reverseHoloTrend=0 -> fallback to reverseHoloSell
-	}
-	if len(got) != len(want) {
-		t.Fatalf("expected %d variants, got %d: %+v", len(want), len(got), got)
-	}
-	for k, v := range want {
-		if got[k] != v {
-			t.Errorf("variant %s: expected %v, got %v", k, v, got[k])
-		}
-	}
-}
-
-func TestSyncCards_FallbackNormalVariantWithoutPrices(t *testing.T) {
-	cases := []struct {
-		name   string
-		prices CardmarketPrices
-		want   map[string]float64
-	}{
-		{
-			name:   "no cardmarket prices -> single normal row at 0",
-			prices: CardmarketPrices{},
-			want:   map[string]float64{"normal": 0},
-		},
-		{
-			name:   "normal trendPrice present -> placeholder overwritten",
-			prices: CardmarketPrices{TrendPrice: 12.34},
-			want:   map[string]float64{"normal": 12.34},
-		},
-		{
-			name:   "reverse holo price only -> normal placeholder kept at 0 alongside reverse_holofoil",
-			prices: CardmarketPrices{ReverseHoloTrend: 5.0},
-			want: map[string]float64{
-				"normal":           0,
-				"reverse_holofoil": 5.0,
-			},
-		},
-	}
-
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			d := setupTestDB(t)
-			if _, err := d.Exec(`INSERT INTO pokemon_sets (id, name, series, release_date, total_cards, synced_at)
-				VALUES (?, ?, ?, ?, ?, ?)`, "me1", "Mega Evolution", "Mega Evolution", "2026/01/01", 1, time.Now()); err != nil {
-				t.Fatalf("seed set: %v", err)
-			}
-
-			card := Card{
-				ID:         "me1-1",
-				Name:       "Mega Charizard ex",
-				Number:     "1",
-				Cardmarket: Cardmarket{Prices: tc.prices},
-			}
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				writeJSON(t, w, CardsResponse{
-					Page: 1, PageSize: PageSize, Count: 1, TotalCount: 1,
-					Data: []Card{card},
-				})
-			}))
-			defer srv.Close()
-
-			if err := SyncCards(context.Background(), d, newTestClient(srv), "me1"); err != nil {
-				t.Fatalf("SyncCards: %v", err)
-			}
-
-			rows, err := d.Query(`SELECT kind, price_eur FROM pokemon_card_variants WHERE card_id = ? ORDER BY kind`, "me1-1")
-			if err != nil {
-				t.Fatalf("query variants: %v", err)
-			}
-			defer rows.Close()
-
-			got := map[string]float64{}
-			for rows.Next() {
-				var k string
-				var p float64
-				if err := rows.Scan(&k, &p); err != nil {
-					t.Fatalf("scan: %v", err)
-				}
-				got[k] = p
-			}
-			if len(got) != len(tc.want) {
-				t.Fatalf("expected %d variant rows, got %d: %+v", len(tc.want), len(got), got)
-			}
-			for k, v := range tc.want {
-				if got[k] != v {
-					t.Errorf("variant %s: expected %v, got %v", k, v, got[k])
-				}
-			}
-		})
-	}
-}
-
-func TestSyncAll_BackfillCreatesNormalVariantForOrphanCards(t *testing.T) {
-	d := setupTestDB(t)
+// seedPokemontcgCatalog inserts sets and cards the way the old
+// pokemontcg.io sync stored them.
+func seedPokemontcgCatalog(t *testing.T, d *sql.DB) {
+	t.Helper()
 	now := time.Now().UTC()
-	if _, err := d.Exec(`INSERT INTO pokemon_sets (id, name, series, release_date, total_cards, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?)`, "me1", "Mega Evolution", "Mega Evolution", "2026/01/01", 1, now); err != nil {
-		t.Fatalf("seed set: %v", err)
+	for _, s := range [][]string{
+		{"sv3pt5", "151", "Scarlet & Violet", "2023/09/22"},
+		{"base1", "Base", "Base", "1999/01/09"},
+	} {
+		if _, err := d.Exec(`INSERT INTO pokemon_sets (id, name, series, release_date, total_cards, printed_total, symbol_url, logo_url, synced_at)
+			VALUES (?, ?, ?, ?, 0, 0, 'old-symbol', 'old-logo', ?)`, s[0], s[1], s[2], s[3], now); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if _, err := d.Exec(`INSERT INTO pokemon_cards (id, set_id, name, collector_no, rarity, image_small_url, image_large_url, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		"me1-1", "me1", "Mega Charizard ex", "1", "Rare", "", "", now); err != nil {
-		t.Fatalf("seed orphan card: %v", err)
-	}
-
-	var existing int
-	if err := d.QueryRow(`SELECT COUNT(*) FROM pokemon_card_variants WHERE card_id = ?`, "me1-1").Scan(&existing); err != nil {
-		t.Fatalf("count before: %v", err)
-	}
-	if existing != 0 {
-		t.Fatalf("expected 0 variants before backfill, got %d", existing)
-	}
-
-	n, err := backfillNormalVariants(context.Background(), d)
-	if err != nil {
-		t.Fatalf("backfillNormalVariants: %v", err)
-	}
-	if n != 1 {
-		t.Fatalf("expected 1 row backfilled, got %d", n)
-	}
-
-	var kind string
-	var price float64
-	if err := d.QueryRow(`SELECT kind, price_eur FROM pokemon_card_variants WHERE card_id = ?`, "me1-1").Scan(&kind, &price); err != nil {
-		t.Fatalf("read variant: %v", err)
-	}
-	if kind != "normal" || price != 0 {
-		t.Fatalf("expected (normal,0), got (%s,%v)", kind, price)
-	}
-
-	// Idempotent: a second pass does not duplicate rows.
-	n2, err := backfillNormalVariants(context.Background(), d)
-	if err != nil {
-		t.Fatalf("second backfill: %v", err)
-	}
-	if n2 != 0 {
-		t.Fatalf("expected 0 rows on second pass, got %d", n2)
+	for _, c := range [][]string{
+		{"sv3pt5-6", "sv3pt5", "Charizard ex", "6", "Double Rare"},
+		{"base1-4", "base1", "Charizard", "4", "Rare Holo"},
+	} {
+		if _, err := d.Exec(`INSERT INTO pokemon_cards (id, set_id, name, collector_no, rarity, image_small_url, image_large_url, synced_at)
+			VALUES (?, ?, ?, ?, ?, 'old-small', 'old-large', ?)`, c[0], c[1], c[2], c[3], c[4], now); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := d.Exec(`INSERT INTO pokemon_card_variants (card_id, kind, price_eur, price_at) VALUES (?, 'normal', 1, ?)`, c[0], now); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
-func TestSyncAll_BackfillAddsNormalWhenOnlyNonNormalVariantExists(t *testing.T) {
-	d := setupTestDB(t)
-	now := time.Now().UTC()
-	if _, err := d.Exec(`INSERT INTO pokemon_sets (id, name, series, release_date, total_cards, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?)`, "me2", "Mega Evolution 2", "Mega Evolution", "2026/02/01", 1, now); err != nil {
-		t.Fatalf("seed set: %v", err)
-	}
-	if _, err := d.Exec(`INSERT INTO pokemon_cards (id, set_id, name, collector_no, rarity, image_small_url, image_large_url, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-		"me2-1", "me2", "Mega Blastoise ex", "1", "Rare", "", "", now); err != nil {
-		t.Fatalf("seed card: %v", err)
-	}
-	// Card already has a reverse_holofoil variant but no normal variant.
-	if _, err := d.Exec(`INSERT INTO pokemon_card_variants (card_id, kind, price_eur, price_at) VALUES (?, 'reverse_holofoil', 3.5, ?)`,
-		"me2-1", now); err != nil {
-		t.Fatalf("seed reverse_holofoil variant: %v", err)
-	}
-
-	n, err := backfillNormalVariants(context.Background(), d)
-	if err != nil {
-		t.Fatalf("backfillNormalVariants: %v", err)
-	}
-	if n != 1 {
-		t.Fatalf("expected 1 row backfilled, got %d", n)
-	}
-
-	rows, err := d.Query(`SELECT kind, price_eur FROM pokemon_card_variants WHERE card_id = ? ORDER BY kind`, "me2-1")
-	if err != nil {
-		t.Fatalf("query variants: %v", err)
-	}
-	defer rows.Close()
-	got := map[string]float64{}
-	for rows.Next() {
-		var k string
-		var p float64
-		if err := rows.Scan(&k, &p); err != nil {
-			t.Fatalf("scan: %v", err)
-		}
-		got[k] = p
-	}
-	want := map[string]float64{
-		"normal":           0,
-		"reverse_holofoil": 3.5,
-	}
-	if len(got) != len(want) {
-		t.Fatalf("expected %d variants, got %d: %+v", len(want), len(got), got)
-	}
-	for k, v := range want {
-		if got[k] != v {
-			t.Errorf("variant %s: expected %v, got %v", k, v, got[k])
-		}
-	}
-
-	// Idempotent: reverse_holofoil price must not be touched.
-	n2, err := backfillNormalVariants(context.Background(), d)
-	if err != nil {
-		t.Fatalf("second backfill: %v", err)
-	}
-	if n2 != 0 {
-		t.Fatalf("expected 0 rows on second pass, got %d", n2)
-	}
-}
-
-func TestSyncCards_VariantUpsertUpdatesPrice(t *testing.T) {
-	d := setupTestDB(t)
-	if _, err := d.Exec(`INSERT INTO pokemon_sets (id, name, series, release_date, total_cards, synced_at)
-		VALUES (?, ?, ?, ?, ?, ?)`, "s1", "S", "S", "2024/01/01", 1, time.Now()); err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-
-	var hits int32
-	prices := []CardmarketPrices{
-		{TrendPrice: 1.0},
-		{TrendPrice: 2.5},
-	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		idx := atomic.AddInt32(&hits, 1) - 1
-		card := Card{
-			ID:         "s1-1",
-			Name:       "Pikachu",
-			Number:     "1",
-			Cardmarket: Cardmarket{Prices: prices[idx]},
-		}
-		writeJSON(t, w, CardsResponse{TotalCount: 1, Count: 1, PageSize: PageSize, Page: 1, Data: []Card{card}})
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv)
-	if err := SyncCards(context.Background(), d, c, "s1"); err != nil {
-		t.Fatalf("first sync: %v", err)
-	}
-	if err := SyncCards(context.Background(), d, c, "s1"); err != nil {
-		t.Fatalf("second sync: %v", err)
-	}
-
+func variantPrice(t *testing.T, d *sql.DB, cardID, kind string) float64 {
+	t.Helper()
 	var p float64
-	if err := d.QueryRow(`SELECT price_eur FROM pokemon_card_variants WHERE card_id = ? AND kind = ?`, "s1-1", "normal").Scan(&p); err != nil {
-		t.Fatalf("read price: %v", err)
+	if err := d.QueryRow(`SELECT price_eur FROM pokemon_card_variants WHERE card_id = ? AND kind = ?`, cardID, kind).Scan(&p); err != nil {
+		t.Fatalf("price %s/%s: %v", cardID, kind, err)
 	}
-	if p != 2.5 {
-		t.Fatalf("expected updated price 2.5, got %v", p)
+	return p
+}
+
+func TestSyncAll_LinksExistingCatalogAndAddsNewSets(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	seedPokemontcgCatalog(t, d)
+	if first, err := NeedsTCGdexSync(ctx, d); err != nil || !first {
+		t.Fatalf("NeedsTCGdexSync before = %v, %v", first, err)
+	}
+	f := newFakeTCGdex()
+	f.failSetsAt = 1 // a transient 502 is retried
+	if err := SyncAll(ctx, d, newFakeClient(t, f)); err != nil {
+		t.Fatal(err)
 	}
 
-	var count int
-	if err := d.QueryRow(`SELECT COUNT(*) FROM pokemon_card_variants WHERE card_id = ?`, "s1-1").Scan(&count); err != nil {
-		t.Fatalf("count: %v", err)
+	// Existing sets keep their ids and names and gain the TCGdex link.
+	for our, want := range map[string]string{"sv3pt5": "sv03.5", "base1": "base1"} {
+		var tcg, name, logo string
+		if err := d.QueryRow(`SELECT tcgdex_id, name, logo_url FROM pokemon_sets WHERE id = ?`, our).Scan(&tcg, &name, &logo); err != nil {
+			t.Fatal(err)
+		}
+		if tcg != want || logo != "https://assets.tcgdex.net/en/x/"+want+"/logo.png" {
+			t.Fatalf("%s: tcgdex_id=%q logo=%q", our, tcg, logo)
+		}
+		if our == "base1" && name != "Base" {
+			t.Fatalf("base1 renamed to %q", name)
+		}
 	}
-	if count != 1 {
-		t.Fatalf("expected one variant row after upsert, got %d", count)
+
+	// The existing card is linked by collector number ("006" = "6"), gets the
+	// TCGdex image and price (trend first; holo stands in for normal), and
+	// keeps its rarity label.
+	var tcg, small, rarity string
+	if err := d.QueryRow(`SELECT tcgdex_id, image_small_url, rarity FROM pokemon_cards WHERE id = 'sv3pt5-6'`).Scan(&tcg, &small, &rarity); err != nil {
+		t.Fatal(err)
+	}
+	if tcg != "sv03.5-006" || small != "https://assets.tcgdex.net/en/x/sv03.5-006/low.webp" || rarity != "Double Rare" {
+		t.Fatalf("sv3pt5-6 = %q %q %q", tcg, small, rarity)
+	}
+	if p := variantPrice(t, d, "sv3pt5-6", "normal"); p != 2.5 {
+		t.Fatalf("sv3pt5-6 normal = %v", p)
+	}
+	if p := variantPrice(t, d, "sv3pt5-6", "reverse_holofoil"); p != 4 {
+		t.Fatalf("sv3pt5-6 reverse = %v", p)
+	}
+
+	// A card we didn't have joins the existing set in pokemontcg.io style.
+	var no string
+	if err := d.QueryRow(`SELECT collector_no, rarity FROM pokemon_cards WHERE id = 'sv3pt5-210'`).Scan(&no, &rarity); err != nil {
+		t.Fatal(err)
+	}
+	if no != "210" || rarity != "Special Illustration Rare" {
+		t.Fatalf("sv3pt5-210 = %q %q", no, rarity)
+	}
+
+	// A card with no detail on TCGdex keeps its price and rarity.
+	if p := variantPrice(t, d, "base1-4", "normal"); p != 1 {
+		t.Fatalf("base1-4 price changed to %v", p)
+	}
+
+	// Delta Reign is added under its TCGdex id; Pocket and old kits aren't.
+	var name, series, date string
+	if err := d.QueryRow(`SELECT name, series, release_date FROM pokemon_sets WHERE id = 'me06'`).Scan(&name, &series, &date); err != nil {
+		t.Fatal(err)
+	}
+	if name != "Delta Reign" || series != "Mega Evolution" || date != "2026/11/06" {
+		t.Fatalf("me06 = %q %q %q", name, series, date)
+	}
+	if err := d.QueryRow(`SELECT rarity FROM pokemon_cards WHERE id = 'me06-1'`).Scan(&rarity); err != nil || rarity != "Common" {
+		t.Fatalf("me06-1 rarity = %q, %v", rarity, err)
+	}
+	if p := variantPrice(t, d, "me06-1", "normal"); p != 0.2 {
+		t.Fatalf("me06-1 normal = %v", p)
+	}
+	var n int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM pokemon_sets WHERE id IN ('A1', 'tk-xy-b')`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("pocket/kit sets added: %d, %v", n, err)
+	}
+	if first, _ := NeedsTCGdexSync(ctx, d); first {
+		t.Fatal("NeedsTCGdexSync still true after sync")
+	}
+
+	// A second run links by tcgdex_id and adds nothing.
+	var before, after int
+	_ = d.QueryRow(`SELECT COUNT(*) FROM pokemon_cards`).Scan(&before)
+	if err := SyncAll(ctx, d, newFakeClient(t, newFakeTCGdex())); err != nil {
+		t.Fatal(err)
+	}
+	_ = d.QueryRow(`SELECT COUNT(*) FROM pokemon_cards`).Scan(&after)
+	if before != after || before != 4 {
+		t.Fatalf("cards before=%d after=%d", before, after)
 	}
 }
 
-func TestDoRequest_RetriesOn429(t *testing.T) {
-	var hits int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		n := atomic.AddInt32(&hits, 1)
-		if n == 1 {
-			w.Header().Set("Retry-After", "1")
-			w.WriteHeader(http.StatusTooManyRequests)
-			return
-		}
-		writeJSON(t, w, SetsResponse{TotalCount: 0, Count: 0, PageSize: PageSize, Page: 1, Data: []Set{}})
-	}))
-	defer srv.Close()
-
-	c := newTestClient(srv)
-	var resp SetsResponse
-	if err := c.doRequest(context.Background(), srv.URL+"/sets?page=1", &resp); err != nil {
-		t.Fatalf("doRequest: %v", err)
+func TestRefreshPrices_OnlyOwnedCards(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	seedPokemontcgCatalog(t, d)
+	if err := SyncAll(ctx, d, newFakeClient(t, newFakeTCGdex())); err != nil {
+		t.Fatal(err)
 	}
-	if hits != 2 {
-		t.Fatalf("expected 2 attempts (first 429, second OK), got %d", hits)
+	if _, err := d.Exec(`INSERT INTO users (id, email, name, google_id) VALUES (1, 'k@example.com', 'k', 'k')`); err != nil {
+		t.Fatal(err)
+	}
+	var vid int64
+	if err := d.QueryRow(`SELECT id FROM pokemon_card_variants WHERE card_id = 'sv3pt5-6' AND kind = 'normal'`).Scan(&vid); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Exec(`INSERT INTO pokemon_collections (user_id, card_id, variant_id, quantity, condition, acquired_at)
+		VALUES (1, 'sv3pt5-6', ?, 1, '', ?)`, vid, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+
+	f := newFakeTCGdex()
+	c := f.cards["sv03.5-006"]
+	c.Pricing = prices(9, 0, 0, 0)
+	f.cards["sv03.5-006"] = c
+	f.cards["sv03.5-210"] = TCGdexCard{ID: "sv03.5-210", Pricing: prices(99, 0, 0, 0)}
+	if err := RefreshPrices(ctx, d, newFakeClient(t, f)); err != nil {
+		t.Fatal(err)
+	}
+	if p := variantPrice(t, d, "sv3pt5-6", "normal"); p != 9 {
+		t.Fatalf("owned card price = %v", p)
+	}
+	if p := variantPrice(t, d, "sv3pt5-210", "normal"); p != 40 {
+		t.Fatalf("unowned card refreshed: %v", p)
+	}
+	if f.cardHits["sv03.5-210"] != 0 || f.cardHits["sv03.5-006"] != 1 {
+		t.Fatalf("card fetches = %v", f.cardHits)
+	}
+}
+
+func TestMatchSetsPrefersStrongRules(t *testing.T) {
+	ours := []ourSet{
+		{id: "swsh12pt5", name: "Crown Zenith", releaseDate: "2023/01/20"},
+		{id: "swsh12pt5gg", name: "Crown Zenith Galarian Gallery", releaseDate: "2023/01/20"},
+		{id: "fut20", name: "Pokémon Futsal Collection", releaseDate: "2020/09/11"},
+		{id: "me1", name: "Mega Evolution", releaseDate: "2025/09/26", tcgdexID: "me01"},
+	}
+	mk := func(id, name, date string) *TCGdexSet { return &TCGdexSet{ID: id, Name: name, ReleaseDate: date} }
+	got := matchSets([]*TCGdexSet{
+		mk("swsh12.5", "Crown Zenith", "2023-01-20"),
+		mk("fut2020", "Pokémon Futsal 2020", "2020-09-11"),
+		mk("me01", "Mega Evolution", "2025-09-26"),
+		mk("me06", "Delta Reign", "2026-11-06"),
+	}, ours)
+	want := map[string]string{"swsh12.5": "swsh12pt5", "fut2020": "fut20", "me01": "me1"}
+	if len(got) != len(want) {
+		t.Fatalf("matchSets = %v", got)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Fatalf("matchSets[%s] = %q, want %q (all: %v)", k, got[k], v, got)
+		}
+	}
+}
+
+func TestPickTCGdexPrice(t *testing.T) {
+	// Trend first, avg as fallback, per lane.
+	n, r := pickTCGdexPrice(prices(1.5, 2, 0, 3).Cardmarket)
+	if n != 1.5 || r != 3 {
+		t.Fatalf("normal/reverse = %v/%v", n, r)
+	}
+	n, r = pickTCGdexPrice(prices(0, 7, 0.4, 0.5).Cardmarket)
+	if n != 7 || r != 0.4 {
+		t.Fatalf("avg fallback = %v/%v", n, r)
+	}
+	if n, r = pickTCGdexPrice(nil); n != 0 || r != 0 {
+		t.Fatalf("empty = %v/%v", n, r)
+	}
+}
+
+func TestHelpers(t *testing.T) {
+	for in, want := range map[string]string{"me2pt5": "me02.5", "sv1": "sv01", "svp": "svp", "base1": "base01"} {
+		if got := ourSetIDToTCGdex(in); got != want {
+			t.Errorf("ourSetIDToTCGdex(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]string{"021": "21", "TG01": "TG1", "SWSH050": "SWSH50", "!": "!"} {
+		if got := collectorKey(in); got != want {
+			t.Errorf("collectorKey(%q) = %q, want %q", in, got, want)
+		}
+	}
+	for in, want := range map[string]string{"Double rare": "Double Rare", "ACE SPEC Rare": "ACE SPEC Rare", "None": "", "": ""} {
+		if got := rarityLabel(in); got != want {
+			t.Errorf("rarityLabel(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 
@@ -632,27 +485,4 @@ func TestNextDailyPriceRefresh_SevenAMOslo(t *testing.T) {
 	if !got2.Equal(want2) {
 		t.Errorf("same-day case: got %v, want %v", got2, want2)
 	}
-}
-
-func writeJSON(t *testing.T, w http.ResponseWriter, v any) {
-	t.Helper()
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(v); err != nil {
-		t.Fatalf("encode response: %v", err)
-	}
-}
-
-func makeSetPage(page, n int) []Set {
-	out := make([]Set, n)
-	for i := 0; i < n; i++ {
-		id := fmt.Sprintf("p%d-%d", page, i)
-		out[i] = Set{
-			ID:          id,
-			Name:        id,
-			Series:      "Test",
-			Total:       1,
-			ReleaseDate: "2024/01/01",
-		}
-	}
-	return out
 }

@@ -473,7 +473,8 @@ func main() {
 	go livestream.StartReaper(notifCtx, database)
 
 	// Schedule weekly Pokémon TCG full sync (Sunday 04:00 Europe/Oslo) and
-	// a daily price refresh (07:00 Europe/Oslo). Both run in the same
+	// a daily price refresh of owned cards (07:00 Europe/Oslo), both from
+	// TCGdex. Both run in the same
 	// goroutine to keep startup tidy; whichever timer fires first advances
 	// independently of the other (Hytte-839c).
 	go func() {
@@ -481,6 +482,20 @@ func main() {
 		if err != nil {
 			log.Printf("pokemon: failed to load Europe/Oslo timezone: %v", err)
 			return
+		}
+		// The catalogue moved from pokemontcg.io to TCGdex (Nov 2026): run the
+		// first TCGdex sync right away rather than waiting for Sunday, so new
+		// sets and the TCGdex links appear on deploy.
+		if first, err := pokemon.NeedsTCGdexSync(notifCtx, database); err != nil {
+			log.Printf("pokemon: check tcgdex sync: %v", err)
+		} else if first {
+			ctx, cancel := context.WithTimeout(notifCtx, 60*time.Minute)
+			if err := pokemon.SyncAll(ctx, database, nil); err != nil {
+				log.Printf("pokemon: first TCGdex SyncAll error: %v", err)
+			} else {
+				log.Println("pokemon: first TCGdex SyncAll complete")
+			}
+			cancel()
 		}
 		for {
 			now := time.Now()
@@ -503,7 +518,7 @@ func main() {
 				return
 			case <-timer.C:
 				ctx, cancel := context.WithTimeout(notifCtx, 60*time.Minute)
-				client := pokemon.NewClient()
+				client := pokemon.NewTCGdexClient()
 				if full {
 					if err := pokemon.SyncAll(ctx, database, client); err != nil {
 						log.Printf("pokemon: weekly SyncAll error: %v", err)

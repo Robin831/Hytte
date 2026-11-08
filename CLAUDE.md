@@ -134,7 +134,7 @@ Categories: `Added`, `Changed`, `Fixed`, `Removed`, `Deprecated`, `Security`. Si
 ### General
 
 - **No migration files** — schema is inline in `createSchema()`, column additions use `ALTER TABLE` with existence checks
-- **No env files committed** — secrets via environment variables: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URL`, `SECURE_COOKIES`, `POKEMONTCG_API_KEY` (optional; raises pokemontcg.io rate limits for the metadata + price sync)
+- **No env files committed** — secrets via environment variables: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URL`, `SECURE_COOKIES`. The Pokémon catalogue syncs from TCGdex (free, no key) since pokemontcg.io was deprecated
 - **User preferences** are key-value pairs in `user_preferences` table, allowed keys validated in handler
 - **Test auth**: set `HYTTE_TEST_AUTH=1` env var to enable `POST /api/auth/test-login` endpoint (for QuestGiver E2E testing only, never in production)
 

@@ -3539,6 +3539,25 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// Add tcgdex_id to pokemon_sets and pokemon_cards: the catalogue syncs from
+	// TCGdex since pokemontcg.io was deprecated (Nov 2026). Existing rows keep
+	// their pokemontcg.io-style ids (collections point at them); tcgdex_id is
+	// the upstream id the sync matched them to. Empty = not matched.
+	for _, table := range []string{"pokemon_sets", "pokemon_cards"} {
+		var has int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('` + table + `') WHERE name = 'tcgdex_id'`).Scan(&has); err != nil {
+			return fmt.Errorf("check %s tcgdex_id column: %w", table, err)
+		}
+		if has == 0 {
+			if _, err := db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN tcgdex_id TEXT NOT NULL DEFAULT ''`); err != nil {
+				return fmt.Errorf("add %s tcgdex_id column: %w", table, err)
+			}
+		}
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_pokemon_cards_tcgdex ON pokemon_cards(tcgdex_id) WHERE tcgdex_id != ''`); err != nil {
+		return fmt.Errorf("create pokemon_cards tcgdex_id index: %w", err)
+	}
+
 	// Add page_id FK to pokemon_scan_jobs (Hytte-3zej): nullable parent link so
 	// children of a /scans/page upload can be grouped under one
 	// pokemon_scan_pages row while the single-card /scans/queue path keeps

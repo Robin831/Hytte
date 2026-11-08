@@ -15,7 +15,7 @@ import (
 // Gated by RequireFeature("pokemon") at the router level.
 func AdminSyncHandler(db *sql.DB) http.HandlerFunc {
 	return adminSyncHandler(db, func(ctx context.Context, d *sql.DB) error {
-		return SyncAll(ctx, d, NewClient())
+		return SyncAll(ctx, d, nil)
 	})
 }
 
@@ -32,7 +32,7 @@ func adminSyncHandler(db *sql.DB, doSync func(context.Context, *sql.DB) error) h
 		}
 		go func() {
 			defer inProgress.Store(false)
-			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
+			ctx, cancel := context.WithTimeout(context.Background(), 60*time.Minute)
 			defer cancel()
 			if err := doSync(ctx, db); err != nil {
 				log.Printf("pokemon: admin SyncAll failed: %v", err)
