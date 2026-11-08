@@ -6,7 +6,7 @@ import { ArrowLeft, ExternalLink, Loader2, Plus, RefreshCw, ShoppingCart, Store,
 import { useAuth } from '../auth'
 import PokemonImage from '../components/pokemon/PokemonImage'
 import { formatNok } from '../components/pokemon/format'
-import { formatDate } from '../utils/formatDate'
+import { formatDateTime } from '../utils/formatDate'
 import { bestOffer, type MissingCard } from '../components/pokemon/singles'
 
 interface WantedSet {
@@ -71,6 +71,10 @@ interface SetOption {
 
 type StockFilter = 'all' | 'inStock' | 'notInStock'
 const STOCK_FILTERS: StockFilter[] = ['all', 'inStock', 'notInStock']
+
+// "8. nov. 06:30" — explicit fields, since dateStyle/timeStyle can't be
+// mixed with the hour12 option formatDateTime sets.
+const CHECKED_FORMAT: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }
 
 function printLabel(t: TFunction<'pokemon'>, print: string): string {
   switch (print) {
@@ -293,7 +297,7 @@ export default function PokemonSingles() {
                 {page.refreshing ? (
                   <span className="inline-flex items-center gap-1"><Loader2 size={14} className="animate-spin" aria-hidden="true" />{t('singles.checking')}</span>
                 ) : lastChecked ? (
-                  <span>{t('singles.lastChecked', { when: formatDate(new Date(lastChecked), { dateStyle: 'short', timeStyle: 'short' }) })}</span>
+                  <span>{t('singles.lastChecked', { when: formatDateTime(new Date(lastChecked), CHECKED_FORMAT) })}</span>
                 ) : null}
                 <button
                   type="button"
@@ -538,7 +542,7 @@ function ShopsSection({ shops, isAdmin, onChanged, onError }: {
                   {s.name}
                 </a>
                 <span className="text-xs text-gray-400">
-                  {s.last_error ? <span className="text-amber-300">{t('singles.shops.error')}</span> : s.last_checked_at ? t('singles.lastChecked', { when: formatDate(new Date(s.last_checked_at), { dateStyle: 'short', timeStyle: 'short' }) }) : t('singles.shops.notChecked')}
+                  {s.last_error ? <span className="text-amber-300">{t('singles.shops.error')}</span> : s.last_checked_at ? t('singles.lastChecked', { when: formatDateTime(new Date(s.last_checked_at), CHECKED_FORMAT) }) : t('singles.shops.notChecked')}
                 </span>
               </div>
               {isAdmin ? (

@@ -35,7 +35,7 @@ const ariados = card({ id: 'me3-2', name: 'Ariados', collector_no: '2' })
 const PAGE = {
   sets: [{ id: 'me3', name: 'Perfect Order', release_date: '2026/03/27', logo_url: '', symbol_url: '', total_cards: 124, missing_count: 2 }],
   cards: [ariados, gengar],
-  shops: [{ id: 1, name: 'Pokehandel', base_url: 'https://pokehandel.no', shipping_nok: 69, free_over_nok: 0, enabled: true, last_checked_at: null, last_error: '' }],
+  shops: [{ id: 1, name: 'Pokehandel', base_url: 'https://pokehandel.no', shipping_nok: 69, free_over_nok: 0, enabled: true, last_checked_at: '2026-11-08T17:20:00Z', last_error: '' }],
   refreshing: false,
 }
 
