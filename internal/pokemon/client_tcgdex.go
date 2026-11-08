@@ -25,12 +25,15 @@ type TCGdexClient struct {
 	baseURL    string
 	maxRetries int
 	sleep      func(ctx context.Context, d time.Duration) error
+	// imageOK reports whether an image URL loads (HEAD 200). A field so
+	// tests can fake it.
+	imageOK func(ctx context.Context, u string) bool
 }
 
 // NewTCGdexClient returns a client with a 30 s HTTP timeout and the public
 // base URL. Override via WithTCGdexBaseURL in tests.
 func NewTCGdexClient() *TCGdexClient {
-	return &TCGdexClient{
+	c := &TCGdexClient{
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		baseURL:    TCGdexBaseURL,
 		maxRetries: 2,
@@ -45,6 +48,22 @@ func NewTCGdexClient() *TCGdexClient {
 			}
 		},
 	}
+	c.imageOK = c.headOK
+	return c
+}
+
+// headOK sends a HEAD request and reports whether it returned 200.
+func (c *TCGdexClient) headOK(ctx context.Context, u string) bool {
+	req, err := http.NewRequestWithContext(ctx, http.MethodHead, u, nil)
+	if err != nil {
+		return false
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
 
 // WithTCGdexBaseURL points the client at an httptest server. Test-only.

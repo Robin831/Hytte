@@ -33,11 +33,12 @@ func setupTestDB(t *testing.T) *sql.DB {
 // fakeTCGdex serves /sets, /sets/{id} and /cards/{id} from maps and counts
 // card fetches. Unknown ids 404, like the real API.
 type fakeTCGdex struct {
-	mu         sync.Mutex
-	sets       []TCGdexSet
-	cards      map[string]TCGdexCard
-	cardHits   map[string]int
-	failSetsAt int // when >0, GET /sets returns 500 this many times first
+	mu            sync.Mutex
+	sets          []TCGdexSet
+	cards         map[string]TCGdexCard
+	cardHits      map[string]int
+	failSetsAt    int             // when >0, GET /sets returns 500 this many times first
+	missingImages map[string]bool // image URLs that 404
 }
 
 func (f *fakeTCGdex) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +135,11 @@ func newFakeClient(t *testing.T, f *fakeTCGdex) *TCGdexClient {
 	t.Cleanup(srv.Close)
 	c := NewTCGdexClient().WithTCGdexBaseURL(srv.URL).WithHTTPClient(srv.Client())
 	c.sleep = func(context.Context, time.Duration) error { return nil }
+	c.imageOK = func(_ context.Context, u string) bool {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return !f.missingImages[u]
+	}
 	return c
 }
 
@@ -183,6 +189,7 @@ func TestSyncAll_LinksExistingCatalogAndAddsNewSets(t *testing.T) {
 	}
 	f := newFakeTCGdex()
 	f.failSetsAt = 1 // a transient 502 is retried
+	f.missingImages = map[string]bool{"https://assets.tcgdex.net/en/x/base1-4/low.webp": true}
 	if err := SyncAll(ctx, d, newFakeClient(t, f)); err != nil {
 		t.Fatal(err)
 	}
@@ -225,6 +232,12 @@ func TestSyncAll_LinksExistingCatalogAndAddsNewSets(t *testing.T) {
 	}
 	if no != "210" || rarity != "Special Illustration Rare" {
 		t.Fatalf("sv3pt5-210 = %q %q", no, rarity)
+	}
+
+	// A TCGdex image whose file is missing doesn't replace a working one.
+	var baseImg string
+	if err := d.QueryRow(`SELECT image_small_url FROM pokemon_cards WHERE id = 'base1-4'`).Scan(&baseImg); err != nil || baseImg != "old-small" {
+		t.Fatalf("base1-4 image = %q, %v", baseImg, err)
 	}
 
 	// A card with no detail on TCGdex keeps its price and rarity.
@@ -556,6 +569,44 @@ func TestNamesCompatible(t *testing.T) {
 	} {
 		if got := namesCompatible(c.a, c.b); got != c.ok {
 			t.Errorf("namesCompatible(%q, %q) = %v", c.a, c.b, got)
+		}
+	}
+}
+
+func TestRepairBrokenImages(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	now := time.Now().UTC()
+	if _, err := d.Exec(`INSERT INTO pokemon_sets (id, name, series, release_date, synced_at) VALUES ('me55', '30th Celebration', 'Mega Evolution', '2026/09/16', ?)`, now); err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range [][]string{
+		{"me55-B", "https://assets.tcgdex.net/en/me/30th/B/low.webp"},   // broken, old picture exists
+		{"me55-1", "https://assets.tcgdex.net/en/me/30th/001/low.webp"}, // fine
+		{"me06-1", "https://assets.tcgdex.net/en/me/me06/001/low.webp"}, // broken, no old picture
+	} {
+		if _, err := d.Exec(`INSERT INTO pokemon_cards (id, set_id, name, collector_no, image_small_url, image_large_url, synced_at)
+			VALUES (?, 'me55', 'x', '1', ?, ?, ?)`, c[0], c[1], c[1], now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	f := newFakeTCGdex()
+	f.missingImages = map[string]bool{
+		"https://assets.tcgdex.net/en/me/30th/B/low.webp":   true,
+		"https://assets.tcgdex.net/en/me/me06/001/low.webp": true,
+		"https://images.scrydex.com/pokemon/me06-1/small":   true,
+	}
+	if err := repairBrokenImages(ctx, d, newFakeClient(t, f)); err != nil {
+		t.Fatal(err)
+	}
+	for id, want := range map[string]string{
+		"me55-B": "https://images.scrydex.com/pokemon/me55-B/small",
+		"me55-1": "https://assets.tcgdex.net/en/me/30th/001/low.webp",
+		"me06-1": "",
+	} {
+		var got string
+		if err := d.QueryRow(`SELECT image_small_url FROM pokemon_cards WHERE id = ?`, id).Scan(&got); err != nil || got != want {
+			t.Errorf("%s image = %q (%v), want %q", id, got, err, want)
 		}
 	}
 }

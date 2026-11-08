@@ -50,6 +50,9 @@ func SyncAll(ctx context.Context, db *sql.DB, client *TCGdexClient) error {
 	if err := repairClassicCollection(ctx, db); err != nil {
 		return fmt.Errorf("repair classic collection: %w", err)
 	}
+	if err := repairBrokenImages(ctx, db, client); err != nil {
+		return fmt.Errorf("repair images: %w", err)
+	}
 	briefs, err := client.ListSets(ctx)
 	if err != nil {
 		return fmt.Errorf("list tcgdex sets: %w", err)
@@ -145,10 +148,102 @@ func NeedsTCGdexSync(ctx context.Context, db *sql.DB) (bool, error) {
 	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM pokemon_sets WHERE tcgdex_id != ''`).Scan(&linked); err != nil {
 		return false, err
 	}
-	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE key = ?`, repairClassicKey).Scan(&repaired); err != nil {
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE key IN (?, ?)`, repairClassicKey, repairImagesKey).Scan(&repaired); err != nil {
 		return false, err
 	}
-	return linked == 0 || repaired == 0, nil
+	return linked == 0 || repaired < 2, nil
+}
+
+// repairImagesKey marks the one-time check of the TCGdex images the first
+// sync stored without verifying them.
+const repairImagesKey = "pokemon_tcgdex_repair_images"
+
+// repairBrokenImages checks every stored TCGdex image once and replaces the
+// broken ones with the card's previous picture (pokemontcg.io's images, now
+// served by Scrydex at a predictable address, until it shuts down in March
+// 2027), or clears them when there is none. From then on verifiedImages
+// keeps broken images out.
+func repairBrokenImages(ctx context.Context, db *sql.DB, client *TCGdexClient) error {
+	var done int
+	if err := db.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations WHERE key = ?`, repairImagesKey).Scan(&done); err != nil {
+		return err
+	}
+	if done > 0 {
+		return nil
+	}
+	rows, err := db.QueryContext(ctx, `SELECT id, image_small_url FROM pokemon_cards WHERE image_small_url LIKE 'https://assets.tcgdex.net/%'`)
+	if err != nil {
+		return err
+	}
+	type card struct{ id, small string }
+	var cards []card
+	for rows.Next() {
+		var c card
+		if err := rows.Scan(&c.id, &c.small); err != nil {
+			rows.Close()
+			return err
+		}
+		cards = append(cards, c)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	fixes := map[string][2]string{}
+	var (
+		mu  sync.Mutex
+		wg  sync.WaitGroup
+		sem = make(chan struct{}, 2*tcgdexParallelism)
+	)
+	for _, c := range cards {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		c := c
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			if client.imageOK(ctx, c.small) {
+				return
+			}
+			old := "https://images.scrydex.com/pokemon/" + c.id
+			fix := [2]string{"", ""}
+			if client.imageOK(ctx, old+"/small") {
+				fix = [2]string{old + "/small", old + "/large"}
+			}
+			mu.Lock()
+			fixes[c.id] = fix
+			mu.Unlock()
+		}()
+	}
+	wg.Wait()
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback() //nolint:errcheck
+	for id, f := range fixes {
+		if _, err := tx.ExecContext(ctx, `UPDATE pokemon_cards SET image_small_url = ?, image_large_url = ? WHERE id = ?`, f[0], f[1], id); err != nil {
+			return fmt.Errorf("fix image for %s: %w", id, err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO schema_migrations (key, value) VALUES (?, '1')`, repairImagesKey); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	if len(fixes) > 0 {
+		log.Printf("pokemon: replaced %d broken TCGdex images", len(fixes))
+	}
+	return nil
 }
 
 // repairClassicKey marks the one-time cleanup after the first TCGdex sync
@@ -342,7 +437,7 @@ func syncSet(ctx context.Context, db *sql.DB, client *TCGdexClient, d *TCGdexSet
 		}
 	}
 
-	cards, err := upsertSetCards(ctx, db, d, ourID, now)
+	cards, err := upsertSetCards(ctx, db, client, d, ourID, now)
 	if err != nil {
 		return err
 	}
@@ -393,8 +488,8 @@ func namesCompatible(a, b string) bool {
 }
 
 type ourCard struct {
-	id, no, name, tcgdexID string
-	linked                 bool
+	id, no, name, tcgdexID, image string
+	linked                        bool
 }
 
 // linkCards pairs TCGdex cards with ours, strongest rule first:
@@ -453,8 +548,8 @@ func linkCards(tcg []TCGdexCardSummary, ours []*ourCard) map[string]*ourCard {
 // upsertSetCards links TCGdex's cards to ours (see linkCards), refreshes
 // their images, and inserts cards we don't have. Returns the cards to fetch
 // details for.
-func upsertSetCards(ctx context.Context, db *sql.DB, d *TCGdexSet, ourSetID string, now time.Time) ([]cardRef, error) {
-	rows, err := db.QueryContext(ctx, `SELECT id, collector_no, name, tcgdex_id FROM pokemon_cards WHERE set_id = ?`, ourSetID)
+func upsertSetCards(ctx context.Context, db *sql.DB, client *TCGdexClient, d *TCGdexSet, ourSetID string, now time.Time) ([]cardRef, error) {
+	rows, err := db.QueryContext(ctx, `SELECT id, collector_no, name, tcgdex_id, image_small_url FROM pokemon_cards WHERE set_id = ?`, ourSetID)
 	if err != nil {
 		return nil, fmt.Errorf("list cards: %w", err)
 	}
@@ -462,7 +557,7 @@ func upsertSetCards(ctx context.Context, db *sql.DB, d *TCGdexSet, ourSetID stri
 	ids := map[string]bool{}
 	for rows.Next() {
 		o := &ourCard{}
-		if err := rows.Scan(&o.id, &o.no, &o.name, &o.tcgdexID); err != nil {
+		if err := rows.Scan(&o.id, &o.no, &o.name, &o.tcgdexID, &o.image); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -475,6 +570,7 @@ func upsertSetCards(ctx context.Context, db *sql.DB, d *TCGdexSet, ourSetID stri
 	}
 	sort.SliceStable(ours, func(i, j int) bool { return collectorOrder(ours[i].no) < collectorOrder(ours[j].no) })
 	links := linkCards(d.Cards, ours)
+	images := verifiedImages(ctx, client, d.Cards, links)
 
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
@@ -494,7 +590,7 @@ func upsertSetCards(ctx context.Context, db *sql.DB, d *TCGdexSet, ourSetID stri
 
 	var out []cardRef
 	for _, c := range d.Cards {
-		small, large := tcgdexAsset(c.Image, "/low.webp"), tcgdexAsset(c.Image, "/high.webp")
+		small, large := images[c.ID][0], images[c.ID][1]
 		var ourID string
 		if o := links[c.ID]; o != nil {
 			ourID = o.id
@@ -532,6 +628,50 @@ func upsertSetCards(ctx context.Context, db *sql.DB, d *TCGdexSet, ourSetID stri
 		return nil, err
 	}
 	return out, nil
+}
+
+// verifiedImages returns the TCGdex image (small, large) to store per card,
+// only for images that exist: TCGdex sometimes lists an image whose file is
+// missing (the 30th Celebration Mews B, G and R 404), and switching to it
+// would replace a working picture with a broken one. A card already on its
+// TCGdex image isn't re-checked; the rest are checked each sync until the
+// file appears.
+func verifiedImages(ctx context.Context, client *TCGdexClient, cards []TCGdexCardSummary, links map[string]*ourCard) map[string][2]string {
+	out := map[string][2]string{}
+	var check []TCGdexCardSummary
+	for _, c := range cards {
+		small := tcgdexAsset(c.Image, "/low.webp")
+		if small == "" {
+			continue
+		}
+		if o := links[c.ID]; o != nil && o.image == small {
+			out[c.ID] = [2]string{small, tcgdexAsset(c.Image, "/high.webp")}
+			continue
+		}
+		check = append(check, c)
+	}
+	var (
+		mu  sync.Mutex
+		wg  sync.WaitGroup
+		sem = make(chan struct{}, tcgdexParallelism)
+	)
+	for _, c := range check {
+		c := c
+		sem <- struct{}{}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			defer func() { <-sem }()
+			small := tcgdexAsset(c.Image, "/low.webp")
+			if client.imageOK(ctx, small) {
+				mu.Lock()
+				out[c.ID] = [2]string{small, tcgdexAsset(c.Image, "/high.webp")}
+				mu.Unlock()
+			}
+		}()
+	}
+	wg.Wait()
+	return out
 }
 
 // collectorOrder sorts collector numbers numerically where possible
