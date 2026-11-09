@@ -333,7 +333,8 @@
       "free": "gratis",
       "checkout": "Gå til kassen hos {{shop}}",
       "unavailable": "Ikke på lager noe sted — prøv Cardmarket",
-      "total": "Totalt {{total}}"
+      "total": "Totalt {{total}}",
+      "cardmarketCompare": "De samme kortene på Cardmarket: ca. {{total}} etter trendpris, pluss frakt per selger."
     },
     "shops": {
       "title_one": "{{count}} butikk sjekkes",
@@ -351,6 +352,27 @@
       "addLabel": "Butikkadresse",
       "placeholder": "Legg til en butikk — f.eks. pokehandel.no",
       "add": "Legg til butikk"
+    },
+    "export": {
+      "button": "Eksporter til Cardmarket",
+      "title": "Kjøp på Cardmarket med en ønskeliste",
+      "step1": "Kopier listen under.",
+      "step2": "Åpne Wants på Cardmarket, lag en ny liste og lim den inn:",
+      "step3": "Kjør Shopping Wizard: den finner billigste kombinasjon av selgere, med frakt. Sett Norge som land og velg profesjonelle selgere (da betales mva. i kassen).",
+      "scopeLabel": "Kort som skal eksporteres",
+      "scope": {
+        "notInStock": "Ikke på lager i Norge",
+        "all": "Alle manglende",
+        "selected_one": "Valgte ({{count}})",
+        "selected_other": "Valgte ({{count}})"
+      },
+      "empty": "Ingen kort å eksportere.",
+      "listLabel": "Ønskeliste, del {{part}}",
+      "copy_one": "Kopier {{count}} kort",
+      "copy_other": "Kopier {{count}} kort",
+      "copyPart": "Kopier del {{part}} av {{parts}}",
+      "copied": "Kopiert",
+      "note": "Format: antall, navn, settkode, nummer. Cardmarket tar inntil 150 linjer per innliming. Kjenner den ikke igjen noen linjer, legg til de kortene via Cardmarket-lenkene."
     }
   }
 }

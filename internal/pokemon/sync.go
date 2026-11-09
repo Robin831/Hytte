@@ -440,17 +440,21 @@ func syncSet(ctx context.Context, db *sql.DB, client *TCGdexClient, d *TCGdexSet
 			tcgdexAsset(d.Symbol, ".png"), tcgdexAsset(d.Logo, ".png"), now, d.ID); err != nil {
 			return fmt.Errorf("insert set: %w", err)
 		}
+		if _, err := db.ExecContext(ctx, `UPDATE pokemon_sets SET set_code = ? WHERE id = ?`, d.Abbreviation.Official, ourID); err != nil {
+			return fmt.Errorf("set code: %w", err)
+		}
 	} else {
 		if _, err := db.ExecContext(ctx, `
 			UPDATE pokemon_sets SET
 				tcgdex_id     = ?,
+				set_code      = CASE WHEN ? != '' THEN ? ELSE set_code END,
 				total_cards   = CASE WHEN ? > 0 THEN ? ELSE total_cards END,
 				printed_total = CASE WHEN ? > 0 THEN ? ELSE printed_total END,
 				symbol_url    = CASE WHEN ? != '' THEN ? ELSE symbol_url END,
 				logo_url      = CASE WHEN ? != '' THEN ? ELSE logo_url END,
 				synced_at     = ?
 			WHERE id = ?`,
-			d.ID, total, total, printed, printed,
+			d.ID, d.Abbreviation.Official, d.Abbreviation.Official, total, total, printed, printed,
 			tcgdexAsset(d.Symbol, ".png"), tcgdexAsset(d.Symbol, ".png"),
 			tcgdexAsset(d.Logo, ".png"), tcgdexAsset(d.Logo, ".png"), now, ourID); err != nil {
 			return fmt.Errorf("update set: %w", err)

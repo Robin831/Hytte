@@ -333,7 +333,8 @@
       "free": "free",
       "checkout": "Go to checkout at {{shop}}",
       "unavailable": "Not in stock in any shop — try Cardmarket",
-      "total": "Total {{total}}"
+      "total": "Total {{total}}",
+      "cardmarketCompare": "The same cards on Cardmarket: about {{total}} at trend price, plus shipping per seller."
     },
     "shops": {
       "title_one": "{{count}} shop checked",
@@ -351,6 +352,27 @@
       "addLabel": "Shop address",
       "placeholder": "Add a shop — e.g. pokehandel.no",
       "add": "Add shop"
+    },
+    "export": {
+      "button": "Export to Cardmarket",
+      "title": "Buy on Cardmarket with a wants list",
+      "step1": "Copy the list below.",
+      "step2": "On Cardmarket, open Wants, create a new list and paste it:",
+      "step3": "Run the Shopping Wizard: it finds the cheapest combination of sellers, shipping included. Set Norway as your country and prefer professional sellers (VAT is then paid at checkout).",
+      "scopeLabel": "Cards to export",
+      "scope": {
+        "notInStock": "Not in stock in Norway",
+        "all": "All missing",
+        "selected_one": "Selected ({{count}})",
+        "selected_other": "Selected ({{count}})"
+      },
+      "empty": "No cards to export.",
+      "listLabel": "Wants list, part {{part}}",
+      "copy_one": "Copy {{count}} card",
+      "copy_other": "Copy {{count}} cards",
+      "copyPart": "Copy part {{part}} of {{parts}}",
+      "copied": "Copied",
+      "note": "Format: count, name, set code, number. Cardmarket takes up to 150 lines per paste. If it doesn't recognise some lines, add those cards from their Cardmarket links."
     }
   }
 }

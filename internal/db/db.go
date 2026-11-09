@@ -3574,6 +3574,18 @@ func createSchema(db *sql.DB) error {
 		}
 	}
 
+	// set_code is the set's code printed on cards ("POR"), used for decklist
+	// style exports (Cardmarket wants lists). From TCGdex; '' = unknown.
+	var hasSetCode int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info('pokemon_sets') WHERE name = 'set_code'`).Scan(&hasSetCode); err != nil {
+		return fmt.Errorf("check pokemon_sets set_code column: %w", err)
+	}
+	if hasSetCode == 0 {
+		if _, err := db.Exec(`ALTER TABLE pokemon_sets ADD COLUMN set_code TEXT NOT NULL DEFAULT ''`); err != nil {
+			return fmt.Errorf("add pokemon_sets set_code column: %w", err)
+		}
+	}
+
 	// Buying singles: the sets a user is completing, the shops we check, the
 	// shop collection that holds each set's singles, and the offers found.
 	if _, err := db.Exec(`

@@ -380,7 +380,46 @@ type WantedSet struct {
 	SymbolURL    string `json:"symbol_url"`
 	TotalCards   int    `json:"total_cards"`
 	MissingCount int    `json:"missing_count"`
+	SetCode      string `json:"set_code"`
 }
+
+// ensureSetCodes fills in the printed set code of the user's wanted sets
+// that don't have one yet (sets synced before the code was stored), one
+// TCGdex request per set. Best effort: failures leave the code empty.
+func ensureSetCodes(ctx context.Context, db *sql.DB, userID int64) {
+	rows, err := db.QueryContext(ctx, `SELECT s.id, s.tcgdex_id FROM pokemon_wanted_sets w JOIN pokemon_sets s ON s.id = w.set_id
+		WHERE w.user_id = ? AND s.set_code = '' AND s.tcgdex_id != ''`, userID)
+	if err != nil {
+		return
+	}
+	type pending struct{ id, tcgdexID string }
+	var todo []pending
+	for rows.Next() {
+		var p pending
+		if rows.Scan(&p.id, &p.tcgdexID) == nil {
+			todo = append(todo, p)
+		}
+	}
+	rows.Close()
+	if len(todo) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	client := tcgdexClientForSetCodes()
+	for _, p := range todo {
+		d, err := client.GetSet(ctx, p.tcgdexID)
+		if err != nil || d.Abbreviation.Official == "" {
+			continue
+		}
+		if _, err := db.ExecContext(ctx, `UPDATE pokemon_sets SET set_code = ? WHERE id = ?`, d.Abbreviation.Official, p.id); err != nil {
+			log.Printf("pokemon: store set code for %s: %v", p.id, err)
+		}
+	}
+}
+
+// tcgdexClientForSetCodes is a seam so tests don't call TCGdex.
+var tcgdexClientForSetCodes = NewTCGdexClient
 
 // Offer is one shop's listing of a card.
 type Offer struct {
@@ -453,7 +492,7 @@ func loadSinglesPage(ctx context.Context, db *sql.DB, userID int64, rate float64
 	}
 
 	rows, err := db.QueryContext(ctx, `
-		SELECT s.id, s.name, s.release_date, s.logo_url, s.symbol_url, s.total_cards
+		SELECT s.id, s.name, s.release_date, s.logo_url, s.symbol_url, s.total_cards, s.set_code
 		FROM pokemon_wanted_sets w JOIN pokemon_sets s ON s.id = w.set_id
 		WHERE w.user_id = ? ORDER BY s.release_date DESC`, userID)
 	if err != nil {
@@ -461,7 +500,7 @@ func loadSinglesPage(ctx context.Context, db *sql.DB, userID int64, rate float64
 	}
 	for rows.Next() {
 		var s WantedSet
-		if err := rows.Scan(&s.ID, &s.Name, &s.ReleaseDate, &s.LogoURL, &s.SymbolURL, &s.TotalCards); err != nil {
+		if err := rows.Scan(&s.ID, &s.Name, &s.ReleaseDate, &s.LogoURL, &s.SymbolURL, &s.TotalCards, &s.SetCode); err != nil {
 			rows.Close()
 			return nil, err
 		}

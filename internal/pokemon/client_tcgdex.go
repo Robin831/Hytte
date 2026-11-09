@@ -87,14 +87,18 @@ type TCGdexSetBrief struct {
 // TCGdexSet mirrors GET /sets/{id}. We only declare the fields the sync
 // reads; TCGdex returns more.
 type TCGdexSet struct {
-	ID          string              `json:"id"`
-	Name        string              `json:"name"`
-	Logo        string              `json:"logo"`
-	Symbol      string              `json:"symbol"`
-	ReleaseDate string              `json:"releaseDate"`
-	CardCount   TCGdexCardCount     `json:"cardCount"`
-	Cards       []TCGdexCardSummary `json:"cards"`
-	Serie       struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Logo        string `json:"logo"`
+	Symbol      string `json:"symbol"`
+	ReleaseDate string `json:"releaseDate"`
+	// Abbreviation.Official is the set code printed on cards ("POR").
+	Abbreviation struct {
+		Official string `json:"official"`
+	} `json:"abbreviation"`
+	CardCount TCGdexCardCount     `json:"cardCount"`
+	Cards     []TCGdexCardSummary `json:"cards"`
+	Serie     struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"serie"`

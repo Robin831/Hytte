@@ -3,7 +3,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import PokemonSingles from './PokemonSingles'
-import { bestOffer, type MissingCard } from '../components/pokemon/singles'
+import { bestOffer, wantsListBlocks, type MissingCard } from '../components/pokemon/singles'
 
 function mockT(key: string, opts?: Record<string, unknown>): string {
   if (!opts) return key
@@ -33,7 +33,7 @@ const gengar = card({ offers: [
 const ariados = card({ id: 'me3-2', name: 'Ariados', collector_no: '2' })
 
 const PAGE = {
-  sets: [{ id: 'me3', name: 'Perfect Order', release_date: '2026/03/27', logo_url: '', symbol_url: '', total_cards: 124, missing_count: 2 }],
+  sets: [{ id: 'me3', name: 'Perfect Order', release_date: '2026/03/27', logo_url: '', symbol_url: '', total_cards: 124, missing_count: 2, set_code: 'POR' }],
   cards: [ariados, gengar],
   shops: [{ id: 1, name: 'Pokehandel', base_url: 'https://pokehandel.no', shipping_nok: 69, free_over_nok: 0, enabled: true, last_checked_at: '2026-11-08T17:20:00Z', last_error: '' }],
   refreshing: false,
@@ -101,5 +101,29 @@ describe('PokemonSingles', () => {
     await waitFor(() => expect(calls.some(c => c.url === '/api/pokemon/singles/sets' && c.init?.method === 'POST')).toBe(true))
     const add = calls.find(c => c.url === '/api/pokemon/singles/sets')
     expect(JSON.parse(String(add?.init?.body))).toEqual({ set_id: 'me06' })
+  })
+
+  it('exports cards no Norwegian shop has as a Cardmarket wants list', async () => {
+    mockFetch()
+    render(<MemoryRouter><PokemonSingles /></MemoryRouter>)
+    await screen.findByText('Perfect Order')
+    fireEvent.click(screen.getByRole('button', { name: /singles.export.button/ }))
+    const list = screen.getByLabelText('singles.export.listLabel:part=1') as HTMLTextAreaElement
+    expect(list.value).toBe('1 Ariados POR 2') // Gengar is in stock, so it's left out
+    fireEvent.click(screen.getByRole('radio', { name: 'singles.export.scope.all' }))
+    expect((screen.getByLabelText('singles.export.listLabel:part=1') as HTMLTextAreaElement).value).toBe('1 Ariados POR 2\n1 Gengar POR 50')
+  })
+})
+
+describe('wantsListBlocks', () => {
+  it('uses the set code, falls back to the set name, and splits at 150 lines', () => {
+    const codes = new Map([['me3', 'POR']])
+    const names = new Map([['me3', 'Perfect Order'], ['me55', '30th Celebration']])
+    expect(wantsListBlocks([card({ set_id: 'me55', name: 'Mew', collector_no: 'B' })], codes, names)).toEqual(['1 Mew 30th Celebration B'])
+    const many = Array.from({ length: 151 }, (_, i) => card({ id: `c${i}`, collector_no: String(i + 1) }))
+    const blocks = wantsListBlocks(many, codes, names)
+    expect(blocks.length).toBe(2)
+    expect(blocks[0].split('\n').length).toBe(150)
+    expect(blocks[1]).toBe('1 Gengar POR 151')
   })
 })

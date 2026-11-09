@@ -36,6 +36,7 @@ func SinglesPageHandler(db *sql.DB) http.HandlerFunc {
 		if err := seedShops(r.Context(), db); err != nil {
 			log.Printf("pokemon: seed shops: %v", err)
 		}
+		ensureSetCodes(r.Context(), db, user.ID)
 		rate, ok := loadRate(r, db)
 		if !ok {
 			w.Header().Set("X-Pokemon-Rate-Missing", "1")

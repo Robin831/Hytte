@@ -2,12 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ArrowLeft, ExternalLink, Loader2, Plus, RefreshCw, ShoppingCart, Store, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Check, ClipboardList, Copy, ExternalLink, Loader2, Plus, RefreshCw, ShoppingCart, Store, Trash2, X } from 'lucide-react'
 import { useAuth } from '../auth'
 import PokemonImage from '../components/pokemon/PokemonImage'
 import { formatNok } from '../components/pokemon/format'
 import { formatDateTime } from '../utils/formatDate'
-import { bestOffer, type MissingCard } from '../components/pokemon/singles'
+import { bestOffer, wantsListBlocks, type MissingCard } from '../components/pokemon/singles'
 
 interface WantedSet {
   id: string
@@ -17,6 +17,7 @@ interface WantedSet {
   symbol_url: string
   total_cards: number
   missing_count: number
+  set_code: string
 }
 
 interface Shop {
@@ -117,6 +118,7 @@ export default function PokemonSingles() {
   const [basket, setBasket] = useState<Basket | null>(null)
   const [basketLoading, setBasketLoading] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [exportOpen, setExportOpen] = useState(false)
 
   const load = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -333,7 +335,24 @@ export default function PokemonSingles() {
                   {t('singles.clearSelection')}
                 </button>
               )}
+              <button
+                type="button"
+                onClick={() => setExportOpen(v => !v)}
+                aria-expanded={exportOpen}
+                className="ml-auto inline-flex items-center gap-1 text-xs text-blue-300 hover:text-blue-200 cursor-pointer"
+              >
+                <ClipboardList size={14} aria-hidden="true" /> {t('singles.export.button')}
+              </button>
             </div>
+
+            {exportOpen && (
+              <CardmarketExport
+                cards={page.cards}
+                selected={selected}
+                setCodes={new Map(page.sets.map(s => [s.id, s.set_code]))}
+                setNames={setNames}
+              />
+            )}
 
             {cards.length === 0 ? (
               <p className="text-sm text-gray-400">{page.cards.length === 0 ? t('singles.cards.complete') : t('singles.cards.noneMatch')}</p>
@@ -470,6 +489,18 @@ export default function PokemonSingles() {
             {basket.shops.length > 0 && (
               <p className="border-t border-gray-800 pt-3 font-semibold">{t('singles.basket.total', { total: formatNok(basket.total_nok) })}</p>
             )}
+            {basket.shops.length > 0 && (() => {
+              // The same cards at Cardmarket's trend price, for comparison.
+              const items = basket.shops.flatMap(s => s.items)
+              const prices = items.map(it => cardsById.get(it.card_id)?.cardmarket_nok ?? null)
+              if (prices.some(p => p == null)) return null
+              const sum = prices.reduce<number>((a, p) => a + (p ?? 0), 0)
+              return (
+                <p className="text-sm text-gray-400">
+                  {t('singles.basket.cardmarketCompare', { total: formatNok(sum) })}
+                </p>
+              )
+            })()}
           </section>
         )}
 
@@ -492,6 +523,88 @@ export default function PokemonSingles() {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+type ExportScope = 'notInStock' | 'all' | 'selected'
+
+function CardmarketExport({ cards, selected, setCodes, setNames }: {
+  cards: MissingCard[]
+  selected: Set<string>
+  setCodes: Map<string, string>
+  setNames: Map<string, string>
+}) {
+  const { t } = useTranslation('pokemon')
+  const [scope, setScope] = useState<ExportScope>('notInStock')
+  const [copied, setCopied] = useState(-1)
+  const scopes: ExportScope[] = selected.size > 0 ? ['notInStock', 'all', 'selected'] : ['notInStock', 'all']
+  const chosen = cards.filter(c =>
+    scope === 'all' ? true : scope === 'selected' ? selected.has(c.id) : !bestOffer(c),
+  )
+  const blocks = wantsListBlocks(chosen, setCodes, setNames)
+
+  const copy = async (i: number) => {
+    try {
+      await navigator.clipboard.writeText(blocks[i])
+      setCopied(i)
+    } catch {
+      setCopied(-1)
+    }
+  }
+
+  return (
+    <div className="p-3 rounded-lg border border-blue-800/60 bg-blue-950/20 space-y-3 text-sm">
+      <p className="font-semibold">{t('singles.export.title')}</p>
+      <ol className="list-decimal pl-5 text-xs text-gray-300 space-y-0.5">
+        <li>{t('singles.export.step1')}</li>
+        <li>
+          {t('singles.export.step2')}{' '}
+          <a href="https://www.cardmarket.com/en/Pokemon/Wants" target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:text-blue-200 inline-flex items-center gap-0.5">
+            cardmarket.com/Wants <ExternalLink size={10} aria-hidden="true" />
+          </a>
+        </li>
+        <li>{t('singles.export.step3')}</li>
+      </ol>
+      <div role="radiogroup" aria-label={t('singles.export.scopeLabel')} className="inline-flex flex-wrap p-0.5 rounded-md bg-gray-800/60 border border-gray-800">
+        {scopes.map(s => (
+          <button
+            key={s}
+            type="button"
+            role="radio"
+            aria-checked={scope === s}
+            onClick={() => { setScope(s); setCopied(-1) }}
+            className={`px-3 py-1 text-xs rounded cursor-pointer ${scope === s ? 'bg-gray-700 text-white' : 'text-gray-400 hover:text-white'}`}
+          >
+            {s === 'all' ? t('singles.export.scope.all') : s === 'selected' ? t('singles.export.scope.selected', { count: selected.size }) : t('singles.export.scope.notInStock')}
+          </button>
+        ))}
+      </div>
+      {chosen.length === 0 ? (
+        <p className="text-xs text-gray-400">{t('singles.export.empty')}</p>
+      ) : (
+        blocks.map((block, i) => (
+          <div key={i} className="space-y-1.5">
+            <textarea
+              readOnly
+              value={block}
+              rows={Math.min(8, block.split('\n').length)}
+              aria-label={t('singles.export.listLabel', { part: i + 1 })}
+              onFocus={e => e.target.select()}
+              className="w-full bg-gray-900 border border-gray-700 rounded px-2 py-1.5 text-xs font-mono"
+            />
+            <button
+              type="button"
+              onClick={() => copy(i)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-blue-700 hover:bg-blue-600 rounded cursor-pointer"
+            >
+              {copied === i ? <Check size={14} aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+              {copied === i ? t('singles.export.copied') : blocks.length > 1 ? t('singles.export.copyPart', { part: i + 1, parts: blocks.length }) : t('singles.export.copy', { count: chosen.length })}
+            </button>
+          </div>
+        ))
+      )}
+      <p className="text-xs text-gray-500">{t('singles.export.note')}</p>
     </div>
   )
 }

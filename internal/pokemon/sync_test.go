@@ -235,6 +235,8 @@ func TestSyncAll_LinksExistingCatalogAndAddsNewSets(t *testing.T) {
 	f := newFakeTCGdex()
 	f.failSetsAt = 1 // a transient 502 is retried
 	f.missingImages = map[string]bool{"https://assets.tcgdex.net/en/x/base1-4/low.webp": true}
+	f.sets[0].Abbreviation.Official = "MEW"
+	f.sets[2].Abbreviation.Official = "DRI"
 	if err := SyncAll(ctx, d, newFakeClient(t, f)); err != nil {
 		t.Fatal(err)
 	}
@@ -291,12 +293,15 @@ func TestSyncAll_LinksExistingCatalogAndAddsNewSets(t *testing.T) {
 	}
 
 	// Delta Reign is added under its TCGdex id; Pocket and old kits aren't.
-	var name, series, date string
-	if err := d.QueryRow(`SELECT name, series, release_date FROM pokemon_sets WHERE id = 'me06'`).Scan(&name, &series, &date); err != nil {
+	var name, series, date, code, code151 string
+	if err := d.QueryRow(`SELECT name, series, release_date, set_code FROM pokemon_sets WHERE id = 'me06'`).Scan(&name, &series, &date, &code); err != nil {
 		t.Fatal(err)
 	}
-	if name != "Delta Reign" || series != "Mega Evolution" || date != "2026/11/06" {
-		t.Fatalf("me06 = %q %q %q", name, series, date)
+	if name != "Delta Reign" || series != "Mega Evolution" || date != "2026/11/06" || code != "DRI" {
+		t.Fatalf("me06 = %q %q %q %q", name, series, date, code)
+	}
+	if err := d.QueryRow(`SELECT set_code FROM pokemon_sets WHERE id = 'sv3pt5'`).Scan(&code151); err != nil || code151 != "MEW" {
+		t.Fatalf("151 set code = %q, %v", code151, err)
 	}
 	if err := d.QueryRow(`SELECT rarity FROM pokemon_cards WHERE id = 'me06-1'`).Scan(&rarity); err != nil || rarity != "Common" {
 		t.Fatalf("me06-1 rarity = %q, %v", rarity, err)

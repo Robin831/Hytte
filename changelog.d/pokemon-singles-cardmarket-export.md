@@ -1,0 +1,2 @@
+category: Added
+- **Export missing cards to Cardmarket** - The Buy singles page can export the missing cards (those no Norwegian shop has, all of them, or a selection) as a Cardmarket wants list ("1 Meowth ex POR 121"), split into 150-line blocks with copy buttons and steps for the Shopping Wizard. The basket also shows what the same cards cost on Cardmarket. Sets now store their printed set code from TCGdex.
