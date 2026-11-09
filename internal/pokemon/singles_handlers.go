@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Robin831/Hytte/internal/auth"
@@ -137,6 +138,80 @@ func BasketHandler(db *sql.DB) http.HandlerFunc {
 			}
 		}
 		respondJSON(w, http.StatusOK, planBasket(cards, enabled))
+	}
+}
+
+// wantsLine is a Cardmarket wants-list line for a card. Cardmarket needs a
+// Pokémon's name plus its abilities/attacks ("2x Umbreon EX Moon Mirage
+// Onyx"); trainers and energies go by name. The text import can't name an
+// expansion or version, so the line matches any print of the card.
+func wantsLine(name string, card *TCGdexCard) string {
+	parts := []string{"1x", name}
+	if card != nil && strings.EqualFold(card.Category, "pokemon") {
+		for _, a := range card.Abilities {
+			if a.Name != "" {
+				parts = append(parts, a.Name)
+			}
+		}
+		for _, a := range card.Attacks {
+			if a.Name != "" {
+				parts = append(parts, a.Name)
+			}
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+// tcgdexClientForExport is a seam so tests don't call TCGdex.
+var tcgdexClientForExport = NewTCGdexClient
+
+// WantsExportHandler: POST /api/pokemon/singles/export {card_ids} →
+// {lines} in the order given, one Cardmarket wants-list line per card.
+func WantsExportHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			CardIDs []string `json:"card_ids"`
+		}
+		if !decodeBody(w, r, &body) {
+			return
+		}
+		if len(body.CardIDs) > 1000 {
+			respondError(w, http.StatusBadRequest, "too many cards")
+			return
+		}
+		type row struct{ name, tcgdexID string }
+		rows := make([]row, len(body.CardIDs))
+		for i, id := range body.CardIDs {
+			if err := db.QueryRowContext(r.Context(), `SELECT name, tcgdex_id FROM pokemon_cards WHERE id = ?`, id).Scan(&rows[i].name, &rows[i].tcgdexID); err != nil {
+				respondError(w, http.StatusBadRequest, "unknown card "+id)
+				return
+			}
+		}
+		client := tcgdexClientForExport()
+		details := make([]*TCGdexCard, len(rows))
+		var wg sync.WaitGroup
+		sem := make(chan struct{}, tcgdexParallelism)
+		for i, rw := range rows {
+			if rw.tcgdexID == "" {
+				continue
+			}
+			i, rw := i, rw
+			wg.Add(1)
+			sem <- struct{}{}
+			go func() {
+				defer wg.Done()
+				defer func() { <-sem }()
+				if c, err := client.GetCard(r.Context(), rw.tcgdexID); err == nil {
+					details[i] = c
+				}
+			}()
+		}
+		wg.Wait()
+		lines := make([]string, len(rows))
+		for i, rw := range rows {
+			lines[i] = wantsLine(rw.name, details[i])
+		}
+		respondJSON(w, http.StatusOK, map[string]any{"lines": lines})
 	}
 }
 

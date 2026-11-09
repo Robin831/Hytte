@@ -358,7 +358,7 @@
       "title": "Buy on Cardmarket with a wants list",
       "step1": "Copy the list below.",
       "step2": "On Cardmarket, open Wants, create a new list and paste it:",
-      "step3": "Run the Shopping Wizard: it finds the cheapest combination of sellers, shipping included. Set Norway as your country and prefer professional sellers (VAT is then paid at checkout).",
+      "step3": "After adding, open each card in the list and set Expansion (and Version for special arts) — Cardmarket's paste can't say which print you want, so the lines match any print. Then run the Shopping Wizard with Norway as your country, preferring professional sellers.",
       "scopeLabel": "Cards to export",
       "scope": {
         "notInStock": "Not in stock in Norway",
@@ -372,7 +372,9 @@
       "copy_other": "Copy {{count}} cards",
       "copyPart": "Copy part {{part}} of {{parts}}",
       "copied": "Copied",
-      "note": "Format: count, name, set code, number. Cardmarket takes up to 150 lines per paste. If it doesn't recognise some lines, add those cards from their Cardmarket links."
+      "note": "Format from Cardmarket's help: amount, card name, and a Pokémon's abilities and attacks. Up to 150 lines per paste.",
+      "loading": "Looking up attacks and abilities…",
+      "failed": "Couldn't build the list. Try again."
     }
   }
 }

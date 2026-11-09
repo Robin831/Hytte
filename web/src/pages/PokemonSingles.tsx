@@ -346,12 +346,7 @@ export default function PokemonSingles() {
             </div>
 
             {exportOpen && (
-              <CardmarketExport
-                cards={page.cards}
-                selected={selected}
-                setCodes={new Map(page.sets.map(s => [s.id, s.set_code]))}
-                setNames={setNames}
-              />
+              <CardmarketExport cards={page.cards} selected={selected} />
             )}
 
             {cards.length === 0 ? (
@@ -529,20 +524,38 @@ export default function PokemonSingles() {
 
 type ExportScope = 'notInStock' | 'all' | 'selected'
 
-function CardmarketExport({ cards, selected, setCodes, setNames }: {
+function CardmarketExport({ cards, selected }: {
   cards: MissingCard[]
   selected: Set<string>
-  setCodes: Map<string, string>
-  setNames: Map<string, string>
 }) {
   const { t } = useTranslation('pokemon')
   const [scope, setScope] = useState<ExportScope>('notInStock')
   const [copied, setCopied] = useState(-1)
+  const [result, setResult] = useState<{ key: string; lines: string[] } | null>(null)
+  const [failed, setFailed] = useState(false)
   const scopes: ExportScope[] = selected.size > 0 ? ['notInStock', 'all', 'selected'] : ['notInStock', 'all']
   const chosen = cards.filter(c =>
     scope === 'all' ? true : scope === 'selected' ? selected.has(c.id) : !bestOffer(c),
   )
-  const blocks = wantsListBlocks(chosen, setCodes, setNames)
+  const key = chosen.map(c => c.id).join(',')
+
+  // Cardmarket identifies a Pokémon by its name plus abilities and attacks,
+  // which the server looks up per card.
+  useEffect(() => {
+    if (!key) return
+    const controller = new AbortController()
+    api<{ lines: string[] }>('/api/pokemon/singles/export', {
+      method: 'POST',
+      body: JSON.stringify({ card_ids: key.split(',') }),
+      signal: controller.signal,
+    })
+      .then(d => { setResult({ key, lines: d.lines }); setFailed(false) })
+      .catch(() => { if (!controller.signal.aborted) setFailed(true) })
+    return () => controller.abort()
+  }, [key])
+
+  const loading = !!key && result?.key !== key && !failed
+  const blocks = result?.key === key ? wantsListBlocks(result.lines) : []
 
   const copy = async (i: number) => {
     try {
@@ -582,6 +595,10 @@ function CardmarketExport({ cards, selected, setCodes, setNames }: {
       </div>
       {chosen.length === 0 ? (
         <p className="text-xs text-gray-400">{t('singles.export.empty')}</p>
+      ) : failed ? (
+        <p role="alert" className="text-xs text-red-300">{t('singles.export.failed')}</p>
+      ) : loading ? (
+        <p className="text-xs text-gray-400 inline-flex items-center gap-1"><Loader2 size={12} className="animate-spin" aria-hidden="true" />{t('singles.export.loading')}</p>
       ) : (
         blocks.map((block, i) => (
           <div key={i} className="space-y-1.5">

@@ -358,7 +358,7 @@
       "title": "Kjøp på Cardmarket med en ønskeliste",
       "step1": "Kopier listen under.",
       "step2": "Åpne Wants på Cardmarket, lag en ny liste og lim den inn:",
-      "step3": "Kjør Shopping Wizard: den finner billigste kombinasjon av selgere, med frakt. Sett Norge som land og velg profesjonelle selgere (da betales mva. i kassen).",
+      "step3": "Etterpå: åpne hvert kort i listen og sett Expansion (og Version for spesialkort) — innlimingen kan ikke si hvilken utgave du vil ha, så linjene matcher alle utgaver. Kjør så Shopping Wizard med Norge som land, og velg profesjonelle selgere.",
       "scopeLabel": "Kort som skal eksporteres",
       "scope": {
         "notInStock": "Ikke på lager i Norge",
@@ -372,7 +372,9 @@
       "copy_other": "Kopier {{count}} kort",
       "copyPart": "Kopier del {{part}} av {{parts}}",
       "copied": "Kopiert",
-      "note": "Format: antall, navn, settkode, nummer. Cardmarket tar inntil 150 linjer per innliming. Kjenner den ikke igjen noen linjer, legg til de kortene via Cardmarket-lenkene."
+      "note": "Format fra Cardmarkets hjelpesider: antall, kortnavn, og Pokémonens evner og angrep. Inntil 150 linjer per innliming.",
+      "loading": "Henter angrep og evner …",
+      "failed": "Klarte ikke å lage listen. Prøv igjen."
     }
   }
 }

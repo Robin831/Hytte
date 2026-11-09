@@ -295,6 +295,39 @@ func TestNormalizeShopURL(t *testing.T) {
 	}
 }
 
+func TestWantsExport(t *testing.T) {
+	d := setupTestDB(t)
+	seedPerfectOrder(t, d)
+	if _, err := d.Exec(`UPDATE pokemon_cards SET tcgdex_id = 'me03-050' WHERE id = 'me3-50'`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := d.Exec(`UPDATE pokemon_cards SET tcgdex_id = 'me03-002', name = 'Sacred Ash' WHERE id = 'me3-2'`); err != nil {
+		t.Fatal(err)
+	}
+	f := newFakeTCGdex()
+	f.cards["me03-050"] = TCGdexCard{ID: "me03-050", Category: "Pokemon",
+		Abilities: []TCGdexName{{Name: "Netherworld Gate"}}, Attacks: []TCGdexName{{Name: "Shadow Bind"}}}
+	f.cards["me03-002"] = TCGdexCard{ID: "me03-002", Category: "Trainer"}
+	client := newFakeClient(t, f)
+	prev := tcgdexClientForExport
+	tcgdexClientForExport = func() *TCGdexClient { return client }
+	t.Cleanup(func() { tcgdexClientForExport = prev })
+
+	req := httptest.NewRequest(http.MethodPost, "/pokemon/singles/export", strings.NewReader(`{"card_ids":["me3-50","me3-2","me3-55"]}`))
+	w := httptest.NewRecorder()
+	WantsExportHandler(d).ServeHTTP(w, req)
+	var got struct {
+		Lines []string `json:"lines"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatal(err)
+	}
+	want := []string{"1x Gengar Netherworld Gate Shadow Bind", "1x Sacred Ash", "1x Mega Skarmory ex"}
+	if strings.Join(got.Lines, "|") != strings.Join(want, "|") {
+		t.Fatalf("lines = %q", got.Lines)
+	}
+}
+
 func TestMergeOffers(t *testing.T) {
 	copyOf := func(v string, price float64) Offer {
 		return Offer{ShopID: 4, VariantID: v, Condition: "NM", PriceNOK: price, Available: true}

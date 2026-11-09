@@ -46,6 +46,11 @@ function mockFetch() {
     const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
     if (url === '/api/pokemon/singles') return json(PAGE)
     if (url.startsWith('/api/pokemon/sets')) return json({ sets: [{ id: 'me3', name: 'Perfect Order', release_date: '' }, { id: 'me06', name: 'Delta Reign', release_date: '' }] })
+    if (url === '/api/pokemon/singles/export') {
+      const ids = (JSON.parse(String(init?.body)) as { card_ids: string[] }).card_ids
+      const names: Record<string, string> = { 'me3-2': '1x Ariados Spider Trap', 'me3-50': '1x Gengar Shadow Bind' }
+      return json({ lines: ids.map(id => names[id]) })
+    }
     if (url === '/api/pokemon/singles/basket') {
       return json({
         shops: [{ shop_id: 1, shop_name: 'Pokehandel', items: [{ card_id: 'me3-50', name: 'Gengar #50', variant_id: '11', print: 'reverse', condition: 'NM', price_nok: 9, url: '' }],
@@ -108,22 +113,21 @@ describe('PokemonSingles', () => {
     render(<MemoryRouter><PokemonSingles /></MemoryRouter>)
     await screen.findByText('Perfect Order')
     fireEvent.click(screen.getByRole('button', { name: /singles.export.button/ }))
-    const list = screen.getByLabelText('singles.export.listLabel:part=1') as HTMLTextAreaElement
-    expect(list.value).toBe('1 Ariados POR 2') // Gengar is in stock, so it's left out
+    // Gengar is in stock in Norway, so only Ariados is exported by default.
+    const list = await screen.findByLabelText('singles.export.listLabel:part=1') as HTMLTextAreaElement
+    expect(list.value).toBe('1x Ariados Spider Trap')
     fireEvent.click(screen.getByRole('radio', { name: 'singles.export.scope.all' }))
-    expect((screen.getByLabelText('singles.export.listLabel:part=1') as HTMLTextAreaElement).value).toBe('1 Ariados POR 2\n1 Gengar POR 50')
+    await waitFor(() => expect((screen.getByLabelText('singles.export.listLabel:part=1') as HTMLTextAreaElement).value)
+      .toBe('1x Ariados Spider Trap\n1x Gengar Shadow Bind'))
   })
 })
 
 describe('wantsListBlocks', () => {
-  it('uses the set code, falls back to the set name, and splits at 150 lines', () => {
-    const codes = new Map([['me3', 'POR']])
-    const names = new Map([['me3', 'Perfect Order'], ['me55', '30th Celebration']])
-    expect(wantsListBlocks([card({ set_id: 'me55', name: 'Mew', collector_no: 'B' })], codes, names)).toEqual(['1 Mew 30th Celebration B'])
-    const many = Array.from({ length: 151 }, (_, i) => card({ id: `c${i}`, collector_no: String(i + 1) }))
-    const blocks = wantsListBlocks(many, codes, names)
+  it('splits at 150 lines', () => {
+    const lines = Array.from({ length: 151 }, (_, i) => `1x Card ${i + 1}`)
+    const blocks = wantsListBlocks(lines)
     expect(blocks.length).toBe(2)
     expect(blocks[0].split('\n').length).toBe(150)
-    expect(blocks[1]).toBe('1 Gengar POR 151')
+    expect(blocks[1]).toBe('1x Card 151')
   })
 })

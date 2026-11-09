@@ -130,6 +130,16 @@ type TCGdexCard struct {
 	Rarity  string        `json:"rarity"`
 	Image   string        `json:"image"`
 	Pricing TCGdexPricing `json:"pricing"`
+	// Category is "Pokemon", "Trainer" or "Energy"; abilities and attacks
+	// identify a Pokémon card in Cardmarket wants lists.
+	Category  string       `json:"category"`
+	Abilities []TCGdexName `json:"abilities"`
+	Attacks   []TCGdexName `json:"attacks"`
+}
+
+// TCGdexName is an ability or attack; only the name is used.
+type TCGdexName struct {
+	Name string `json:"name"`
 }
 
 // TCGdexPricing surfaces the card's cardmarket block (EUR). TCGdex also
