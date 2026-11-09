@@ -524,6 +524,80 @@ export default function PokemonSingles() {
 
 type ExportScope = 'notInStock' | 'all' | 'selected'
 
+// Cards ticked off as added to the Cardmarket wants list. A per-browser
+// convenience, so localStorage (which can be unavailable) is fine.
+const ADDED_KEY = 'hytte.pokemon.singles.cardmarketAdded'
+
+function loadAdded(): Set<string> {
+  try {
+    const raw = window.localStorage.getItem(ADDED_KEY)
+    return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+  } catch {
+    return new Set()
+  }
+}
+
+function saveAdded(ids: Set<string>) {
+  try {
+    window.localStorage.setItem(ADDED_KEY, JSON.stringify([...ids]))
+  } catch {
+    // storage unavailable — the ticks just don't persist
+  }
+}
+
+/**
+ * One row per card with its number and rarity and a link to that exact
+ * version on Cardmarket, whose product page has "Add to Wants". Avoids the
+ * text paste's problem of merging versions that share name and attacks.
+ */
+function VersionChecklist({ cards }: { cards: MissingCard[] }) {
+  const { t } = useTranslation('pokemon')
+  const [added, setAdded] = useState<Set<string>>(loadAdded)
+  const toggle = (id: string) => {
+    setAdded(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      saveAdded(next)
+      return next
+    })
+  }
+  const done = cards.filter(c => added.has(c.id)).length
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <p className="font-semibold">{t('singles.export.checklistTitle')}</p>
+        <span className="text-xs text-gray-400">{t('singles.export.checklistProgress', { done, total: cards.length })}</span>
+      </div>
+      <p className="text-xs text-gray-400">{t('singles.export.checklistIntro')}</p>
+      <ul className="divide-y divide-gray-800 border border-gray-800 rounded">
+        {cards.map(c => (
+          <li key={c.id} className="flex items-center gap-2 px-2 py-1.5 text-xs">
+            <input
+              type="checkbox"
+              checked={added.has(c.id)}
+              onChange={() => toggle(c.id)}
+              aria-label={t('singles.export.markAdded', { name: c.name, number: c.collector_no })}
+              className="h-4 w-4 shrink-0 accent-blue-500"
+            />
+            <span className={`min-w-0 flex-1 ${added.has(c.id) ? 'text-gray-500 line-through' : ''}`}>
+              <span className="tabular-nums text-gray-400">#{c.collector_no}</span> {c.name}
+              {c.rarity && <span className="text-gray-500"> · {c.rarity}</span>}
+            </span>
+            {c.cardmarket_url ? (
+              <a href={c.cardmarket_url} target="_blank" rel="noopener noreferrer" className="shrink-0 inline-flex items-center gap-1 text-blue-300 hover:text-blue-200">
+                {t('singles.export.openVersion')} <ExternalLink size={11} aria-hidden="true" />
+              </a>
+            ) : (
+              <span className="shrink-0 text-gray-500">{t('singles.export.noLink')}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
 function CardmarketExport({ cards, selected }: {
   cards: MissingCard[]
   selected: Set<string>
@@ -569,16 +643,6 @@ function CardmarketExport({ cards, selected }: {
   return (
     <div className="p-3 rounded-lg border border-blue-800/60 bg-blue-950/20 space-y-3 text-sm">
       <p className="font-semibold">{t('singles.export.title')}</p>
-      <ol className="list-decimal pl-5 text-xs text-gray-300 space-y-0.5">
-        <li>{t('singles.export.step1')}</li>
-        <li>
-          {t('singles.export.step2')}{' '}
-          <a href="https://www.cardmarket.com/en/Pokemon/Wants" target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:text-blue-200 inline-flex items-center gap-0.5">
-            cardmarket.com/Wants <ExternalLink size={10} aria-hidden="true" />
-          </a>
-        </li>
-        <li>{t('singles.export.step3')}</li>
-      </ol>
       <div role="radiogroup" aria-label={t('singles.export.scopeLabel')} className="inline-flex flex-wrap p-0.5 rounded-md bg-gray-800/60 border border-gray-800">
         {scopes.map(s => (
           <button
@@ -593,6 +657,18 @@ function CardmarketExport({ cards, selected }: {
           </button>
         ))}
       </div>
+      {chosen.length > 0 && <VersionChecklist cards={chosen} />}
+      <p className="font-semibold pt-1">{t('singles.export.pasteTitle')}</p>
+      <ol className="list-decimal pl-5 text-xs text-gray-300 space-y-0.5">
+        <li>{t('singles.export.step1')}</li>
+        <li>
+          {t('singles.export.step2')}{' '}
+          <a href="https://www.cardmarket.com/en/Pokemon/Wants" target="_blank" rel="noopener noreferrer" className="text-blue-300 hover:text-blue-200 inline-flex items-center gap-0.5">
+            cardmarket.com/Wants <ExternalLink size={10} aria-hidden="true" />
+          </a>
+        </li>
+        <li>{t('singles.export.step3')}</li>
+      </ol>
       {chosen.length === 0 ? (
         <p className="text-xs text-gray-400">{t('singles.export.empty')}</p>
       ) : failed ? (

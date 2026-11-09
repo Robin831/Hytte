@@ -122,6 +122,24 @@ describe('PokemonSingles', () => {
   })
 })
 
+describe('Cardmarket version checklist', () => {
+  it('links each card to its exact Cardmarket version and remembers ticks', async () => {
+    mockFetch()
+    window.localStorage.clear()
+    render(<MemoryRouter><PokemonSingles /></MemoryRouter>)
+    await screen.findByText('Perfect Order')
+    fireEvent.click(screen.getByRole('button', { name: /singles.export.button/ }))
+    fireEvent.click(screen.getByRole('radio', { name: 'singles.export.scope.all' }))
+    const links = screen.getAllByRole('link', { name: /singles.export.openVersion/ })
+    expect(links).toHaveLength(2)
+    expect(links[0].getAttribute('href')).toBe('https://www.cardmarket.com/x')
+    expect(screen.getByText('singles.export.checklistProgress:done=0,total=2')).toBeTruthy()
+    fireEvent.click(screen.getByRole('checkbox', { name: 'singles.export.markAdded:name=Ariados,number=2' }))
+    expect(screen.getByText('singles.export.checklistProgress:done=1,total=2')).toBeTruthy()
+    expect(JSON.parse(window.localStorage.getItem('hytte.pokemon.singles.cardmarketAdded') ?? '[]')).toEqual(['me3-2'])
+  })
+})
+
 describe('wantsListBlocks', () => {
   it('splits at 150 lines', () => {
     const lines = Array.from({ length: 151 }, (_, i) => `1x Card ${i + 1}`)

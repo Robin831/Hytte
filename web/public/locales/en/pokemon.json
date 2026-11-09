@@ -355,7 +355,7 @@
     },
     "export": {
       "button": "Export to Cardmarket",
-      "title": "Buy on Cardmarket with a wants list",
+      "title": "Buy on Cardmarket",
       "step1": "Copy the list below.",
       "step2": "On Cardmarket, open Wants, create a new list and paste it:",
       "step3": "After adding, open each card in the list and set Expansion (and Version for special arts) — Cardmarket's paste can't say which print you want, so the lines match any print. Then run the Shopping Wizard with Norway as your country, preferring professional sellers.",
@@ -374,7 +374,14 @@
       "copied": "Copied",
       "note": "Format from Cardmarket's help: amount, card name, and a Pokémon's abilities and attacks. Up to 150 lines per paste.",
       "loading": "Looking up attacks and abilities…",
-      "failed": "Couldn't build the list. Try again."
+      "failed": "Couldn't build the list. Try again.",
+      "checklistTitle": "Add each card in the right version (recommended)",
+      "checklistProgress": "{{done}} of {{total}} added",
+      "checklistIntro": "Each link opens exactly this version on Cardmarket. Click \"Add to Wants\" there (English, Near Mint, your list), then tick it off here.",
+      "markAdded": "Mark {{name}} #{{number}} as added",
+      "openVersion": "Open on Cardmarket",
+      "noLink": "no Cardmarket link",
+      "pasteTitle": "Or paste a list (quicker, but versions get merged)"
     }
   }
 }
