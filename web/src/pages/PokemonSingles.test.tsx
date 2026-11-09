@@ -122,6 +122,36 @@ describe('PokemonSingles', () => {
   })
 })
 
+describe('ordered cards', () => {
+  it('marks selected cards as ordered with where they were bought', async () => {
+    const calls = mockFetch()
+    render(<MemoryRouter><PokemonSingles /></MemoryRouter>)
+    await screen.findByText('Perfect Order')
+    fireEvent.click(screen.getByRole('checkbox', { name: 'singles.select:name=Gengar,number=50' }))
+    fireEvent.click(screen.getByRole('button', { name: /singles.ordered.mark/ }))
+    fireEvent.change(screen.getByLabelText('singles.ordered.sourceLabel'), { target: { value: 'Cardmarket: Kosar-Da' } })
+    fireEvent.click(screen.getByRole('button', { name: 'singles.ordered.save' }))
+    await waitFor(() => expect(calls.some(c => c.url === '/api/pokemon/singles/ordered')).toBe(true))
+    const call = calls.find(c => c.url === '/api/pokemon/singles/ordered')
+    expect(JSON.parse(String(call?.init?.body))).toEqual({ card_ids: ['me3-50'], source: 'Cardmarket: Kosar-Da' })
+  })
+
+  it('moves ordered cards out of the list into their own section', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      if (url === '/api/pokemon/singles') {
+        return json({ ...PAGE, cards: [ariados, { ...gengar, ordered: { source: 'Cardpoint', ordered_at: '2026-11-09T10:00:00Z' } }] })
+      }
+      return json({ sets: [] })
+    }))
+    render(<MemoryRouter><PokemonSingles /></MemoryRouter>)
+    expect(await screen.findByText('singles.ordered.title:count=1')).toBeTruthy()
+    expect(screen.getByText('Cardpoint')).toBeTruthy()
+    expect(screen.getByText('singles.cards.title:count=1')).toBeTruthy()
+    expect(screen.queryByRole('checkbox', { name: 'singles.select:name=Gengar,number=50' })).toBeNull()
+  })
+})
+
 describe('Cardmarket version checklist', () => {
   it('links each card to its exact Cardmarket version and remembers ticks', async () => {
     mockFetch()

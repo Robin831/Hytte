@@ -456,19 +456,28 @@ func mergeOffers(offers []Offer) []Offer {
 
 // MissingCard is a card of a wanted set the user owns no print of.
 type MissingCard struct {
-	ID              string   `json:"id"`
-	SetID           string   `json:"set_id"`
-	Name            string   `json:"name"`
-	CollectorNo     string   `json:"collector_no"`
-	Rarity          string   `json:"rarity"`
-	ImageSmallURL   string   `json:"image_small_url"`
-	ImageLargeURL   string   `json:"image_large_url"`
-	CardmarketEUR   float64  `json:"cardmarket_eur"`
-	CardmarketNOK   *float64 `json:"cardmarket_nok"`
-	CardmarketURL   string   `json:"cardmarket_url"`
-	Offers          []Offer  `json:"offers"`
+	ID            string   `json:"id"`
+	SetID         string   `json:"set_id"`
+	Name          string   `json:"name"`
+	CollectorNo   string   `json:"collector_no"`
+	Rarity        string   `json:"rarity"`
+	ImageSmallURL string   `json:"image_small_url"`
+	ImageLargeURL string   `json:"image_large_url"`
+	CardmarketEUR float64  `json:"cardmarket_eur"`
+	CardmarketNOK *float64 `json:"cardmarket_nok"`
+	CardmarketURL string   `json:"cardmarket_url"`
+	Offers        []Offer  `json:"offers"`
+	// Ordered is set when the user has ordered the card and is waiting
+	// for it; it stays missing until it's added to the collection.
+	Ordered         *OrderInfo `json:"ordered"`
 	cmProductID     int64
 	cheapestInStock float64
+}
+
+// OrderInfo records where and when a card was ordered.
+type OrderInfo struct {
+	Source    string `json:"source"`
+	OrderedAt string `json:"ordered_at"`
 }
 
 // SinglesPage is the GET /api/pokemon/singles response.
@@ -573,6 +582,28 @@ func loadSinglesPage(ctx context.Context, db *sql.DB, userID int64, rate float64
 		}
 		o.ShopName = shopName[o.ShopID]
 		page.Cards[i].Offers = append(page.Cards[i].Offers, o)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	rows, err = db.QueryContext(ctx, `SELECT card_id, source, ordered_at FROM pokemon_singles_ordered WHERE user_id = ?`, userID)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var cardID string
+		var o OrderInfo
+		var at time.Time
+		if err := rows.Scan(&cardID, &o.Source, &at); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		o.OrderedAt = at.UTC().Format(time.RFC3339)
+		if i, ok := index[cardID]; ok {
+			page.Cards[i].Ordered = &o
+		}
 	}
 	rows.Close()
 	if err := rows.Err(); err != nil {

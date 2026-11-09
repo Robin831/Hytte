@@ -373,6 +373,18 @@
       "openVersion": "เปิดใน Cardmarket",
       "noLink": "ไม่มีลิงก์ Cardmarket",
       "pasteTitle": "หรือวางรายการ (เร็วกว่า แต่รุ่นต่างๆ จะถูกรวมกัน)"
+    },
+    "ordered": {
+      "mark": "ทำเครื่องหมายว่าสั่งแล้ว",
+      "sourceLabel": "สั่งจากที่ไหน?",
+      "sourcePlaceholder": "ที่ไหน? เช่น Cardmarket: Kosar-Da",
+      "save": "บันทึก",
+      "cancel": "ยกเลิก",
+      "title_other": "สั่งแล้ว {{count}} ใบ",
+      "intro": "รอการจัดส่ง จะหายจากรายการนี้เมื่อเพิ่มเข้าคอลเลกชัน",
+      "noSource": "สั่งแล้ว",
+      "undo": "ไม่ได้สั่ง: {{name}} #{{number}}",
+      "undoShort": "เลิกทำ"
     }
   }
 }

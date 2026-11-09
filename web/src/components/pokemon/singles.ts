@@ -24,6 +24,8 @@ export interface MissingCard {
   cardmarket_nok: number | null
   cardmarket_url: string
   offers: Offer[]
+  /** Set once the card is ordered; it waits in "Ordered" until scanned in. */
+  ordered?: { source: string; ordered_at: string } | null
 }
 
 /** Cardmarket's wants list takes at most this many pasted lines at a time. */

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ArrowLeft, Check, ClipboardList, Copy, ExternalLink, Loader2, Plus, RefreshCw, ShoppingCart, Store, Trash2, X } from 'lucide-react'
+import { ArrowLeft, Check, ClipboardList, Copy, ExternalLink, Loader2, PackageCheck, Plus, RefreshCw, ShoppingCart, Store, Trash2, Undo2, X } from 'lucide-react'
 import { useAuth } from '../auth'
 import PokemonImage from '../components/pokemon/PokemonImage'
 import { formatNok } from '../components/pokemon/format'
@@ -176,12 +176,15 @@ export default function PokemonSingles() {
   const removeSet = (id: string) => run(() => api(`/api/pokemon/singles/sets/${encodeURIComponent(id)}`, { method: 'DELETE' }))
   const refresh = () => run(() => api('/api/pokemon/singles/refresh', { method: 'POST' }))
 
+  // Ordered cards wait in their own section until they're scanned in.
+  const activeCards = useMemo(() => (page?.cards ?? []).filter(c => !c.ordered), [page])
+  const orderedCards = useMemo(() => (page?.cards ?? []).filter(c => c.ordered), [page])
   const cards = useMemo(() => {
-    const list = page?.cards ?? []
+    const list = activeCards
     if (filter === 'inStock') return list.filter(c => bestOffer(c))
     if (filter === 'notInStock') return list.filter(c => !bestOffer(c))
     return list
-  }, [page, filter])
+  }, [activeCards, filter])
 
   const lastChecked = useMemo(() => {
     const times = (page?.shops ?? []).map(s => s.last_checked_at).filter((x): x is string => !!x).sort()
@@ -199,8 +202,19 @@ export default function PokemonSingles() {
   }
   const selectAllInStock = () => {
     setBasket(null)
-    setSelected(new Set((page?.cards ?? []).filter(c => bestOffer(c)).map(c => c.id)))
+    setSelected(new Set(activeCards.filter(c => bestOffer(c)).map(c => c.id)))
   }
+
+  const [orderOpen, setOrderOpen] = useState(false)
+  const [orderSource, setOrderSource] = useState('')
+  const markOrdered = async () => {
+    const ids = [...selected]
+    await run(() => api('/api/pokemon/singles/ordered', { method: 'POST', body: JSON.stringify({ card_ids: ids, source: orderSource }) }))
+    setOrderOpen(false)
+    setOrderSource('')
+    clearSelection()
+  }
+  const unmarkOrdered = (id: string) => run(() => api(`/api/pokemon/singles/ordered/${encodeURIComponent(id)}`, { method: 'DELETE' }))
   const clearSelection = () => {
     setBasket(null)
     setSelected(new Set())
@@ -294,7 +308,7 @@ export default function PokemonSingles() {
         {page && page.sets.length > 0 && (
           <section aria-labelledby="singles-cards" className="space-y-3">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h2 id="singles-cards" className="text-lg font-semibold">{t('singles.cards.title', { count: page.cards.length })}</h2>
+              <h2 id="singles-cards" className="text-lg font-semibold">{t('singles.cards.title', { count: activeCards.length })}</h2>
               <div className="flex items-center gap-2 text-xs text-gray-400">
                 {page.refreshing ? (
                   <span className="inline-flex items-center gap-1"><Loader2 size={14} className="animate-spin" aria-hidden="true" />{t('singles.checking')}</span>
@@ -346,11 +360,11 @@ export default function PokemonSingles() {
             </div>
 
             {exportOpen && (
-              <CardmarketExport cards={page.cards} selected={selected} />
+              <CardmarketExport cards={activeCards} selected={selected} />
             )}
 
             {cards.length === 0 ? (
-              <p className="text-sm text-gray-400">{page.cards.length === 0 ? t('singles.cards.complete') : t('singles.cards.noneMatch')}</p>
+              <p className="text-sm text-gray-400">{activeCards.length === 0 ? t('singles.cards.complete') : t('singles.cards.noneMatch')}</p>
             ) : (
               <ul className="divide-y divide-gray-800 border border-gray-800 rounded-lg">
                 {cards.map((c, i) => {
@@ -430,6 +444,10 @@ export default function PokemonSingles() {
           </section>
         )}
 
+        {orderedCards.length > 0 && (
+          <OrderedSection cards={orderedCards} busy={busy} onUndo={unmarkOrdered} />
+        )}
+
         {basket && (
           <section aria-labelledby="singles-basket" className="space-y-3 p-4 border border-emerald-700/50 bg-emerald-900/10 rounded-lg">
             <div className="flex items-center justify-between gap-2">
@@ -504,21 +522,102 @@ export default function PokemonSingles() {
 
       {selected.size > 0 && (
         <div className="fixed bottom-0 inset-x-0 z-20 bg-gray-950/95 border-t border-gray-800 backdrop-blur">
-          <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <div className="max-w-5xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-2">
             <span className="text-sm">{t('singles.selected', { count: selected.size })}</span>
-            <button
-              type="button"
-              onClick={planBasket}
-              disabled={basketLoading}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-emerald-600 hover:bg-emerald-500 rounded disabled:opacity-50 cursor-pointer"
-            >
-              {basketLoading ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <ShoppingCart size={16} aria-hidden="true" />}
-              {t('singles.basket.plan')}
-            </button>
+            {orderOpen ? (
+              <form
+                onSubmit={e => { e.preventDefault(); markOrdered() }}
+                className="flex flex-1 min-w-0 flex-wrap items-center justify-end gap-2"
+              >
+                <label htmlFor="singles-order-source" className="sr-only">{t('singles.ordered.sourceLabel')}</label>
+                <input
+                  id="singles-order-source"
+                  autoFocus
+                  value={orderSource}
+                  onChange={e => setOrderSource(e.target.value)}
+                  placeholder={t('singles.ordered.sourcePlaceholder')}
+                  className="flex-1 min-w-0 sm:max-w-xs bg-gray-800 border border-gray-700 rounded px-2 py-1.5 text-sm"
+                />
+                <button type="submit" disabled={busy} className="px-3 py-2 text-sm bg-amber-600 hover:bg-amber-500 rounded disabled:opacity-50 cursor-pointer">
+                  {t('singles.ordered.save')}
+                </button>
+                <button type="button" onClick={() => setOrderOpen(false)} className="px-2 py-2 text-sm text-gray-400 hover:text-white cursor-pointer">
+                  {t('singles.ordered.cancel')}
+                </button>
+              </form>
+            ) : (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOrderOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-gray-800 border border-gray-700 hover:bg-gray-700 rounded cursor-pointer"
+                >
+                  <PackageCheck size={16} aria-hidden="true" /> {t('singles.ordered.mark')}
+                </button>
+                <button
+                  type="button"
+                  onClick={planBasket}
+                  disabled={basketLoading}
+                  className="inline-flex items-center gap-1.5 px-3 py-2 text-sm bg-emerald-600 hover:bg-emerald-500 rounded disabled:opacity-50 cursor-pointer"
+                >
+                  {basketLoading ? <Loader2 size={16} className="animate-spin" aria-hidden="true" /> : <ShoppingCart size={16} aria-hidden="true" />}
+                  {t('singles.basket.plan')}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
     </div>
+  )
+}
+
+/** Cards ordered but not received yet, grouped by where they were ordered. */
+function OrderedSection({ cards, busy, onUndo }: { cards: MissingCard[]; busy: boolean; onUndo: (id: string) => void }) {
+  const { t } = useTranslation('pokemon')
+  const groups = new Map<string, MissingCard[]>()
+  for (const c of cards) {
+    const key = c.ordered?.source ?? ''
+    groups.set(key, [...(groups.get(key) ?? []), c])
+  }
+  return (
+    <section aria-labelledby="singles-ordered" className="space-y-3">
+      <div>
+        <h2 id="singles-ordered" className="text-lg font-semibold inline-flex items-center gap-2">
+          <PackageCheck size={20} className="text-amber-400" aria-hidden="true" /> {t('singles.ordered.title', { count: cards.length })}
+        </h2>
+        <p className="text-xs text-gray-400">{t('singles.ordered.intro')}</p>
+      </div>
+      {[...groups.entries()].map(([source, list]) => (
+        <div key={source} className="border border-gray-800 rounded-lg">
+          <p className="px-3 pt-2 text-sm font-medium text-amber-200">
+            {source || t('singles.ordered.noSource')}
+            {list[0]?.ordered?.ordered_at && (
+              <span className="ml-2 text-xs font-normal text-gray-500">{formatDateTime(new Date(list[0].ordered.ordered_at), CHECKED_FORMAT)}</span>
+            )}
+          </p>
+          <ul className="divide-y divide-gray-800">
+            {list.map(c => (
+              <li key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
+                <span className="min-w-0 flex-1 truncate">
+                  <span className="tabular-nums text-gray-400">#{c.collector_no}</span> {c.name}
+                  {c.rarity && <span className="text-xs text-gray-500"> · {c.rarity}</span>}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onUndo(c.id)}
+                  disabled={busy}
+                  aria-label={t('singles.ordered.undo', { name: c.name, number: c.collector_no })}
+                  className="shrink-0 inline-flex items-center gap-1 text-xs text-gray-400 hover:text-white cursor-pointer disabled:opacity-50"
+                >
+                  <Undo2 size={12} aria-hidden="true" /> {t('singles.ordered.undoShort')}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </section>
   )
 }
 

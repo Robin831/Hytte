@@ -382,6 +382,19 @@
       "openVersion": "Open on Cardmarket",
       "noLink": "no Cardmarket link",
       "pasteTitle": "Or paste a list (quicker, but versions get merged)"
+    },
+    "ordered": {
+      "mark": "Mark as ordered",
+      "sourceLabel": "Where did you order them?",
+      "sourcePlaceholder": "Where? e.g. Cardmarket: Kosar-Da",
+      "save": "Save",
+      "cancel": "Cancel",
+      "title_one": "{{count}} card ordered",
+      "title_other": "{{count}} cards ordered",
+      "intro": "Waiting to arrive. They leave this list when you add them to the collection.",
+      "noSource": "Ordered",
+      "undo": "Not ordered after all: {{name}} #{{number}}",
+      "undoShort": "Undo"
     }
   }
 }

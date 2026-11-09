@@ -141,6 +141,68 @@ func BasketHandler(db *sql.DB) http.HandlerFunc {
 	}
 }
 
+// MarkOrderedHandler: POST /api/pokemon/singles/ordered {card_ids, source}
+// marks cards as ordered (replacing an earlier mark).
+func MarkOrderedHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		var body struct {
+			CardIDs []string `json:"card_ids"`
+			Source  string   `json:"source"`
+		}
+		if !decodeBody(w, r, &body) {
+			return
+		}
+		source := strings.TrimSpace(body.Source)
+		if len(source) > 200 {
+			respondError(w, http.StatusBadRequest, "source is too long")
+			return
+		}
+		if len(body.CardIDs) == 0 || len(body.CardIDs) > 1000 {
+			respondError(w, http.StatusBadRequest, "card_ids must list 1–1000 cards")
+			return
+		}
+		tx, err := db.BeginTx(r.Context(), nil)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to save")
+			return
+		}
+		defer tx.Rollback() //nolint:errcheck
+		now := time.Now().UTC()
+		for _, id := range body.CardIDs {
+			var exists int
+			if err := tx.QueryRowContext(r.Context(), `SELECT COUNT(*) FROM pokemon_cards WHERE id = ?`, id).Scan(&exists); err != nil || exists == 0 {
+				respondError(w, http.StatusBadRequest, "unknown card "+id)
+				return
+			}
+			if _, err := tx.ExecContext(r.Context(), `INSERT INTO pokemon_singles_ordered (user_id, card_id, source, ordered_at) VALUES (?, ?, ?, ?)
+				ON CONFLICT(user_id, card_id) DO UPDATE SET source = excluded.source, ordered_at = excluded.ordered_at`,
+				user.ID, id, source, now); err != nil {
+				respondError(w, http.StatusInternalServerError, "failed to save")
+				return
+			}
+		}
+		if err := tx.Commit(); err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to save")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// UnmarkOrderedHandler: DELETE /api/pokemon/singles/ordered/{id}.
+func UnmarkOrderedHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		if _, err := db.ExecContext(r.Context(), `DELETE FROM pokemon_singles_ordered WHERE user_id = ? AND card_id = ?`,
+			user.ID, chi.URLParam(r, "id")); err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to remove")
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
 // wantsLine is a Cardmarket wants-list line for a card. Cardmarket needs a
 // Pokémon's name plus its abilities/attacks ("2x Umbreon EX Moon Mirage
 // Onyx"); trainers and energies go by name. The text import can't name an

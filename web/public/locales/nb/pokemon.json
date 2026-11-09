@@ -382,6 +382,19 @@
       "openVersion": "Åpne på Cardmarket",
       "noLink": "ingen Cardmarket-lenke",
       "pasteTitle": "Eller lim inn en liste (raskere, men versjoner slås sammen)"
+    },
+    "ordered": {
+      "mark": "Merk som bestilt",
+      "sourceLabel": "Hvor bestilte du dem?",
+      "sourcePlaceholder": "Hvor? f.eks. Cardmarket: Kosar-Da",
+      "save": "Lagre",
+      "cancel": "Avbryt",
+      "title_one": "{{count}} kort bestilt",
+      "title_other": "{{count}} kort bestilt",
+      "intro": "Venter på levering. De forsvinner herfra når du legger dem til i samlingen.",
+      "noSource": "Bestilt",
+      "undo": "Likevel ikke bestilt: {{name}} #{{number}}",
+      "undoShort": "Angre"
     }
   }
 }

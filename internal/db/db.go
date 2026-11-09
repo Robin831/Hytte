@@ -3627,6 +3627,15 @@ func createSchema(db *sql.DB) error {
 			PRIMARY KEY (shop_id, variant_id)
 		);
 		CREATE INDEX IF NOT EXISTS idx_pokemon_shop_offers_card ON pokemon_shop_offers(card_id);
+		-- Cards a user has ordered but not received yet; source is free text
+		-- ("Cardmarket: Kosar-Da", "Pokelageret").
+		CREATE TABLE IF NOT EXISTS pokemon_singles_ordered (
+			user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			card_id    TEXT NOT NULL REFERENCES pokemon_cards(id) ON DELETE CASCADE,
+			source     TEXT NOT NULL DEFAULT '',
+			ordered_at TIMESTAMP NOT NULL,
+			PRIMARY KEY (user_id, card_id)
+		);
 	`); err != nil {
 		return fmt.Errorf("create pokemon singles tables: %w", err)
 	}

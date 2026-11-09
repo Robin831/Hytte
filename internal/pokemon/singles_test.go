@@ -10,6 +10,9 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/Robin831/Hytte/internal/auth"
+	"github.com/go-chi/chi/v5"
 )
 
 func porCards() []setCard {
@@ -335,5 +338,57 @@ func TestMergeOffers(t *testing.T) {
 	got := mergeOffers([]Offer{copyOf("1", 9), copyOf("2", 9), copyOf("3", 9), copyOf("4", 25)})
 	if len(got) != 2 || got[0].Copies != 3 || got[0].VariantID != "1" || got[1].Copies != 1 {
 		t.Fatalf("merged = %+v", got)
+	}
+}
+
+func TestOrderedCards(t *testing.T) {
+	d := setupTestDB(t)
+	ctx := context.Background()
+	seedPerfectOrder(t, d)
+	if _, err := d.Exec(`INSERT INTO pokemon_wanted_sets (user_id, set_id, created_at) VALUES (1, 'me3', ?)`, time.Now().UTC()); err != nil {
+		t.Fatal(err)
+	}
+	user := &auth.User{ID: 1}
+	call := func(h http.HandlerFunc, method, path, body string, params map[string]string) int {
+		r := httptest.NewRequest(method, path, strings.NewReader(body))
+		rctx := chi.NewRouteContext()
+		for k, v := range params {
+			rctx.URLParams.Add(k, v)
+		}
+		r = r.WithContext(context.WithValue(auth.ContextWithUser(r.Context(), user), chi.RouteCtxKey, rctx))
+		w := httptest.NewRecorder()
+		h(w, r)
+		return w.Code
+	}
+
+	if code := call(MarkOrderedHandler(d), http.MethodPost, "/", `{"card_ids":["me3-50","me3-2"],"source":"Cardmarket: Kosar-Da"}`, nil); code != http.StatusNoContent {
+		t.Fatalf("mark = %d", code)
+	}
+	if code := call(MarkOrderedHandler(d), http.MethodPost, "/", `{"card_ids":["nope"],"source":"x"}`, nil); code != http.StatusBadRequest {
+		t.Fatalf("unknown card = %d", code)
+	}
+	page, err := loadSinglesPage(ctx, d, 1, 10, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ordered := 0
+	for _, c := range page.Cards {
+		if c.Ordered != nil {
+			ordered++
+			if c.Ordered.Source != "Cardmarket: Kosar-Da" || c.Ordered.OrderedAt == "" {
+				t.Fatalf("ordered = %+v", c.Ordered)
+			}
+		}
+	}
+	if ordered != 2 || len(page.Cards) != 3 {
+		t.Fatalf("cards = %d, ordered = %d", len(page.Cards), ordered)
+	}
+
+	if code := call(UnmarkOrderedHandler(d), http.MethodDelete, "/", "", map[string]string{"id": "me3-2"}); code != http.StatusNoContent {
+		t.Fatalf("unmark = %d", code)
+	}
+	var n int
+	if err := d.QueryRow(`SELECT COUNT(*) FROM pokemon_singles_ordered`).Scan(&n); err != nil || n != 1 {
+		t.Fatalf("ordered rows = %d, %v", n, err)
 	}
 }
