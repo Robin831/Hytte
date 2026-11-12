@@ -16,6 +16,7 @@ import (
 	"github.com/Robin831/Hytte/internal/chat"
 	"github.com/Robin831/Hytte/internal/creditcard"
 	"github.com/Robin831/Hytte/internal/dashboard"
+	"github.com/Robin831/Hytte/internal/doomsday"
 	"github.com/Robin831/Hytte/internal/export"
 	"github.com/Robin831/Hytte/internal/family"
 	"github.com/Robin831/Hytte/internal/familychat"
@@ -976,6 +977,13 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/offers/watchlist", offers.HandleAddWatch(db))
 				r.Delete("/offers/watchlist/{id}", offers.HandleDeleteWatch(db))
 				r.With(auth.RequireAdmin()).Post("/offers/refresh", offers.HandleRefresh(db))
+			})
+
+			// Dommedag — weekday-of-a-date trainer (part of Regnemester's
+			// page), gated by its own "dommedag" feature.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "dommedag"))
+				doomsday.RegisterRoutes(r, db)
 			})
 
 			// Verksted — codename for the Christmas presents planner, gated by

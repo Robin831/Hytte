@@ -28,6 +28,7 @@ import type offersEn from '../public/locales/en/offers.json'
 import type racesEn from '../public/locales/en/races.json'
 import type tripsEn from '../public/locales/en/trips.json'
 import type verkstedEn from '../public/locales/en/verksted.json'
+import type doomsdayEn from '../public/locales/en/doomsday.json'
 import type privacyEn from '../public/locales/en/privacy.json'
 import type homeworkEn from '../public/locales/en/homework.json'
 import type regnemesterEn from '../public/locales/en/regnemester.json'
@@ -70,6 +71,7 @@ declare module 'i18next' {
       races: typeof racesEn
       trips: typeof tripsEn
       verksted: typeof verkstedEn
+      doomsday: typeof doomsdayEn
       privacy: typeof privacyEn
       homework: typeof homeworkEn
       regnemester: typeof regnemesterEn

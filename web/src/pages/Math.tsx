@@ -1,7 +1,8 @@
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import type { ParseKeys } from 'i18next'
-import { Calculator, Timer, Zap, Target, Trophy, Award } from 'lucide-react'
+import { Calculator, CalendarDays, Timer, Zap, Target, Trophy, Award } from 'lucide-react'
+import { useAuth } from '../auth'
 import MathSummary from './MathSummary'
 
 interface ModeTile {
@@ -20,6 +21,8 @@ const modes: ModeTile[] = [
 
 export default function MathLanding() {
   const { t } = useTranslation('regnemester')
+  const { t: td } = useTranslation('doomsday')
+  const { hasFeature } = useAuth()
 
   return (
     <div className="max-w-4xl mx-auto p-4 sm:p-6">
@@ -72,6 +75,22 @@ export default function MathLanding() {
               </div>
             </Link>
           ))}
+          {hasFeature('dommedag') && (
+            <Link
+              to="/math/dommedag"
+              className="block rounded-lg border p-4 sm:p-5 transition-colors border-gray-700 bg-gray-800 hover:border-blue-500 hover:bg-gray-800/80 cursor-pointer"
+            >
+              <div className="flex items-start gap-3 sm:gap-4">
+                <div className="p-2 rounded-md shrink-0 bg-blue-500/15 text-blue-400">
+                  <CalendarDays size={28} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h3 className="text-base sm:text-lg font-semibold text-white mb-1">{td('tile.title')}</h3>
+                  <p className="text-sm text-gray-400">{td('tile.blurb')}</p>
+                </div>
+              </div>
+            </Link>
+          )}
         </div>
       </section>
     </div>

@@ -80,6 +80,7 @@ import RaceDetailPage from './pages/races/RaceDetailPage'
 import TripsPage from './pages/trips/TripsPage'
 import TripPage from './pages/trips/TripPage'
 import Verksted from './pages/Verksted'
+import Doomsday from './pages/Doomsday'
 import HomeworkPage from './pages/HomeworkPage'
 import HomeworkChat from './pages/HomeworkChat'
 import HomeworkSettings from './pages/HomeworkSettings'
@@ -732,6 +733,14 @@ function MainLayout() {
             element={
               <FeatureRoute feature="regnemester">
                 <MathAchievements />
+              </FeatureRoute>
+            }
+          />
+          <Route
+            path="/math/dommedag"
+            element={
+              <FeatureRoute feature="dommedag">
+                <Doomsday />
               </FeatureRoute>
             }
           />

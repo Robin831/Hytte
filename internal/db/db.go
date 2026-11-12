@@ -3627,6 +3627,23 @@ func createSchema(db *sql.DB) error {
 			PRIMARY KEY (shop_id, variant_id)
 		);
 		CREATE INDEX IF NOT EXISTS idx_pokemon_shop_offers_card ON pokemon_shop_offers(card_id);
+		-- Dommedag: weekday-of-a-date practice (Conway's Doomsday method).
+		-- level 1–5; drill names the single-step drill on level 2.
+		CREATE TABLE IF NOT EXISTS doomsday_attempts (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			level       INTEGER NOT NULL,
+			drill       TEXT NOT NULL DEFAULT '',
+			date        TEXT NOT NULL,
+			answer      INTEGER NOT NULL,
+			correct     INTEGER NOT NULL,
+			response_ms INTEGER NOT NULL,
+			hints       INTEGER NOT NULL DEFAULT 0,
+			slip        TEXT NOT NULL DEFAULT '',
+			created_at  TIMESTAMP NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_doomsday_attempts_user ON doomsday_attempts(user_id, level, created_at);
+
 		-- Verksted (codename for the Christmas presents planner): people to
 		-- give to, their wishes, the gifts planned per season (year), and
 		-- budgets. Names and free text are encrypted.

@@ -1,0 +1,2 @@
+category: Added
+- **Dommedag** - A weekday-of-a-date trainer on the Regnemester page, using Conway's Doomsday method with "Odd + 11": a Learn section with every step, a cheat sheet and a worked solution for any date; five practice levels (step by step, single-step drills, near years, 1900–2099 with a stopwatch, and a master level with a countdown and no hints); progressive hints, a worked solution and a likely-mistake diagnosis after each answer, keys 1–7 for Monday–Sunday, and stats per level. Behind its own "dommedag" feature flag.
