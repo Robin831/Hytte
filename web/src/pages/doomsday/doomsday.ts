@@ -2,12 +2,13 @@
 // your head, with the "Odd + 11" way of finding a year's doomsday.
 //
 // Weekdays are numbered the way the method counts: Sunday = 0 … Saturday =
-// 6 (Sunday is "Noneday"). The answer buttons are shown Monday first.
+// 6 (Sunday is "Noneday"). The answer buttons follow the same order, so
+// the number worked out in your head is the button to press.
 
 export type Weekday = 0 | 1 | 2 | 3 | 4 | 5 | 6
 
-/** Monday-first order for the answer buttons. */
-export const WEEK_MONDAY_FIRST: Weekday[] = [1, 2, 3, 4, 5, 6, 0]
+/** Sunday-first order (0–6), as the method counts. */
+export const WEEK: Weekday[] = [0, 1, 2, 3, 4, 5, 6]
 
 export interface SimpleDate {
   y: number

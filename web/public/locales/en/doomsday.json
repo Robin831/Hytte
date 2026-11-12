@@ -105,7 +105,7 @@
     "nextKey": "Enter for next",
     "streak": "Streak {{count}}",
     "session": "{{correct}} / {{total}} this session",
-    "keys": "Keys 1–7 = Monday–Sunday",
+    "keys": "Keys 0–6 = Sunday–Saturday (as the method counts)",
     "stepOf": "Step {{step}} of 4",
     "slip": {
       "leap": "Looks like a leap-year slip: in January/February use the 4th/29th in leap years, the 3rd/28th otherwise.",

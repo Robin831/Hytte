@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Lightbulb } from 'lucide-react'
 import {
-  WEEK_MONDAY_FIRST, centuryAnchor, diagnose, isLeap, isoDate, monthDoomsday, randomDate, solve, yearDoomsday,
+  centuryAnchor, diagnose, isLeap, isoDate, monthDoomsday, randomDate, solve, yearDoomsday,
   type Level, type SimpleDate, type Slip, type Weekday,
 } from './doomsday'
 import { centuryStart, dateText, dayMonthText, isPast, monthName, weekdayName } from './format'
@@ -157,7 +157,7 @@ export default function Practice({ onSaved }: { onSaved?: () => void }) {
     return () => window.clearInterval(id)
   }, [answer, level, outcome, q])
 
-  // Keys 1–7 answer weekday questions, Enter goes on.
+  // Keys 0–6 answer weekday questions (0 = Sunday, as the method counts); Enter goes on.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) return
@@ -167,7 +167,7 @@ export default function Practice({ onSaved }: { onSaved?: () => void }) {
         return
       }
       const n = Number(e.key)
-      if (q?.kind === 'weekday' && !outcome && n >= 1 && n <= 7) answer(WEEK_MONDAY_FIRST[n - 1])
+      if (q?.kind === 'weekday' && !outcome && /^[0-6]$/.test(e.key)) answer(n as Weekday)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)

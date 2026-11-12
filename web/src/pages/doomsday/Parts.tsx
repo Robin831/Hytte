@@ -1,8 +1,8 @@
 import { useTranslation } from 'react-i18next'
-import { WEEK_MONDAY_FIRST, daysInMonth, isLeap, monthDoomsday, solve, weekdayOf, type SimpleDate, type Weekday } from './doomsday'
+import { WEEK, daysInMonth, isLeap, monthDoomsday, solve, weekdayOf, type SimpleDate, type Weekday } from './doomsday'
 import { centuryStart, dayMonthText, monthName, weekdayName } from './format'
 
-/** Monday-first weekday buttons; keys 1–7 are wired by the caller. */
+/** Weekday buttons, Sunday (0) to Saturday (6); keys 0–6 are wired by the caller. */
 export function WeekdayButtons({ onPick, disabled, picked, correct }: {
   onPick: (wd: Weekday) => void
   disabled?: boolean
@@ -12,7 +12,7 @@ export function WeekdayButtons({ onPick, disabled, picked, correct }: {
   const { i18n } = useTranslation('doomsday')
   return (
     <div className="grid grid-cols-4 sm:grid-cols-7 gap-2">
-      {WEEK_MONDAY_FIRST.map((wd, i) => {
+      {WEEK.map(wd => {
         let style = 'bg-gray-800 border-gray-700 hover:border-blue-500'
         if (correct != null && wd === correct) style = 'bg-emerald-700 border-emerald-500'
         else if (picked != null && wd === picked) style = 'bg-red-800 border-red-600'
@@ -24,7 +24,7 @@ export function WeekdayButtons({ onPick, disabled, picked, correct }: {
             onClick={() => onPick(wd)}
             className={`relative rounded-lg border px-2 py-3 text-sm font-medium text-white cursor-pointer disabled:cursor-default ${style}`}
           >
-            <span className="absolute top-1 left-1.5 text-[10px] text-gray-500">{i + 1}</span>
+            <span className="absolute top-1 left-1.5 text-[10px] text-gray-500">{wd}</span>
             {weekdayName(wd, i18n.language)}
           </button>
         )
@@ -68,11 +68,11 @@ export function SolutionView({ date }: { date: SimpleDate }) {
   )
 }
 
-/** The month as a small calendar, Monday first, marking the date and the doomsday dates. */
+/** The month as a small calendar, Sunday first, marking the date and the doomsday dates. */
 export function MiniCalendar({ date }: { date: SimpleDate }) {
   const { i18n } = useTranslation('doomsday')
   const first = weekdayOf({ y: date.y, m: date.m, d: 1 })
-  const lead = (first + 6) % 7 // Monday-first offset
+  const lead = first // Sunday-first: blank cells before the 1st
   const days = daysInMonth(date.y, date.m)
   const dd = monthDoomsday(date.m, isLeap(date.y))
   const cells: (number | null)[] = [...Array(lead).fill(null), ...Array.from({ length: days }, (_, i) => i + 1)]
@@ -80,7 +80,7 @@ export function MiniCalendar({ date }: { date: SimpleDate }) {
     <div className="inline-block">
       <p className="text-xs text-gray-400 mb-1">{monthName(date.m, i18n.language)} {date.y}</p>
       <div className="grid grid-cols-7 gap-0.5 text-[11px] text-center">
-        {WEEK_MONDAY_FIRST.map(w => (
+        {WEEK.map(w => (
           <span key={w} className="text-gray-500 w-7">{weekdayName(w, i18n.language, 'short').slice(0, 2)}</span>
         ))}
         {cells.map((d, i) => {

@@ -105,7 +105,7 @@
     "nextKey": "Enter for neste",
     "streak": "Rekke {{count}}",
     "session": "{{correct}} / {{total}} denne økta",
-    "keys": "Tastene 1–7 = mandag–søndag",
+    "keys": "Tastene 0–6 = søndag–lørdag (slik metoden teller)",
     "stepOf": "Steg {{step}} av 4",
     "slip": {
       "leap": "Ser ut som en skuddårsglipp: i januar/februar brukes 4./29. i skuddår, ellers 3./28.",

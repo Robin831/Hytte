@@ -37,7 +37,7 @@ describe('Doomsday practice', () => {
     render(<MemoryRouter><Doomsday /></MemoryRouter>)
     fireEvent.click(screen.getByRole('button', { name: /^3 ·/ }))
     expect(screen.getByRole('heading', { level: 2 }).textContent).toContain('16 July 2015')
-    fireEvent.keyDown(window, { key: '4' }) // Monday-first: 4 = Thursday
+    fireEvent.keyDown(window, { key: '4' }) // 4 = Thursday
     expect(await screen.findByText(/practice.correct/)).toBeTruthy()
     await waitFor(() => expect(calls.some(c => c.url === '/api/math/doomsday/attempts')).toBe(true))
     const body = JSON.parse(String(calls[0].init?.body))
@@ -51,10 +51,24 @@ describe('Doomsday practice', () => {
     fireEvent.click(screen.getByRole('button', { name: /^3 ·/ }))
     fireEvent.click(screen.getByRole('button', { name: /practice.hint/ }))
     expect(screen.getByText(/practice.hintAnchor/)).toBeTruthy()
-    fireEvent.keyDown(window, { key: '5' }) // Friday: one day off
+    fireEvent.keyDown(window, { key: '5' }) // 5 = Friday: one day off
     expect(await screen.findByText(/practice.wrong/)).toBeTruthy()
     expect(screen.getByText(/solution.answer/)).toBeTruthy()
     expect(screen.getByText(/practice.slip/)).toBeTruthy()
+  })
+
+  it('orders the buttons Sunday (0) to Saturday (6) and takes key 0 as Sunday', async () => {
+    const calls = mockFetch()
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    render(<MemoryRouter><Doomsday /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: /^3 ·/ }))
+    const days = screen.getAllByRole('button').filter(b => /day$/.test(b.textContent ?? ''))
+    expect(days.map(b => b.textContent)).toEqual(['0Sunday', '1Monday', '2Tuesday', '3Wednesday', '4Thursday', '5Friday', '6Saturday'])
+    fireEvent.keyDown(window, { key: ' ' })
+    expect(screen.queryByText(/practice.wrong|practice.correct/)).toBeNull()
+    fireEvent.keyDown(window, { key: '0' })
+    await waitFor(() => expect(calls.length).toBe(1))
+    expect(JSON.parse(String(calls[0].init?.body)).answer).toBe(0)
   })
 
   it('walks the four steps on level 1', async () => {
