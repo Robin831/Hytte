@@ -3627,6 +3627,68 @@ func createSchema(db *sql.DB) error {
 			PRIMARY KEY (shop_id, variant_id)
 		);
 		CREATE INDEX IF NOT EXISTS idx_pokemon_shop_offers_card ON pokemon_shop_offers(card_id);
+		-- Verksted (codename for the Christmas presents planner): people to
+		-- give to, their wishes, the gifts planned per season (year), and
+		-- budgets. Names and free text are encrypted.
+		CREATE TABLE IF NOT EXISTS verksted_people (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			name        TEXT NOT NULL,
+			grp         TEXT NOT NULL DEFAULT '',
+			user_id     INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			roster_id   INTEGER UNIQUE,
+			birth_year  INTEGER,
+			sizes       TEXT NOT NULL DEFAULT '',
+			notes       TEXT NOT NULL DEFAULT '',
+			archived    INTEGER NOT NULL DEFAULT 0,
+			created_at  TIMESTAMP NOT NULL,
+			updated_at  TIMESTAMP NOT NULL
+		);
+		CREATE TABLE IF NOT EXISTS verksted_person_budgets (
+			person_id  INTEGER NOT NULL REFERENCES verksted_people(id) ON DELETE CASCADE,
+			season     INTEGER NOT NULL,
+			budget_nok REAL NOT NULL DEFAULT 0,
+			PRIMARY KEY (person_id, season)
+		);
+		CREATE TABLE IF NOT EXISTS verksted_budgets (
+			season    INTEGER PRIMARY KEY,
+			total_nok REAL NOT NULL DEFAULT 0
+		);
+		CREATE TABLE IF NOT EXISTS verksted_wishes (
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			person_id   INTEGER NOT NULL REFERENCES verksted_people(id) ON DELETE CASCADE,
+			title       TEXT NOT NULL,
+			url         TEXT NOT NULL DEFAULT '',
+			notes       TEXT NOT NULL DEFAULT '',
+			price_nok   REAL NOT NULL DEFAULT 0,
+			priority    INTEGER NOT NULL DEFAULT 2,
+			reserved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_by  INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at  TIMESTAMP NOT NULL,
+			updated_at  TIMESTAMP NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_verksted_wishes_person ON verksted_wishes(person_id);
+		CREATE TABLE IF NOT EXISTS verksted_gifts (
+			id         INTEGER PRIMARY KEY AUTOINCREMENT,
+			season     INTEGER NOT NULL,
+			title      TEXT NOT NULL,
+			notes      TEXT NOT NULL DEFAULT '',
+			url        TEXT NOT NULL DEFAULT '',
+			shop       TEXT NOT NULL DEFAULT '',
+			giver      TEXT NOT NULL DEFAULT '',
+			price_nok  REAL NOT NULL DEFAULT 0,
+			status     TEXT NOT NULL DEFAULT 'idea',
+			wish_id    INTEGER REFERENCES verksted_wishes(id) ON DELETE SET NULL,
+			created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+			created_at TIMESTAMP NOT NULL,
+			updated_at TIMESTAMP NOT NULL
+		);
+		CREATE INDEX IF NOT EXISTS idx_verksted_gifts_season ON verksted_gifts(season);
+		CREATE TABLE IF NOT EXISTS verksted_gift_recipients (
+			gift_id   INTEGER NOT NULL REFERENCES verksted_gifts(id) ON DELETE CASCADE,
+			person_id INTEGER NOT NULL REFERENCES verksted_people(id) ON DELETE CASCADE,
+			PRIMARY KEY (gift_id, person_id)
+		);
+
 		-- Cards a user has ordered but not received yet; source is free text
 		-- ("Cardmarket: Kosar-Da", "Pokelageret").
 		CREATE TABLE IF NOT EXISTS pokemon_singles_ordered (

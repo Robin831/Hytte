@@ -47,6 +47,7 @@ import (
 	"github.com/Robin831/Hytte/internal/transit"
 	"github.com/Robin831/Hytte/internal/trips"
 	"github.com/Robin831/Hytte/internal/vault"
+	"github.com/Robin831/Hytte/internal/verksted"
 	"github.com/Robin831/Hytte/internal/wardrobe"
 	"github.com/Robin831/Hytte/internal/weather"
 	"github.com/Robin831/Hytte/internal/webhooks"
@@ -975,6 +976,13 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Post("/offers/watchlist", offers.HandleAddWatch(db))
 				r.Delete("/offers/watchlist/{id}", offers.HandleDeleteWatch(db))
 				r.With(auth.RequireAdmin()).Post("/offers/refresh", offers.HandleRefresh(db))
+			})
+
+			// Verksted — codename for the Christmas presents planner, gated by
+			// its own "verksted" feature so it stays out of the kids' menus.
+			r.Group(func(r chi.Router) {
+				r.Use(auth.RequireFeature(db, "verksted"))
+				verksted.RegisterRoutes(r, db)
 			})
 
 			// Trips — gated by "trips" feature. Access per trip: owner and

@@ -79,6 +79,7 @@ import RacesPage from './pages/races/RacesPage'
 import RaceDetailPage from './pages/races/RaceDetailPage'
 import TripsPage from './pages/trips/TripsPage'
 import TripPage from './pages/trips/TripPage'
+import Verksted from './pages/Verksted'
 import HomeworkPage from './pages/HomeworkPage'
 import HomeworkChat from './pages/HomeworkChat'
 import HomeworkSettings from './pages/HomeworkSettings'
@@ -608,6 +609,14 @@ function MainLayout() {
           />
 
           {/* Trip routes */}
+          <Route
+            path="/verksted"
+            element={
+              <FeatureRoute feature="verksted">
+                <Verksted />
+              </FeatureRoute>
+            }
+          />
           <Route
             path="/trips"
             element={

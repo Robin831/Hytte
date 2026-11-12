@@ -44,7 +44,8 @@
     "suggestions": "Forslag",
     "pokemon": "Pokémon",
     "recipes": "Oppskrifter",
-    "live": "Direkte"
+    "live": "Direkte",
+    "verksted": "Verksted"
   },
   "actions": {
     "save": "Lagre",

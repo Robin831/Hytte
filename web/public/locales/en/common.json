@@ -44,7 +44,8 @@
     "suggestions": "Suggestions",
     "pokemon": "Pokémon",
     "recipes": "Recipes",
-    "live": "Live"
+    "live": "Live",
+    "verksted": "Workshop"
   },
   "actions": {
     "save": "Save",

@@ -46,6 +46,7 @@ import {
   Lightbulb,
   Sparkles,
   ChefHat,
+  Wrench,
 } from 'lucide-react'
 import type { ParseKeys } from 'i18next'
 import { useTranslation } from 'react-i18next'
@@ -80,6 +81,7 @@ const navItems: NavItem[] = [
   { to: '/training/stride', icon: <Zap size={20} />, label: 'nav.stride', requiresAuth: true, feature: 'stride' },
   { to: '/races', icon: <Flag size={20} />, label: 'nav.races', requiresAuth: true, feature: 'races' },
   { to: '/trips', icon: <Plane size={20} />, label: 'nav.trips', requiresAuth: true, feature: 'trips' },
+  { to: '/verksted', icon: <Wrench size={20} />, label: 'nav.verksted', requiresAuth: true, feature: 'verksted' },
   { to: '/lactate', icon: <Activity size={20} />, label: 'nav.lactate', requiresAuth: true, feature: 'lactate' },
   { to: '/infra', icon: <Server size={20} />, label: 'nav.infra', requiresAuth: true, feature: 'infra' },
   { to: '/links', icon: <Link2 size={20} />, label: 'nav.links', requiresAuth: true, feature: 'links' },
