@@ -391,3 +391,153 @@ describe('WordfeudBoard layout behaviors', () => {
     expect(scrolls.length).toBe(1)
   })
 })
+
+describe('WordfeudBoard playing a move', () => {
+  afterEach(() => {
+    cleanup()
+    vi.restoreAllMocks()
+  })
+
+  type Call = { url: string; body: unknown }
+
+  // A game where it's my turn with O R D A on the rack; the solver suggests
+  // ORD across the centre.
+  function playFetch(calls: Call[]) {
+    return vi.fn(async (url: string, opts?: RequestInit) => {
+      const href = String(url)
+      const body = opts?.body ? JSON.parse(String(opts.body)) : undefined
+      const json = (data: unknown, status = 200) =>
+        ({ ok: status < 300, status, json: async () => data }) as unknown as Response
+      if (/\/api\/wordfeud\/games\/42\/(preview|move|pass|swap|resign)$/.test(href)) {
+        calls.push({ url: href, body })
+        if (href.endsWith('/preview')) {
+          return json({ problem: '', main_word: 'ORD', words: [{ word: 'ORD', valid: true }], score: 12, all_valid: true })
+        }
+        if (href.endsWith('/move')) return json({ points: 12, main_word: 'ORD' })
+        return json({ status: 'ok' })
+      }
+      if (/\/api\/wordfeud\/games\/42$/.test(href)) {
+        calls.push({ url: href, body })
+        return json({
+          game: {
+            id: 42,
+            board: Array.from({ length: 15 }, () => Array.from({ length: 15 }, () => null)),
+            rack: [{ letter: 'O', value: 1 }, { letter: 'R', value: 1 }, { letter: 'D', value: 1 }, { letter: 'A', value: 1 }],
+            players: [
+              { username: 'me', id: 1, score: 10 },
+              { username: 'kari', id: 2, score: 20 },
+            ],
+            is_my_turn: true,
+            is_running: true,
+            bag_count: 50,
+          },
+        })
+      }
+      if (href.includes('/api/wordfeud/games')) {
+        return json({ games: [{ id: 42, my_username: 'me', opponent: 'kari', scores: [10, 20], is_my_turn: true }], finished_games: [] })
+      }
+      if (href.includes('/api/wordfeud/solve')) {
+        return json({
+          moves: [{ word: 'ORD', row: 7, col: 7, direction: 'horizontal', score: 12, tiles_used: 3, vowels_used: 1 }],
+          elapsed_ms: 1,
+        })
+      }
+      throw new Error(`unexpected fetch: ${href}`)
+    })
+  }
+
+  async function openGame() {
+    const group = await screen.findByRole('group', { name: 'Quick game switch' })
+    await act(async () => {
+      fireEvent.click(within(group).getByRole('button', { name: 'kari' }))
+    })
+    return screen.findByRole('region', { name: 'play.title' })
+  }
+
+  it('plays a chosen suggestion only after confirming', async () => {
+    const calls: Call[] = []
+    vi.stubGlobal('fetch', playFetch(calls))
+    renderBoard()
+    const panel = await openGame()
+
+    // Nothing chosen yet: nothing to play.
+    expect((within(panel).getByRole('button', { name: /play\.play/ }) as HTMLButtonElement).disabled).toBe(true)
+
+    // Choose the suggestion: the panel checks it and shows word and score.
+    await act(async () => {
+      fireEvent.click(await screen.findByRole('button', { name: /ORD/ }))
+    })
+    expect(await within(panel).findByText('ORD')).toBeTruthy()
+    const preview = calls.find(c => c.url.endsWith('/preview'))
+    expect(preview?.body).toEqual({
+      tiles: [
+        { row: 7, col: 7, letter: 'O', blank: false },
+        { row: 7, col: 8, letter: 'R', blank: false },
+        { row: 7, col: 9, letter: 'D', blank: false },
+      ],
+    })
+
+    // Play opens a confirmation; nothing is sent until it's confirmed.
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole('button', { name: /play\.play/ }))
+    })
+    const dialog = await screen.findByRole('dialog')
+    expect(calls.some(c => c.url.endsWith('/move'))).toBe(false)
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'play.confirmPlay' }))
+    })
+    await waitFor(() => expect(calls.some(c => c.url.endsWith('/move'))).toBe(true))
+    expect(calls.find(c => c.url.endsWith('/move'))?.body).toEqual(preview?.body)
+    // The game is reloaded afterwards.
+    await waitFor(() => expect(calls.filter(c => c.url.endsWith('/games/42')).length).toBe(2))
+  })
+
+  it('lays own tiles by tapping a rack tile and then a square, and takes them back', async () => {
+    const calls: Call[] = []
+    vi.stubGlobal('fetch', playFetch(calls))
+    renderBoard()
+    const panel = await openGame()
+
+    const cells = screen.getAllByRole('gridcell')
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole('button', { name: 'A' }))
+    })
+    await act(async () => {
+      fireEvent.click(cells[7 * 15 + 7])
+    })
+    await waitFor(() => expect(calls.some(c => c.url.endsWith('/preview'))).toBe(true))
+    expect(calls.filter(c => c.url.endsWith('/preview')).at(-1)?.body).toEqual({
+      tiles: [{ row: 7, col: 7, letter: 'A', blank: false }],
+    })
+    expect(cells[7 * 15 + 7].textContent).toContain('A')
+    // The laid tile is spent from the rack.
+    expect((within(panel).getByRole('button', { name: 'A' }) as HTMLButtonElement).disabled).toBe(true)
+
+    // Tap it again to take it back.
+    await act(async () => {
+      fireEvent.click(cells[7 * 15 + 7])
+    })
+    expect(cells[7 * 15 + 7].textContent).not.toContain('A')
+    expect((within(panel).getByRole('button', { name: 'A' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
+  it('asks before resigning and sends nothing when cancelled', async () => {
+    const calls: Call[] = []
+    vi.stubGlobal('fetch', playFetch(calls))
+    renderBoard()
+    const panel = await openGame()
+
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole('button', { name: /play\.more/ }))
+    })
+    await act(async () => {
+      fireEvent.click(within(panel).getByRole('button', { name: /play\.resign/ }))
+    })
+    const dialog = await screen.findByRole('dialog')
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'play.cancel' }))
+    })
+    expect(screen.queryByRole('dialog')).toBeNull()
+    expect(calls.some(c => c.url.endsWith('/resign'))).toBe(false)
+  })
+})

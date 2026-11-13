@@ -381,7 +381,8 @@ type rawGameDetail struct {
 		Points   int    `json:"points"`
 		MainWord string `json:"main_word"`
 	} `json:"moves"`
-	CurrentPlayer int `json:"current_player"`
+	CurrentPlayer int        `json:"current_player"`
+	Ruleset       flexNumber `json:"ruleset"` // needed to play a move
 }
 
 // letterFromID converts a Wordfeud numeric letter ID (1-based) to the letter string.
@@ -542,6 +543,10 @@ func (g rawGameDetail) toGameState() *GameState {
 		IsRunning: g.IsRunning,
 		IsMyTurn:  g.CurrentPlayer == meIdx,
 		BagCount:  g.BagCount,
+		Ruleset:   -1,
+	}
+	if g.Ruleset.set {
+		gs.Ruleset = int(g.Ruleset.value)
 	}
 
 	// Normalize players so gs.Players[0] is always the local player and

@@ -5,6 +5,8 @@ import { Trash2, Search, Loader2, Trophy, ChevronDown, ChevronRight, RefreshCw }
 import { formatDate } from '../utils/formatDate'
 import { useAuth } from '../auth'
 import { LETTER_VALUES, TILE_BAG, BOARD_LAYOUT, type BonusType } from './wordfeudConstants'
+import PlayPanel from './wordfeud/PlayPanel'
+import type { PendingTile, PlayTile } from './wordfeud/play'
 
 const TOTAL_TILES = 104
 
@@ -167,6 +169,12 @@ export default function WordfeudBoard() {
   // For scrolling the board back into view when a move is picked on stacked
   // (mobile) layouts, where the results list sits far below the board.
   const boardColRef = useRef<HTMLDivElement | null>(null)
+  // Playing a move: tiles laid by hand, the rack tile ready to lay, a blank
+  // waiting for its letter, and the outcome of the last action.
+  const [pendingTiles, setPendingTiles] = useState<PendingTile[]>([])
+  const [armedIdx, setArmedIdx] = useState<number | null>(null)
+  const [blankTarget, setBlankTarget] = useState<{ row: number; col: number; rackIdx: number } | null>(null)
+  const [playMessage, setPlayMessage] = useState<{ gameId: number; ok: boolean; text: string } | null>(null)
 
   // Fetch games list
   const fetchGames = useCallback(async (signal?: AbortSignal) => {
@@ -221,6 +229,9 @@ export default function WordfeudBoard() {
       }
       setLoadingGame(true)
       setActiveGame(null)
+      setPendingTiles([])
+      setArmedIdx(null)
+      setBlankTarget(null)
       setBoard(createEmptyBoard())
       setRackInput('')
       setBagCount(null)
@@ -563,8 +574,74 @@ export default function WordfeudBoard() {
     return cells
   }, [solverMoves, board])
 
-  // Compute highlighted cells for the selected move
-  const highlightCells = useMemo(() => cellsForMove(selectedMoveIdx), [cellsForMove, selectedMoveIdx])
+  // Compute highlighted cells: tiles laid by hand, else the selected move
+  const highlightCells = useMemo(() => {
+    if (pendingTiles.length > 0) {
+      return new Map(pendingTiles.map(p => [`${p.row}-${p.col}`, { letter: p.letter, isNew: true, isBlank: p.blank }]))
+    }
+    return cellsForMove(selectedMoveIdx)
+  }, [cellsForMove, selectedMoveIdx, pendingTiles])
+
+  // --- Playing a move in the active game ---
+  const canPlay = !!activeGame && !loadingGame && activeGame.is_running && activeGame.is_my_turn
+
+  // The board as the game has it, to notice hand edits that would make a
+  // suggestion's position differ from the real board.
+  const boardEdited = useMemo(() => {
+    if (!activeGame) return false
+    for (let row = 0; row < 15; row++) {
+      for (let col = 0; col < 15; col++) {
+        const g = activeGame.board[col]?.[row]
+        const b = board[row][col]
+        if ((g?.letter ?? '') !== (b?.letter ?? '')) return true
+      }
+    }
+    return false
+  }, [activeGame, board])
+
+  const candidateTiles = useMemo<PlayTile[]>(() => {
+    if (pendingTiles.length > 0) return pendingTiles.map(({ row, col, letter, blank }) => ({ row, col, letter, blank }))
+    if (selectedMoveIdx == null) return []
+    const tiles: PlayTile[] = []
+    for (const [key, cell] of cellsForMove(selectedMoveIdx)) {
+      if (!cell.isNew) continue
+      const [row, col] = key.split('-').map(Number)
+      tiles.push({ row, col, letter: cell.letter.toUpperCase(), blank: cell.isBlank })
+    }
+    return tiles
+  }, [pendingTiles, selectedMoveIdx, cellsForMove])
+
+  const usedRackIdx = useMemo(() => new Set(pendingTiles.map(p => p.rackIdx)), [pendingTiles])
+
+  const layTile = useCallback((row: number, col: number, rackIdx: number, letter: string, blank: boolean) => {
+    setPendingTiles(prev => [...prev, { row, col, letter, blank, rackIdx }])
+    setArmedIdx(null)
+    setSelectedMoveIdx(null)
+  }, [])
+
+  const handleCellClick = useCallback((row: number, col: number) => {
+    if (canPlay && activeGame) {
+      const at = pendingTiles.findIndex(p => p.row === row && p.col === col)
+      if (at >= 0) {
+        // Tap a laid tile to take it back.
+        setPendingTiles(prev => prev.filter((_, i) => i !== at))
+        return
+      }
+      if (armedIdx != null && !board[row][col]) {
+        const tile = activeGame.rack[armedIdx]
+        if (tile?.is_wild) setBlankTarget({ row, col, rackIdx: armedIdx })
+        else if (tile) layTile(row, col, armedIdx, tile.letter.toUpperCase(), false)
+        return
+      }
+    }
+    setSelectedCell({ row, col })
+  }, [canPlay, activeGame, pendingTiles, armedIdx, board, layTile])
+
+  const handlePlayDone = useCallback((message: { ok: boolean; text: string }) => {
+    if (selectedGameId == null) return
+    setPlayMessage({ gameId: selectedGameId, ...message })
+    if (message.ok) handleRefreshGames()
+  }, [selectedGameId, handleRefreshGames])
 
   // Compute preview cells for hovered move (shown when no move is selected, or different from selected)
   const previewCells = useMemo(() => {
@@ -780,7 +857,7 @@ export default function WordfeudBoard() {
                       ref={(el) => setCellRef(row, col, el)}
                       role="gridcell"
                       aria-label={cellAriaLabel(row, col, cell, bonus, t as (key: string) => string)}
-                      onClick={() => setSelectedCell({ row, col })}
+                      onClick={() => handleCellClick(row, col)}
                       onKeyDown={(e) => handleCellKeyDown(e, row, col)}
                       tabIndex={isSelected || (!selectedCell && row === 0 && col === 0) ? 0 : -1}
                       className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center text-xs font-bold relative cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-inset transition-shadow ${
@@ -820,6 +897,34 @@ export default function WordfeudBoard() {
           </div>
           {/* Physical-keyboard instructions — pointless on touch screens */}
           <p className="hidden md:block text-xs text-gray-500 mt-2">{t('board.hint')}</p>
+
+          {/* Play the chosen move — right under the board, so the word and
+              where it lands are in view together on a phone too. */}
+          {activeGame && !loadingGame && (
+            <PlayPanel
+              key={activeGame.id}
+              gameId={activeGame.id}
+              opponent={activeGame.players[1].username}
+              isMyTurn={activeGame.is_my_turn}
+              isRunning={activeGame.is_running}
+              bagCount={activeGame.bag_count ?? null}
+              rack={activeGame.rack ?? []}
+              candidate={candidateTiles}
+              ownTiles={pendingTiles.length > 0}
+              usedRackIdx={usedRackIdx}
+              armedIdx={armedIdx}
+              onArm={setArmedIdx}
+              onRecall={() => { setPendingTiles([]); setArmedIdx(null) }}
+              blankPending={blankTarget !== null}
+              onBlankLetter={letter => {
+                if (letter && blankTarget) layTile(blankTarget.row, blankTarget.col, blankTarget.rackIdx, letter, true)
+                setBlankTarget(null)
+              }}
+              boardEdited={boardEdited}
+              message={playMessage && playMessage.gameId === activeGame.id ? { ok: playMessage.ok, text: playMessage.text } : null}
+              onDone={handlePlayDone}
+            />
+          )}
         </div>
 
         {/* Rack + top moves beside the board */}
@@ -978,6 +1083,8 @@ export default function WordfeudBoard() {
                         onClick={() => {
                           const next = selectedMoveIdx === i ? null : i
                           setSelectedMoveIdx(next)
+                          setPendingTiles([])
+                          setArmedIdx(null)
                           // On stacked layouts the board is far above the
                           // results — bring the highlighted preview into view.
                           if (next !== null && window.matchMedia('(max-width: 1023px)').matches) {

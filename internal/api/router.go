@@ -897,6 +897,12 @@ func NewRouter(db *sql.DB) http.Handler {
 				r.Use(auth.RequireFeature(db, "wordfeud"))
 				r.Get("/wordfeud/games", wordfeud.GamesHandler(db, wfClient))
 				r.Get("/wordfeud/games/{id}", wordfeud.GameHandler(db, wfClient, wfCache))
+				// Playing: preview a placement, then play, pass, swap or resign.
+				r.Post("/wordfeud/games/{id}/preview", wordfeud.PreviewMoveHandler(db, wfClient, wfCache, wfDict))
+				r.Post("/wordfeud/games/{id}/move", wordfeud.PlayMoveHandler(db, wfClient, wfCache, wfDict))
+				r.Post("/wordfeud/games/{id}/pass", wordfeud.PassHandler(db, wfClient, wfCache))
+				r.Post("/wordfeud/games/{id}/swap", wordfeud.SwapHandler(db, wfClient, wfCache))
+				r.Post("/wordfeud/games/{id}/resign", wordfeud.ResignHandler(db, wfClient, wfCache))
 				r.Post("/wordfeud/find", wordfeud.FindHandler(wfDict))
 				r.Post("/wordfeud/search", wordfeud.SearchHandler(wfDict))
 				r.Post("/wordfeud/validate", wordfeud.ValidateHandler(wfDict))

@@ -58,4 +58,6 @@ type GameState struct {
 	MoveHistory []Move        `json:"move_history"`
 	IsRunning   bool          `json:"is_running"`
 	BagCount    int           `json:"bag_count"`
+	// Ruleset is the game's language/rules id (1 = Norwegian); -1 = unknown.
+	Ruleset int `json:"ruleset"`
 }
