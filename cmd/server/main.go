@@ -514,6 +514,13 @@ func main() {
 			case <-time.After(15 * time.Minute):
 			}
 		}
+		// Sets TCGdex has no logo/symbol for get Scrydex's, without waiting
+		// for Sunday's sync.
+		artCtx, artCancel := context.WithTimeout(notifCtx, 5*time.Minute)
+		if err := pokemon.FillMissingSetArt(artCtx, database, nil); err != nil {
+			log.Printf("pokemon: fill missing set art: %v", err)
+		}
+		artCancel()
 		for {
 			now := time.Now()
 			nextFull := pokemon.NextWeeklySync(now, oslo)

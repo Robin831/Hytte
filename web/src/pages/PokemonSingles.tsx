@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router'
 import { useTranslation } from 'react-i18next'
 import type { TFunction } from 'i18next'
-import { ArrowLeft, Check, ClipboardList, Copy, ExternalLink, Loader2, PackageCheck, Plus, RefreshCw, ShoppingCart, Store, Trash2, Undo2, X } from 'lucide-react'
+import { ArrowLeft, Check, ClipboardList, Copy, ExternalLink, Loader2, PackageCheck, PackageOpen, Plus, RefreshCw, ShoppingCart, Store, Trash2, Undo2, X } from 'lucide-react'
+import { ConfirmDialog } from '../components/ui/dialog'
 import { useAuth } from '../auth'
 import PokemonImage from '../components/pokemon/PokemonImage'
 import { formatNok } from '../components/pokemon/format'
@@ -215,6 +216,8 @@ export default function PokemonSingles() {
     clearSelection()
   }
   const unmarkOrdered = (id: string) => run(() => api(`/api/pokemon/singles/ordered/${encodeURIComponent(id)}`, { method: 'DELETE' }))
+  const receiveOrdered = (ids: string[]) =>
+    run(() => api('/api/pokemon/singles/ordered/received', { method: 'POST', body: JSON.stringify({ card_ids: ids }) }))
   const clearSelection = () => {
     setBasket(null)
     setSelected(new Set())
@@ -445,7 +448,7 @@ export default function PokemonSingles() {
         )}
 
         {orderedCards.length > 0 && (
-          <OrderedSection cards={orderedCards} busy={busy} onUndo={unmarkOrdered} />
+          <OrderedSection cards={orderedCards} busy={busy} onUndo={unmarkOrdered} onReceived={receiveOrdered} />
         )}
 
         {basket && (
@@ -573,8 +576,15 @@ export default function PokemonSingles() {
 }
 
 /** Cards ordered but not received yet, grouped by where they were ordered. */
-function OrderedSection({ cards, busy, onUndo }: { cards: MissingCard[]; busy: boolean; onUndo: (id: string) => void }) {
+function OrderedSection({ cards, busy, onUndo, onReceived }: {
+  cards: MissingCard[]
+  busy: boolean
+  onUndo: (id: string) => void
+  onReceived: (ids: string[]) => Promise<unknown>
+}) {
   const { t } = useTranslation('pokemon')
+  // The order whose arrival is being confirmed.
+  const [arrived, setArrived] = useState<{ source: string; list: MissingCard[] } | null>(null)
   const groups = new Map<string, MissingCard[]>()
   for (const c of cards) {
     const key = c.ordered?.source ?? ''
@@ -590,12 +600,22 @@ function OrderedSection({ cards, busy, onUndo }: { cards: MissingCard[]; busy: b
       </div>
       {[...groups.entries()].map(([source, list]) => (
         <div key={source} className="border border-gray-800 rounded-lg">
-          <p className="px-3 pt-2 text-sm font-medium text-amber-200">
-            {source || t('singles.ordered.noSource')}
-            {list[0]?.ordered?.ordered_at && (
-              <span className="ml-2 text-xs font-normal text-gray-500">{formatDateTime(new Date(list[0].ordered.ordered_at), CHECKED_FORMAT)}</span>
-            )}
-          </p>
+          <div className="flex flex-wrap items-center gap-2 px-3 pt-2">
+            <p className="min-w-0 flex-1 text-sm font-medium text-amber-200">
+              {source || t('singles.ordered.noSource')}
+              {list[0]?.ordered?.ordered_at && (
+                <span className="ml-2 text-xs font-normal text-gray-500">{formatDateTime(new Date(list[0].ordered.ordered_at), CHECKED_FORMAT)}</span>
+              )}
+            </p>
+            <button
+              type="button"
+              onClick={() => setArrived({ source, list })}
+              disabled={busy}
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded bg-emerald-700 hover:bg-emerald-600 text-xs font-medium text-white cursor-pointer disabled:opacity-50"
+            >
+              <PackageOpen size={14} aria-hidden="true" /> {t('singles.ordered.received', { count: list.length })}
+            </button>
+          </div>
           <ul className="divide-y divide-gray-800">
             {list.map(c => (
               <li key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-sm">
@@ -617,6 +637,16 @@ function OrderedSection({ cards, busy, onUndo }: { cards: MissingCard[]; busy: b
           </ul>
         </div>
       ))}
+      <ConfirmDialog
+        open={arrived !== null}
+        onClose={() => setArrived(null)}
+        onConfirm={() => (arrived ? onReceived(arrived.list.map(c => c.id)) : undefined)}
+        title={t('singles.ordered.receivedTitle', { source: arrived?.source || t('singles.ordered.noSource') })}
+        message={t('singles.ordered.receivedBody', { count: arrived?.list.length ?? 0 })}
+        confirmLabel={t('singles.ordered.receivedConfirm')}
+        cancelLabel={t('singles.ordered.cancel')}
+        variant="default"
+      />
     </section>
   )
 }

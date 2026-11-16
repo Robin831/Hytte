@@ -394,7 +394,13 @@
       "intro": "Venter på levering. De forsvinner herfra når du legger dem til i samlingen.",
       "noSource": "Bestilt",
       "undo": "Likevel ikke bestilt: {{name}} #{{number}}",
-      "undoShort": "Angre"
+      "undoShort": "Angre",
+      "received_one": "Kommet: legg til {{count}} kort",
+      "received_other": "Kommet: legg til {{count}} kort",
+      "receivedTitle": "Har bestillingen fra {{source}} kommet?",
+      "receivedBody_one": "Kortet legges i samlingen og forsvinner fra lista.",
+      "receivedBody_other": "Alle {{count}} kortene legges i samlingen og forsvinner fra lista.",
+      "receivedConfirm": "Legg i samlingen"
     }
   }
 }

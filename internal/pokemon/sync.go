@@ -101,6 +101,10 @@ func SyncAll(ctx context.Context, db *sql.DB, client *TCGdexClient) error {
 		log.Printf("pokemon: added %d new sets from TCGdex", added)
 	}
 
+	if err := FillMissingSetArt(ctx, db, client); err != nil {
+		log.Printf("pokemon: fill missing set art: %v", err)
+	}
+
 	n, err := backfillNormalVariants(ctx, db)
 	if err != nil {
 		return fmt.Errorf("backfill normal variants: %w", err)

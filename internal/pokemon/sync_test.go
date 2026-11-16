@@ -37,8 +37,9 @@ type fakeTCGdex struct {
 	sets          []TCGdexSet
 	cards         map[string]TCGdexCard
 	cardHits      map[string]int
-	failSetsAt    int             // when >0, GET /sets returns 500 this many times first
-	missingImages map[string]bool // image URLs that 404
+	failSetsAt    int               // when >0, GET /sets returns 500 this many times first
+	missingImages map[string]bool   // image URLs that 404
+	artDigests    map[string]string // set logo/symbol URL -> image digest
 	guide         []priceGuideEntry
 }
 
@@ -142,6 +143,12 @@ func newFakeClient(t *testing.T, f *fakeTCGdex) *TCGdexClient {
 		f.mu.Lock()
 		defer f.mu.Unlock()
 		return !f.missingImages[u]
+	}
+	// No set art anywhere unless a test says so; never the network.
+	c.imageDigest = func(_ context.Context, u string) string {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		return f.artDigests[u]
 	}
 	prevGuide := cardmarketGuideURL
 	cardmarketGuideURL = srv.URL + "/price_guide_6.json"

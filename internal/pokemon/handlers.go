@@ -209,6 +209,7 @@ func RegisterRoutes(r chi.Router, db *sql.DB) {
 		r.Post("/pokemon/singles/basket", BasketHandler(db))
 		r.Post("/pokemon/singles/export", WantsExportHandler(db))
 		r.Post("/pokemon/singles/ordered", MarkOrderedHandler(db))
+		r.Post("/pokemon/singles/ordered/received", ReceivedOrderedHandler(db))
 		r.Delete("/pokemon/singles/ordered/{id}", UnmarkOrderedHandler(db))
 		r.Post("/pokemon/singles/shops", AddShopHandler(db))
 		r.Patch("/pokemon/singles/shops/{id}", UpdateShopHandler(db))

@@ -3,6 +3,7 @@ package pokemon
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
 	"net/http"
 	"net/url"
@@ -200,6 +201,75 @@ func UnmarkOrderedHandler(db *sql.DB) http.HandlerFunc {
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+// ReceivedOrderedHandler: POST /api/pokemon/singles/ordered/received
+// {card_ids} — the order arrived: each card goes into the collection (one
+// more copy of its normal print, else its first variant) and leaves the
+// ordered list. Only cards the user marked as ordered are touched.
+func ReceivedOrderedHandler(db *sql.DB) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		user := auth.UserFromContext(r.Context())
+		var body struct {
+			CardIDs []string `json:"card_ids"`
+		}
+		if !decodeBody(w, r, &body) {
+			return
+		}
+		if len(body.CardIDs) == 0 || len(body.CardIDs) > 1000 {
+			respondError(w, http.StatusBadRequest, "card_ids must list 1–1000 cards")
+			return
+		}
+		ctx := r.Context()
+		tx, err := db.BeginTx(ctx, nil)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to save")
+			return
+		}
+		defer tx.Rollback() //nolint:errcheck
+		added := 0
+		for _, id := range body.CardIDs {
+			var ordered int
+			if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM pokemon_singles_ordered WHERE user_id = ? AND card_id = ?`, user.ID, id).Scan(&ordered); err != nil {
+				respondError(w, http.StatusInternalServerError, "failed to save")
+				return
+			}
+			if ordered == 0 {
+				continue
+			}
+			var variantID int64
+			err := tx.QueryRowContext(ctx, `
+				SELECT id FROM pokemon_card_variants WHERE card_id = ?
+				ORDER BY CASE kind WHEN 'normal' THEN 0 WHEN 'holofoil' THEN 1 ELSE 2 END, id
+				LIMIT 1`, id).Scan(&variantID)
+			if errors.Is(err, sql.ErrNoRows) {
+				respondError(w, http.StatusUnprocessableEntity, "card "+id+" has no print to add")
+				return
+			}
+			if err != nil {
+				respondError(w, http.StatusInternalServerError, "failed to save")
+				return
+			}
+			if _, err := tx.ExecContext(ctx, `
+				INSERT INTO pokemon_collections (user_id, card_id, variant_id, quantity, condition, acquired_at)
+				VALUES (?, ?, ?, 1, '', ?)
+				ON CONFLICT(user_id, card_id, variant_id) DO UPDATE SET quantity = quantity + 1`,
+				user.ID, id, variantID, time.Now().UTC()); err != nil {
+				respondError(w, http.StatusInternalServerError, "failed to save")
+				return
+			}
+			if _, err := tx.ExecContext(ctx, `DELETE FROM pokemon_singles_ordered WHERE user_id = ? AND card_id = ?`, user.ID, id); err != nil {
+				respondError(w, http.StatusInternalServerError, "failed to save")
+				return
+			}
+			added++
+		}
+		if err := tx.Commit(); err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to save")
+			return
+		}
+		respondJSON(w, http.StatusOK, map[string]int{"added": added})
 	}
 }
 

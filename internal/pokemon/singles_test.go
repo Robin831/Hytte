@@ -391,4 +391,30 @@ func TestOrderedCards(t *testing.T) {
 	if err := d.QueryRow(`SELECT COUNT(*) FROM pokemon_singles_ordered`).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("ordered rows = %d, %v", n, err)
 	}
+
+	// The order arrives: me3-50 goes into the collection as its normal
+	// print; me3-2 (no longer ordered) is left alone.
+	if code := call(ReceivedOrderedHandler(d), http.MethodPost, "/", `{"card_ids":["me3-50","me3-2"]}`, nil); code != http.StatusOK {
+		t.Fatalf("received = %d", code)
+	}
+	var kind string
+	var qty int
+	if err := d.QueryRow(`SELECT v.kind, c.quantity FROM pokemon_collections c JOIN pokemon_card_variants v ON v.id = c.variant_id WHERE c.user_id = 1 AND c.card_id = 'me3-50'`).Scan(&kind, &qty); err != nil || kind != "normal" || qty != 1 {
+		t.Fatalf("collection = %s x%d, %v", kind, qty, err)
+	}
+	if err := d.QueryRow(`SELECT COUNT(*) FROM pokemon_collections WHERE card_id = 'me3-2'`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("me3-2 added though not ordered: %d, %v", n, err)
+	}
+	if err := d.QueryRow(`SELECT COUNT(*) FROM pokemon_singles_ordered`).Scan(&n); err != nil || n != 0 {
+		t.Fatalf("ordered rows after receiving = %d, %v", n, err)
+	}
+	page, err = loadSinglesPage(ctx, d, 1, 10, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range page.Cards {
+		if c.ID == "me3-50" {
+			t.Fatal("received card still listed as missing")
+		}
+	}
 }

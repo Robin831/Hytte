@@ -394,7 +394,13 @@
       "intro": "Waiting to arrive. They leave this list when you add them to the collection.",
       "noSource": "Ordered",
       "undo": "Not ordered after all: {{name}} #{{number}}",
-      "undoShort": "Undo"
+      "undoShort": "Undo",
+      "received_one": "Arrived: add {{count}} card",
+      "received_other": "Arrived: add {{count}} cards",
+      "receivedTitle": "Order from {{source}} arrived?",
+      "receivedBody_one": "The card is added to your collection and leaves this list.",
+      "receivedBody_other": "All {{count}} cards are added to your collection and leave this list.",
+      "receivedConfirm": "Add to collection"
     }
   }
 }

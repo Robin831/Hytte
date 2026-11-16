@@ -28,6 +28,9 @@ type TCGdexClient struct {
 	// imageOK reports whether an image URL loads (HEAD 200). A field so
 	// tests can fake it.
 	imageOK func(ctx context.Context, u string) bool
+	// imageDigest fetches an image and returns its SHA-256 ("" when it
+	// doesn't load). A field so tests can fake it.
+	imageDigest func(ctx context.Context, u string) string
 }
 
 // NewTCGdexClient returns a client with a 30 s HTTP timeout and the public
@@ -49,6 +52,7 @@ func NewTCGdexClient() *TCGdexClient {
 		},
 	}
 	c.imageOK = c.headOK
+	c.imageDigest = c.imageDigestHTTP
 	return c
 }
 

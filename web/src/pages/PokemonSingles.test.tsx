@@ -1,6 +1,6 @@
 // @vitest-environment happy-dom
 import { describe, it, expect, vi, afterEach } from 'vitest'
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent, within } from '@testing-library/react'
 import { MemoryRouter } from 'react-router'
 import PokemonSingles from './PokemonSingles'
 import { bestOffer, wantsListBlocks, type MissingCard } from '../components/pokemon/singles'
@@ -149,6 +149,28 @@ describe('ordered cards', () => {
     expect(screen.getByText('Cardpoint')).toBeTruthy()
     expect(screen.getByText('singles.cards.title:count=1')).toBeTruthy()
     expect(screen.queryByRole('checkbox', { name: 'singles.select:name=Gengar,number=50' })).toBeNull()
+  })
+
+  it('adds a whole arrived order to the collection after confirming', async () => {
+    const calls: { url: string; body?: string }[] = []
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      calls.push({ url, body: init?.body ? String(init.body) : undefined })
+      const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+      const at = { source: 'Pokelageret', ordered_at: '2026-11-09T10:00:00Z' }
+      if (url === '/api/pokemon/singles') {
+        return json({ ...PAGE, cards: [{ ...ariados, ordered: at }, { ...gengar, ordered: at }] })
+      }
+      if (url === '/api/pokemon/singles/ordered/received') return json({ added: 2 })
+      return json({ sets: [] })
+    }))
+    render(<MemoryRouter><PokemonSingles /></MemoryRouter>)
+    fireEvent.click(await screen.findByRole('button', { name: /singles.ordered.received:count=2/ }))
+    const dialog = await screen.findByRole('dialog')
+    expect(calls.some(c => c.url.endsWith('/received'))).toBe(false)
+    fireEvent.click(within(dialog).getByRole('button', { name: 'singles.ordered.receivedConfirm' }))
+    await waitFor(() => expect(calls.some(c => c.url.endsWith('/received'))).toBe(true))
+    const ids = JSON.parse(calls.find(c => c.url.endsWith('/received'))?.body ?? '{}').card_ids
+    expect([...ids].sort()).toEqual([ariados.id, gengar.id].sort())
   })
 })
 
