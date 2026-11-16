@@ -8,7 +8,7 @@ import { formatTime } from '../../utils/formatDate'
 
 interface Moon {
   phase: string
-  illumination: number
+  illumination: number // percent lit, 0–100 (as the API sends it)
   moonrise: string | null
   moonset: string | null
 }
@@ -48,7 +48,7 @@ export default function MoonWidget() {
         </span>
         <div className="min-w-0">
           <p className="text-base font-semibold">{name}</p>
-          <p className="text-sm text-gray-400">{t('widgets.moon.lit', { percent: Math.round(moon.illumination * 100) })}</p>
+          <p className="text-sm text-gray-400">{t('widgets.moon.lit', { percent: Math.round(moon.illumination) })}</p>
         </div>
       </div>
       {(moon.moonrise || moon.moonset) && (

@@ -485,7 +485,7 @@ describe('BusWidget', () => {
 describe('MoonWidget', () => {
   it('shows the phase, how much is lit and when the moon rises', async () => {
     const calls = installFetch({
-      '/api/skywatch/now': { moon: { phase: 'Waxing Gibbous', illumination: 0.836, moonrise: '2026-10-11T15:20:00Z', moonset: null } },
+      '/api/skywatch/now': { moon: { phase: 'Waxing Gibbous', illumination: 83.6, moonrise: '2026-10-11T15:20:00Z', moonset: null } },
     })
     show(<MoonWidget />)
     expect(await screen.findByText('widgets.moon.phase.waxing_gibbous')).toBeInTheDocument()
