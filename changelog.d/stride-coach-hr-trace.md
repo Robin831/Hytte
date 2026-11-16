@@ -1,0 +1,2 @@
+category: Changed
+- **Stride coach sees the full heart-rate trace** - The workout evaluation and the follow-up chat now get the HR and pace recording behind the graph (10-second windows for runs up to an hour, coarser for longer ones, lap starts marked), plus the lap table in the chat. The coach can now answer questions like how long HR stayed above a cap in a given rep instead of guessing from averages.

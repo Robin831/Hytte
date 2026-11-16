@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -289,6 +290,18 @@ assessment, ALSO output the full revised evaluation after your reply as a fenced
 					fmt.Fprintf(&sb, "- Avg pace: %d:%02d min/km\n", pace/60, pace%60)
 				}
 				sb.WriteString("\n")
+				// Laps and the full HR/pace trace, so the coach can answer
+				// questions about what happened inside a rep.
+				laps, err := loadWorkoutLaps(ctx, db, w.ID)
+				if err != nil {
+					log.Printf("stride eval chat: workout %d: load laps: %v", w.ID, err)
+				}
+				writeLapsTable(&sb, laps)
+				if samples, err := loadWorkoutSamples(ctx, db, w.ID); err != nil {
+					log.Printf("stride eval chat: workout %d: load samples: %v", w.ID, err)
+				} else {
+					writeSampleTrace(&sb, samples, laps)
+				}
 			}
 		}
 		for _, ps := range extractPlannedSessions(*plan) {

@@ -195,6 +195,12 @@ func queryWorkoutsOnDate(ctx context.Context, db *sql.DB, userID int64, date str
 			continue
 		}
 		workouts[i].Laps = laps
+		samples, err := loadWorkoutSamples(ctx, db, workouts[i].ID)
+		if err != nil {
+			log.Printf("stride eval: workout %d: load samples: %v", workouts[i].ID, err)
+			continue
+		}
+		workouts[i].Samples = samples
 	}
 	return workouts, nil
 }
@@ -596,6 +602,12 @@ func queryUnevaluatedWorkouts(ctx context.Context, db *sql.DB, userID int64, sin
 			continue
 		}
 		workouts[i].Laps = laps
+		samples, err := loadWorkoutSamples(ctx, db, workouts[i].ID)
+		if err != nil {
+			log.Printf("stride eval: workout %d: load samples: %v", workouts[i].ID, err)
+			continue
+		}
+		workouts[i].Samples = samples
 	}
 	return workouts, nil
 }
@@ -962,29 +974,10 @@ func buildEvalPrompt(
 	// Laps reveal interval structure that the averages hide. A 6x4min threshold
 	// session looks like an easy aerobic run when only the aggregates are
 	// visible (recovery jogs drag avg HR and avg pace down) — but the laps
-	// table makes the work-rest cadence obvious. Show laps when we have at
-	// least three, which is the smallest table that conveys structure.
-	if len(workout.Laps) >= 3 {
-		sb.WriteString("## Laps\n")
-		sb.WriteString("Per-lap data from the watch. When the planned session is interval-based, consult this rather than the averages — the recovery laps will lower the avg pace and avg HR even when the work laps were correctly executed.\n\n")
-		sb.WriteString("| # | Dur | Dist | Avg HR | Max HR | Pace | Cad |\n")
-		sb.WriteString("|---|-----|------|--------|--------|------|-----|\n")
-		for _, l := range workout.Laps {
-			durMin := int(l.DurationSeconds) / 60
-			durSec := int(l.DurationSeconds) % 60
-			pace := "—"
-			if l.AvgPaceSecPerKm > 0 {
-				pMin := int(l.AvgPaceSecPerKm) / 60
-				pSec := int(l.AvgPaceSecPerKm) % 60
-				pace = fmt.Sprintf("%d:%02d", pMin, pSec)
-			}
-			fmt.Fprintf(&sb, "| %d | %d:%02d | %dm | %d | %d | %s | %d |\n",
-				l.LapNumber, durMin, durSec, int(l.DistanceMeters),
-				l.AvgHeartRate, l.MaxHeartRate, pace, l.AvgCadence,
-			)
-		}
-		sb.WriteString("\n")
-	}
+	// table makes the work-rest cadence obvious. The trace shows what
+	// happened inside each lap.
+	writeLapsTable(&sb, workout.Laps)
+	writeSampleTrace(&sb, workout.Samples, workout.Laps)
 
 	// Treadmill workouts: the watch derives pace from foot-pod / wrist
 	// accelerometer, which tracks cadence more than belt speed, so its error is
