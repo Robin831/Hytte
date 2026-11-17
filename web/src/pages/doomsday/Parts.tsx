@@ -33,8 +33,14 @@ export function WeekdayButtons({ onPick, disabled, picked, correct }: {
   )
 }
 
-/** The full Odd + 11 solution for a date, one line per step. */
-export function SolutionView({ date }: { date: SimpleDate }) {
+/** A part of the working: century anchor, year doomsday, month doomsday, count. */
+export type SolutionPart = 'anchor' | 'year' | 'month' | 'count'
+const ALL_PARTS: SolutionPart[] = ['anchor', 'year', 'month', 'count']
+
+/** The Odd + 11 working for a date, one line per step. With parts, only
+ * those steps (for a single-step question); the final answer line comes
+ * with the full working only. */
+export function SolutionView({ date, parts = ALL_PARTS }: { date: SimpleDate; parts?: SolutionPart[] }) {
   const { t, i18n } = useTranslation('doomsday')
   const lang = i18n.language
   const s = solve(date)
@@ -42,8 +48,8 @@ export function SolutionView({ date }: { date: SimpleDate }) {
   const { odd } = s
   return (
     <ol className="space-y-1.5 text-sm text-gray-200 list-decimal pl-5">
-      <li>{t('solution.anchor', { century: centuryStart(date.y), day: wd(s.anchor) })}</li>
-      <li>
+      {parts.includes('anchor') && <li value={1}>{t('solution.anchor', { century: centuryStart(date.y), day: wd(s.anchor) })}</li>}
+      {parts.includes('year') && <li value={2}>
         {t('solution.lastTwo', { t: odd.t })}{' '}
         {odd.oddFirst ? t('solution.oddAdd', { n: odd.afterFirst }) : t('solution.even')}{' '}
         {t('solution.half', { n: odd.half })}{' '}
@@ -51,19 +57,21 @@ export function SolutionView({ date }: { date: SimpleDate }) {
         {t('solution.mod', { n: odd.afterSecond, m: odd.mod })}{' '}
         {t('solution.forward', { m: odd.mod, f: odd.forward, anchor: wd(s.anchor), day: wd(s.yearDay) })}
         <span className="block text-gray-400">{t('solution.yearDay', { year: date.y, day: wd(s.yearDay) })}</span>
-      </li>
-      <li>
+      </li>}
+      {parts.includes('month') && <li value={3}>
         {t('solution.month', { month: monthName(date.m, lang), date: dayMonthText(s.monthDay, date.m, lang) })}
         {date.m <= 2 && (
           <span className="text-gray-400"> {s.leap ? t('solution.leapNote', { year: date.y }) : t('solution.notLeapNote', { year: date.y })}</span>
         )}
-      </li>
-      <li>
+      </li>}
+      {parts.includes('count') && <li value={4}>
         {t('solution.count', { d: date.d, md: s.monthDay, diff: s.diff })}
         {(s.diff < 0 || s.diff >= 7) && t('solution.countMod', { mod: s.diffMod })}
         {t('solution.countResult', { yearDay: wd(s.yearDay), mod: s.diffMod, day: wd(s.answer) })}
-      </li>
-      <li className="font-semibold list-none -ml-5">{t('solution.answer', { day: wd(s.answer) })}</li>
+      </li>}
+      {parts.length === ALL_PARTS.length && (
+        <li className="font-semibold list-none -ml-5">{t('solution.answer', { day: wd(s.answer) })}</li>
+      )}
     </ol>
   )
 }

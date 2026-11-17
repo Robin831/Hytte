@@ -82,4 +82,26 @@ describe('Doomsday practice', () => {
     fireEvent.click(screen.getByRole('button', { name: /practice.next/ }))
     expect(screen.getByText(/practice.qYear/)).toBeTruthy()
   })
+
+  it('shows the working for the step just answered, not the whole date', async () => {
+    mockFetch()
+    vi.spyOn(Math, 'random').mockReturnValue(0.5)
+    render(<MemoryRouter><Doomsday /></MemoryRouter>)
+    fireEvent.click(screen.getByRole('button', { name: /^1 ·/ }))
+
+    // Step 1, the century anchor, answered wrong: its working, nothing more.
+    fireEvent.keyDown(window, { key: '0' })
+    expect(await screen.findByText(/practice.wrong/)).toBeTruthy()
+    expect(screen.getByText(/solution.anchor/)).toBeTruthy()
+    expect(screen.queryByText(/solution.lastTwo/)).toBeNull()
+    expect(screen.queryByText(/solution.answer/)).toBeNull()
+
+    // Step 2, the year's doomsday: anchor plus the Odd + 11 working.
+    fireEvent.click(screen.getByRole('button', { name: /practice.next/ }))
+    fireEvent.keyDown(window, { key: '0' })
+    await screen.findByText(/practice.wrong|practice.correct/)
+    expect(screen.getByText(/solution.anchor/)).toBeTruthy()
+    expect(screen.getByText(/solution.lastTwo/)).toBeTruthy()
+    expect(screen.queryByText(/solution.month/)).toBeNull()
+  })
 })

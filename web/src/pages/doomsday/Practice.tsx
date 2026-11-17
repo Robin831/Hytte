@@ -6,7 +6,7 @@ import {
   type Level, type SimpleDate, type Slip, type Weekday,
 } from './doomsday'
 import { centuryStart, dateText, dayMonthText, isPast, monthName, weekdayName } from './format'
-import { MiniCalendar, SolutionView, WeekdayButtons } from './Parts'
+import { MiniCalendar, SolutionView, WeekdayButtons, type SolutionPart } from './Parts'
 
 export type Drill = 'anchor' | 'year' | 'month' | 'count'
 const DRILLS: Drill[] = ['anchor', 'year', 'month', 'count']
@@ -178,7 +178,15 @@ export default function Practice({ onSaved }: { onSaved?: () => void }) {
   }
 
   const hintsAllowed = level !== 5
-  const showSolution = outcome && q.kind === 'weekday' && (level >= 3 || (level === 1 && step === 3) || (level === 2 && drill === 'count'))
+  // The working behind every answer: just the step asked, or all of it for
+  // a whole date — so a wrong answer shows where it went wrong.
+  const stepPart: SolutionPart | null =
+    level === 1 ? (['anchor', 'year', 'month', null] as const)[step]
+      : level === 2 ? drill
+        : null
+  const solutionParts: SolutionPart[] | undefined =
+    stepPart === 'year' ? ['anchor', 'year'] : stepPart ? [stepPart] : undefined
+  const showCalendar = !stepPart || stepPart === 'month' || stepPart === 'count'
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-gray-400">
@@ -245,12 +253,10 @@ export default function Practice({ onSaved }: { onSaved?: () => void }) {
                   : t('practice.wrong', { day: q.kind === 'weekday' ? wd(q.answer) : dayMonthText(q.answer, q.date.m, lang) })}
             </p>
             {outcome.slip && outcome.slip !== 'timeout' && <p className="text-sm text-amber-200">{slipText(t, outcome.slip)}</p>}
-            {showSolution && (
-              <div className="flex flex-col sm:flex-row gap-4 rounded bg-gray-900 p-3">
-                <div className="flex-1"><SolutionView date={q.date} /></div>
-                <MiniCalendar date={q.date} />
-              </div>
-            )}
+            <div className="flex flex-col sm:flex-row gap-4 rounded bg-gray-900 p-3">
+              <div className="flex-1"><SolutionView date={q.date} parts={solutionParts} /></div>
+              {showCalendar && <MiniCalendar date={q.date} />}
+            </div>
             <button type="button" onClick={next} autoFocus className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-500 text-sm font-medium cursor-pointer">
               {t('practice.next')} <span className="text-xs text-blue-200">({t('practice.nextKey')})</span>
             </button>
