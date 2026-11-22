@@ -601,18 +601,48 @@ export default function Training() {
     setUploadResult(null)
     setError('')
 
+    // Read every file into memory first. On phones a picked file is often a
+    // link back into another app (Drive, Garmin, Downloads); if the browser
+    // reads it lazily while sending, the upload dies with a network error
+    // before it reaches the server. Reading up front both avoids that and
+    // tells a file that can't be read apart from a connection problem.
     const formData = new FormData()
-    for (const file of files) {
-      formData.append('files', file)
+    for (const file of Array.from(files)) {
+      try {
+        const data = await file.arrayBuffer()
+        formData.append('files', new File([data], file.name, { type: 'application/octet-stream' }))
+      } catch {
+        setError(t('errors.uploadRead', { name: file.name }))
+        setUploading(false)
+        return
+      }
     }
 
+    const send = () => fetch('/api/training/upload', {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    })
+    let res: Response
     try {
-      const res = await fetch('/api/training/upload', {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
-      })
-      const data = await res.json()
+      res = await send()
+    } catch {
+      // A dropped mobile connection: one quiet retry before giving up.
+      try {
+        res = await send()
+      } catch {
+        setError(t('errors.uploadNetwork'))
+        setUploading(false)
+        return
+      }
+    }
+    try {
+      const data = await res.json().catch(() => null)
+      if (!data) {
+        // Not our API answering (e.g. a Cloudflare block page).
+        setError(t('errors.uploadBlocked', { status: res.status }))
+        return
+      }
       if (!res.ok) {
         setError(data.error || t('errors.uploadFailed'))
         return
@@ -622,8 +652,6 @@ export default function Training() {
         errors: data.errors || [],
       })
       setRefreshTick(prev => prev + 1)
-    } catch {
-      setError(t('errors.uploadFailed'))
     } finally {
       setUploading(false)
     }

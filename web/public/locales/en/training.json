@@ -336,7 +336,10 @@
     "failedToLoadTrainingLoad": "Failed to load training load data",
     "failedToAnalyzeSummary": "Failed to generate weekly summary",
     "failedToLoadVO2max": "Failed to load VO2max data",
-    "failedToLoadPredictions": "Failed to load race predictions"
+    "failedToLoadPredictions": "Failed to load race predictions",
+    "uploadRead": "Couldn't read {{name}} on this device. Save the file to the phone first (e.g. Downloads) and pick it from there.",
+    "uploadNetwork": "Upload failed: couldn't reach Hytte. Check the connection and try again.",
+    "uploadBlocked": "Upload was blocked before it reached Hytte (HTTP {{status}}). Reload the page and try again."
   },
   "effortPacing": {
     "title": "Effort & Pacing",

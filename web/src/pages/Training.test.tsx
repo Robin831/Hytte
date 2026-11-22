@@ -1323,3 +1323,72 @@ describe('Training new-workouts banner', () => {
     expect(screen.getByText('Older Ride')).toBeInTheDocument()
   })
 })
+
+describe('Training upload', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    window.sessionStorage.clear()
+    requests = []
+    stubEventSource()
+  })
+
+  afterAll(() => {
+    vi.unstubAllGlobals()
+  })
+
+  // The backend mock, with the upload request answered by `upload`.
+  function withUpload(upload: () => Promise<unknown>) {
+    const base = mockFetch(WORKOUTS)
+    const uploads: RequestInit[] = []
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      if (url === '/api/training/upload') {
+        uploads.push(init ?? {})
+        return upload()
+      }
+      return base(url, init)
+    }))
+    return uploads
+  }
+
+  async function pick(file: File) {
+    renderTraining()
+    await screen.findByText(WORKOUTS[0].title)
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement
+    await act(async () => {
+      fireEvent.change(input, { target: { files: [file] } })
+    })
+  }
+
+  const fitFile = () => new File([new Uint8Array([14, 16, 1, 2])], 'run.fit')
+
+  it('sends the file read into memory and reports the import', async () => {
+    const uploads = withUpload(() => Promise.resolve({ ok: true, status: 201, json: () => Promise.resolve({ imported: [{ id: 9 }], errors: [] }) }))
+    await pick(fitFile())
+    expect(await screen.findByText(/upload\.imported|imported/)).toBeInTheDocument()
+    const sent = (uploads[0].body as FormData).get('files') as File
+    expect(sent.name).toBe('run.fit')
+    expect(sent.size).toBe(4)
+  })
+
+  it('says so when the phone cannot read the picked file', async () => {
+    const uploads = withUpload(() => Promise.reject(new Error('unreachable')))
+    const broken = fitFile()
+    Object.defineProperty(broken, 'arrayBuffer', { value: () => Promise.reject(new DOMException('denied', 'NotReadableError')) })
+    await pick(broken)
+    expect(await screen.findByText(/Couldn't read run\.fit/)).toBeInTheDocument()
+    expect(uploads).toHaveLength(0)
+  })
+
+  it('retries once on a dropped connection, then reports a network problem', async () => {
+    const uploads = withUpload(() => Promise.reject(new TypeError('Failed to fetch')))
+    await pick(fitFile())
+    expect(await screen.findByText(/couldn't reach Hytte/)).toBeInTheDocument()
+    expect(uploads).toHaveLength(2)
+  })
+
+  it('names a block page that is not the API answering', async () => {
+    withUpload(() => Promise.resolve({ ok: false, status: 403, json: () => Promise.reject(new SyntaxError('not json')) }))
+    await pick(fitFile())
+    expect(await screen.findByText(/blocked before it reached Hytte \(HTTP 403\)/)).toBeInTheDocument()
+  })
+})

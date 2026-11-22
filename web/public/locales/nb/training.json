@@ -336,7 +336,10 @@
     "failedToLoadTrainingLoad": "Kunne ikke laste treningsbelastningsdata",
     "failedToAnalyzeSummary": "Kunne ikke generere ukentlig oppsummering",
     "failedToLoadVO2max": "Kunne ikke laste VO2max-data",
-    "failedToLoadPredictions": "Kunne ikke laste løpstidsprediksjoner"
+    "failedToLoadPredictions": "Kunne ikke laste løpstidsprediksjoner",
+    "uploadRead": "Fikk ikke lest {{name}} på denne enheten. Lagre fila på telefonen først (f.eks. Nedlastinger) og velg den derfra.",
+    "uploadNetwork": "Opplasting mislyktes: fikk ikke kontakt med Hytte. Sjekk tilkoblingen og prøv igjen.",
+    "uploadBlocked": "Opplastingen ble stoppet før den nådde Hytte (HTTP {{status}}). Last inn siden på nytt og prøv igjen."
   },
   "effortPacing": {
     "title": "Innsats og tempo",
