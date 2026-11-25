@@ -1379,6 +1379,13 @@ describe('Training upload', () => {
     expect(uploads).toHaveLength(0)
   })
 
+  it('stops an empty file before sending it', async () => {
+    const uploads = withUpload(() => Promise.reject(new Error('unreachable')))
+    await pick(new File([], 'Indoor_Run.fit'))
+    expect(await screen.findByText(/Indoor_Run\.fit is empty on this device/)).toBeInTheDocument()
+    expect(uploads).toHaveLength(0)
+  })
+
   it('retries once on a dropped connection, then reports a network problem', async () => {
     const uploads = withUpload(() => Promise.reject(new TypeError('Failed to fetch')))
     await pick(fitFile())

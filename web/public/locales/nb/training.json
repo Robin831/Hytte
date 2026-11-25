@@ -339,7 +339,8 @@
     "failedToLoadPredictions": "Kunne ikke laste løpstidsprediksjoner",
     "uploadRead": "Fikk ikke lest {{name}} på denne enheten. Lagre fila på telefonen først (f.eks. Nedlastinger) og velg den derfra.",
     "uploadNetwork": "Opplasting mislyktes: fikk ikke kontakt med Hytte. Sjekk tilkoblingen og prøv igjen.",
-    "uploadBlocked": "Opplastingen ble stoppet før den nådde Hytte (HTTP {{status}}). Last inn siden på nytt og prøv igjen."
+    "uploadBlocked": "Opplastingen ble stoppet før den nådde Hytte (HTTP {{status}}). Last inn siden på nytt og prøv igjen.",
+    "uploadEmpty": "{{name}} er tom på denne enheten (0 byte) — appen som lagret den er ikke ferdig med å skrive den. Åpne økta i appen eller eksporter den på nytt, vent litt, og last opp igjen."
   },
   "effortPacing": {
     "title": "Innsats og tempo",

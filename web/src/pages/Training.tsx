@@ -610,6 +610,13 @@ export default function Training() {
     for (const file of Array.from(files)) {
       try {
         const data = await file.arrayBuffer()
+        if (data.byteLength === 0) {
+          // The phone handed over an empty file: the app that saved it
+          // (watch app, Drive) hasn't written the data yet.
+          setError(t('errors.uploadEmpty', { name: file.name }))
+          setUploading(false)
+          return
+        }
         formData.append('files', new File([data], file.name, { type: 'application/octet-stream' }))
       } catch {
         setError(t('errors.uploadRead', { name: file.name }))

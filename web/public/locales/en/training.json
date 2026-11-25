@@ -339,7 +339,8 @@
     "failedToLoadPredictions": "Failed to load race predictions",
     "uploadRead": "Couldn't read {{name}} on this device. Save the file to the phone first (e.g. Downloads) and pick it from there.",
     "uploadNetwork": "Upload failed: couldn't reach Hytte. Check the connection and try again.",
-    "uploadBlocked": "Upload was blocked before it reached Hytte (HTTP {{status}}). Reload the page and try again."
+    "uploadBlocked": "Upload was blocked before it reached Hytte (HTTP {{status}}). Reload the page and try again.",
+    "uploadEmpty": "{{name}} is empty on this device (0 bytes) — the app that saved it hasn't finished writing it. Open the workout in that app or export it again, wait a moment, then upload."
   },
   "effortPacing": {
     "title": "Effort & Pacing",
