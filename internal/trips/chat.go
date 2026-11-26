@@ -319,7 +319,18 @@ func collapseText(node any, path []string) bool {
 		return true
 	case []any:
 		i, err := strconv.Atoi(path[0])
-		if err != nil || i < 0 || i >= len(n) {
+		if err != nil {
+			// Older Go leaves list positions out of the field path
+			// ("stays.name"): try the rest of the path in every element.
+			hit := false
+			for _, el := range n {
+				if collapseText(el, path) {
+					hit = true
+				}
+			}
+			return hit
+		}
+		if i < 0 || i >= len(n) {
 			return false
 		}
 		if !last {

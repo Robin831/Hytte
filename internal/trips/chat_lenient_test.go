@@ -1,6 +1,9 @@
 package trips
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // The assistant sometimes writes a plain-text field (here a hotel's name and
 // phone) as a {"nb","en","th"} object. The change must still be read.
@@ -26,6 +29,22 @@ func TestSplitReplyForgivesTranslatedPlainFields(t *testing.T) {
 	// Real translated texts are left alone.
 	if stays[0].Note["en"] != "Breakfast included" {
 		t.Fatalf("note = %v", stays[0].Note)
+	}
+
+	// Go versions differ on whether the error's field path names the list
+	// position ("stays.0.name") or not ("stays.name"); both must work.
+	for _, path := range []string{"doc.stays.1.name", "doc.stays.name"} {
+		raw := map[string]any{"doc": map[string]any{"stays": []any{
+			map[string]any{"name": "Plain"},
+			map[string]any{"name": map[string]any{"en": "Hotel", "nb": "Hotell"}},
+		}}}
+		if !collapseText(raw, strings.Split(path, ".")) {
+			t.Fatalf("%s: nothing collapsed", path)
+		}
+		got := raw["doc"].(map[string]any)["stays"].([]any)
+		if got[0].(map[string]any)["name"] != "Plain" || got[1].(map[string]any)["name"] != "Hotell" {
+			t.Fatalf("%s: stays = %v", path, got)
+		}
 	}
 
 	// Anything else that doesn't fit is still an error.
