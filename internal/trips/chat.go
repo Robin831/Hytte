@@ -7,6 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -240,7 +243,7 @@ const chatRules = `How to answer:
 - You have web search and can open web pages. Use them before saying you can't find something (a hotel's price on booking sites, opening hours, transport times, event times). Say where an answer comes from when it matters, and say so when a page wouldn't load or you are unsure.
 - Keep replies short and practical: plain text, no markdown headings, no closing boilerplate such as "I haven't changed anything". Say what you changed, in a line or two.
 - To change the trip, put "update" in the block: the COMPLETE trip in the same shape as above (kind, start_date, end_date, home_tz, dest_tz, share_family, race_event_id, result_id, doc). Copy everything you don't change exactly. Change only what was asked.
-- Every text in the doc is an object {"nb": ..., "en": ..., "th": ...}: write all three languages for anything you add or change. Keep names, codes, flight numbers, addresses, phone numbers and prices as written.
+- Translated texts in the doc are objects {"nb": ..., "en": ..., "th": ...}: write all three languages for anything you add or change. Keep every field the same type as in the trip above — names, addresses, phone numbers, codes, flight numbers, references, rooms and prices are plain strings, written as given, never language objects.
 - Dates are YYYY-MM-DD; local times are YYYY-MM-DDTHH:MM with their IANA time zone in the matching tz field. Route stops are airport codes or short place names. A tentative trip has doc.flex; to pick dates set start_date/end_date and doc.flex.chosen true.
 - Checklist operations go in "checklist": {"op":"add_item","list_id":N,"title":{...},"detail":{...},"urgent":false} (or "list_title" instead of list_id for a new list), {"op":"add_list","list_title":{...}}, {"op":"set_done","item_id":N,"done":true}, {"op":"delete_item","item_id":N}.
 - To check prices add "search_prices": {"dates": [{"start","end"}], "kinds": ["flights","hotels"], "hotel_query": "..."}. Empty dates = the trip's own dates (or a tentative trip's candidate dates). For one named hotel, or hotels in an area, use "kinds": ["hotels"] with "hotel_query" (the hotel's name, or e.g. "hotels near Suvarnabhumi Airport") — never search flights nobody asked for. Each search of each kind costs one of the month's searches; reuse prices already found.
@@ -260,10 +263,95 @@ func splitReply(s string) (string, *chatChange, error) {
 		return text, nil, nil
 	}
 	var c chatChange
-	if err := json.Unmarshal([]byte(block), &c); err != nil {
+	if err := unmarshalLenient([]byte(block), &c); err != nil {
 		return text, nil, fmt.Errorf("unreadable change block: %w", err)
 	}
 	return text, &c, nil
+}
+
+// unmarshalLenient decodes the assistant's block, forgiving one slip it
+// makes: writing a plain-text field (a hotel's name, an address) as a
+// {"nb", "en", "th"} object like the translated texts around it. Such an
+// object is replaced by its Norwegian (else English, else any) text and the
+// decode retried, so the change isn't lost over it.
+func unmarshalLenient(data []byte, v any) error {
+	err := json.Unmarshal(data, v)
+	for tries := 0; err != nil && tries < 50; tries++ {
+		var typeErr *json.UnmarshalTypeError
+		if !errors.As(err, &typeErr) || typeErr.Value != "object" || typeErr.Type.Kind() != reflect.String || typeErr.Field == "" {
+			return err
+		}
+		var raw any
+		if json.Unmarshal(data, &raw) != nil {
+			return err
+		}
+		if !collapseText(raw, strings.Split(typeErr.Field, ".")) {
+			return err
+		}
+		if data, err = json.Marshal(raw); err != nil {
+			return err
+		}
+		err = json.Unmarshal(data, v)
+	}
+	return err
+}
+
+// collapseText replaces the language object at path with one of its texts.
+func collapseText(node any, path []string) bool {
+	if len(path) == 0 {
+		return false
+	}
+	last := len(path) == 1
+	switch n := node.(type) {
+	case map[string]any:
+		child, ok := n[path[0]]
+		if !ok {
+			return false
+		}
+		if !last {
+			return collapseText(child, path[1:])
+		}
+		obj, ok := child.(map[string]any)
+		if !ok {
+			return false
+		}
+		n[path[0]] = pickText(obj)
+		return true
+	case []any:
+		i, err := strconv.Atoi(path[0])
+		if err != nil || i < 0 || i >= len(n) {
+			return false
+		}
+		if !last {
+			return collapseText(n[i], path[1:])
+		}
+		obj, ok := n[i].(map[string]any)
+		if !ok {
+			return false
+		}
+		n[i] = pickText(obj)
+		return true
+	}
+	return false
+}
+
+func pickText(obj map[string]any) string {
+	for _, lang := range []string{"nb", "en", "th"} {
+		if s, ok := obj[lang].(string); ok && s != "" {
+			return s
+		}
+	}
+	keys := make([]string, 0, len(obj))
+	for k := range obj {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		if s, ok := obj[k].(string); ok && s != "" {
+			return s
+		}
+	}
+	return ""
 }
 
 // tripStatus says where the trip is relative to today, in a sentence.
